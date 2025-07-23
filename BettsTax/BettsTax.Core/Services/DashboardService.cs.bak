@@ -1,0 +1,227 @@
+using BettsTax.Core.DTOs;
+using BettsTax.Core.Repositories;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace BettsTax.Core.Services
+{
+    public class DashboardService : IDashboardService
+    {
+        private readonly IClientRepository _clientRepository;
+        private readonly IDocumentRepository _documentRepository;
+        private readonly IPaymentRepository _paymentRepository;
+        private readonly ITaxYearRepository _taxYearRepository;
+        private readonly IUserRepository _userRepository;
+        private readonly INotificationRepository _notificationRepository;
+
+        public DashboardService(
+            IClientRepository clientRepository,
+            IDocumentRepository documentRepository,
+            IPaymentRepository paymentRepository,
+            ITaxYearRepository taxYearRepository,
+            IUserRepository userRepository,
+            INotificationRepository notificationRepository)
+        {
+            _clientRepository = clientRepository;
+            _documentRepository = documentRepository;
+            _paymentRepository = paymentRepository;
+            _taxYearRepository = taxYearRepository;
+            _userRepository = userRepository;
+            _notificationRepository = notificationRepository;
+        }
+
+        public async Task<DashboardDto> GetDashboardDataAsync(string userId)
+        {
+            return new DashboardDto
+            {
+                ClientSummary = await GetClientSummaryAsync(),
+                ComplianceOverview = await GetComplianceOverviewAsync(),
+                RecentActivity = await GetRecentActivityAsync(),
+                UpcomingDeadlines = await GetUpcomingDeadlinesAsync(),
+                PendingApprovals = await GetPendingApprovalsAsync(userId)
+            };
+        }
+
+        public async Task<ClientSummaryDto> GetClientSummaryAsync()
+        {
+            var clients = await _clientRepository.ListAsync();
+            
+            return new ClientSummaryDto
+            {
+                TotalClients = clients.Count(),
+                CompliantClients = clients.Count(c => c.Status.ToLower() == "compliant"),
+                PendingClients = clients.Count(c => c.Status.ToLower() == "pending"),
+                WarningClients = clients.Count(c => c.Status.ToLower() == "warning"),
+                OverdueClients = clients.Count(c => c.Status.ToLower() == "overdue")
+            };
+        }
+
+        public async Task<ComplianceOverviewDto> GetComplianceOverviewAsync()
+        {
+            var taxYears = await _taxYearRepository.ListAllAsync();
+            var payments = await _paymentRepository.ListAllAsync();
+            
+            // Calculate monthly revenue for the past 12 months
+            var monthlyRevenue = new Dictionary<string, double>();
+            var today = DateTime.Today;
+            for (int i = 0; i < 12; i++)
+            {
+                var month = today.AddMonths(-i);
+                var monthName = month.ToString("MMM yy");
+                var monthlyPayments = payments.Where(p => 
+                    p.Date.Year == month.Year && 
+                    p.Date.Month == month.Month && 
+                    p.Status.ToLower() == "approved");
+                    
+                monthlyRevenue.Add(monthName, monthlyPayments.Sum(p => (double)p.Amount));
+            }
+
+            // Get tax type breakdown
+            var taxTypeBreakdown = taxYears.GroupBy(t => t.TaxType)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            return new ComplianceOverviewDto
+            {
+                TotalFilings = taxYears.Count(),
+                CompletedFilings = taxYears.Count(t => t.Status.ToLower() == "completed"),
+                PendingFilings = taxYears.Count(t => t.Status.ToLower() == "pending"),
+                LateFilings = taxYears.Count(t => t.Status.ToLower() == "late"),
+                TaxTypeBreakdown = taxTypeBreakdown,
+                MonthlyRevenue = monthlyRevenue
+            };
+        }
+
+        public async Task<IEnumerable<RecentActivityDto>> GetRecentActivityAsync(int count = 10)
+        {
+            var activities = new List<RecentActivityDto>();
+
+            // Get recent documents
+            var documents = await _documentRepository.ListRecentAsync(count);
+            foreach (var doc in documents)
+            {
+                var client = await _clientRepository.GetByIdAsync(doc.ClientId);
+                var user = await _userRepository.GetByIdAsync(doc.UploadedById);
+                
+                activities.Add(new RecentActivityDto
+                {
+                    Id = doc.Id,
+                    Type = "document",
+                    Action = "uploaded",
+                    Description = $"Document uploaded: {doc.FileName}",
+                    EntityName = doc.FileName,
+                    ClientId = doc.ClientId,
+                    ClientName = client?.Name,
+                    Timestamp = doc.UploadDate,
+                    UserId = user?.Id,
+                    UserName = $"{user?.FirstName} {user?.LastName}"
+                });
+            }
+
+            // Get recent payments
+            var payments = await _paymentRepository.ListRecentAsync(count);
+            foreach (var payment in payments)
+            {
+                var client = await _clientRepository.GetByIdAsync(payment.ClientId);
+                var user = await _userRepository.GetByIdAsync(payment.CreatedById);
+                
+                activities.Add(new RecentActivityDto
+                {
+                    Id = payment.Id,
+                    Type = "payment",
+                    Action = payment.Status.ToLower(),
+                    Description = $"Payment {payment.Status.ToLower()}: {payment.Description}",
+                    EntityName = $"${payment.Amount}",
+                    ClientId = payment.ClientId,
+                    ClientName = client?.Name,
+                    Timestamp = payment.Date,
+                    UserId = user?.Id,
+                    UserName = $"{user?.FirstName} {user?.LastName}"
+                });
+            }
+
+            // Get recent clients
+            var clients = await _clientRepository.ListRecentAsync(count);
+            foreach (var client in clients)
+            {
+                activities.Add(new RecentActivityDto
+                {
+                    Id = client.Id,
+                    Type = "client",
+                    Action = "created",
+                    Description = $"New client created: {client.Name}",
+                    EntityName = client.Name,
+                    ClientId = client.Id,
+                    ClientName = client.Name,
+                    Timestamp = client.CreatedAt,
+                    UserId = client.CreatedById,
+                    UserName = null // We'll leave this null as we don't have the user info here
+                });
+            }
+
+            // Return the most recent activities
+            return activities
+                .OrderByDescending(a => a.Timestamp)
+                .Take(count);
+        }
+
+        public async Task<IEnumerable<UpcomingDeadlineDto>> GetUpcomingDeadlinesAsync(int days = 30)
+        {
+            var deadlines = new List<UpcomingDeadlineDto>();
+            var endDate = DateTime.Today.AddDays(days);
+
+            // Get tax filings with upcoming deadlines
+            var taxYears = await _taxYearRepository.ListUpcomingDeadlinesAsync(endDate);
+            foreach (var tax in taxYears)
+            {
+                var client = await _clientRepository.GetByIdAsync(tax.ClientId);
+                var daysRemaining = (tax.DueDate - DateTime.Today).Days;
+                
+                deadlines.Add(new UpcomingDeadlineDto
+                {
+                    Id = tax.Id,
+                    Title = $"{tax.Year} {tax.TaxType}",
+                    Description = $"{tax.TaxType} filing for {client?.Name}",
+                    DueDate = tax.DueDate,
+                    Type = "filing",
+                    ClientId = tax.ClientId,
+                    ClientName = client?.Name,
+                    IsUrgent = daysRemaining <= 7,
+                    DaysRemaining = daysRemaining
+                });
+            }
+
+            // Return the soonest deadlines first
+            return deadlines.OrderBy(d => d.DueDate);
+        }
+
+        public async Task<IEnumerable<PendingApprovalDto>> GetPendingApprovalsAsync(string userId)
+        {
+            var approvals = new List<PendingApprovalDto>();
+
+            // Get payments pending approval
+            var payments = await _paymentRepository.ListPendingApprovalsAsync();
+            foreach (var payment in payments)
+            {
+                var client = await _clientRepository.GetByIdAsync(payment.ClientId);
+                var submitter = await _userRepository.GetByIdAsync(payment.CreatedById);
+                
+                approvals.Add(new PendingApprovalDto
+                {
+                    Id = payment.Id,
+                    ClientId = payment.ClientId,
+                    ClientName = client?.Name,
+                    Amount = payment.Amount,
+                    Description = payment.Description,
+                    SubmittedDate = payment.Date,
+                    SubmittedBy = $"{submitter?.FirstName} {submitter?.LastName}",
+                    Type = "payment",
+                    Status = payment.Status
+                });
+            }
+
+            return approvals.OrderByDescending(a => a.SubmittedDate);
+        }
+    }
+}

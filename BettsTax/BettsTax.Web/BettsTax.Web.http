@@ -1,0 +1,6 @@
+@BettsTax.Web_HostAddress = http://localhost:5058
+
+GET {{BettsTax.Web_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

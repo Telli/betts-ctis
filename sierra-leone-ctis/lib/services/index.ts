@@ -1,0 +1,27 @@
+/**
+ * Export all services
+ */
+
+export * from './auth-service';
+export * from './client-service';
+export * from './document-service';
+export * from './dashboard-service';
+export * from './tax-filing-service';
+export * from './payment-service';
+export * from './enrollment-service';
+export * from './admin-settings-service';
+export * from './analytics-service';
+export * from './compliance-service';
+export * from './notification-service';
+export * from './deadline-service';
+export * from './client-portal-service';
+
+// Associate permission services
+export * from './associate-permission-service';
+export * from './on-behalf-action-service';
+export { 
+  ClientDelegationService, 
+  type DelegatedClientListResponse,
+  type AssociateDto,
+  type DelegationStatisticsDto
+} from './client-delegation-service';

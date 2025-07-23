@@ -1,0 +1,243 @@
+{
+  "config": {
+    "configFile": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/playwright.config.ts",
+    "rootDir": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/e2e",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/global-setup.ts",
+    "globalTeardown": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/global-teardown.ts",
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 1,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "html",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "firefox",
+        "name": "firefox",
+        "testDir": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "webkit",
+        "name": "webkit",
+        "testDir": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "Mobile Chrome",
+        "name": "Mobile Chrome",
+        "testDir": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "Mobile Safari",
+        "name": "Mobile Safari",
+        "testDir": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "shard": null,
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.54.1",
+    "workers": 5,
+    "webServer": {
+      "command": "npm run dev",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": true,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "admin-interface.spec.ts",
+      "file": "admin-interface.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Admin Interface",
+          "file": "admin-interface.spec.ts",
+          "line": 5,
+          "column": 6,
+          "specs": [],
+          "suites": [
+            {
+              "title": "Admin Dashboard",
+              "file": "admin-interface.spec.ts",
+              "line": 12,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should login admin and access dashboard",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 0,
+                          "parallelIndex": 0,
+                          "status": "failed",
+                          "duration": 6368,
+                          "error": {
+                            "message": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected string: \u001b[32m\"http://localhost:3002/\u001b[7mdashboard\u001b[27m\"\u001b[39m\nReceived string: \u001b[31m\"http://localhost:3002/\u001b[7mlogin\u001b[27m\"\u001b[39m\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    9 × unexpected value \"http://localhost:3002/login\"\u001b[22m\n",
+                            "stack": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected string: \u001b[32m\"http://localhost:3002/\u001b[7mdashboard\u001b[27m\"\u001b[39m\nReceived string: \u001b[31m\"http://localhost:3002/\u001b[7mlogin\u001b[27m\"\u001b[39m\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    9 × unexpected value \"http://localhost:3002/login\"\u001b[22m\n\n    at AuthHelper.login (/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/utils/auth-helper.ts:30:31)\n    at /Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/e2e/admin-interface.spec.ts:14:7",
+                            "location": {
+                              "file": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/utils/auth-helper.ts",
+                              "column": 31,
+                              "line": 30
+                            },
+                            "snippet": "\u001b[90m   at \u001b[39m../utils/auth-helper.ts:30\n\n  28 |       await expect(this.page).toHaveURL(ROUTES.clientPortal.dashboard);\n  29 |     } else {\n> 30 |       await expect(this.page).toHaveURL(ROUTES.dashboard);\n     |                               ^\n  31 |     }\n  32 |     \n  33 |     // Verify user is logged in by checking for sidebar"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/utils/auth-helper.ts",
+                                "column": 31,
+                                "line": 30
+                              },
+                              "message": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected string: \u001b[32m\"http://localhost:3002/\u001b[7mdashboard\u001b[27m\"\u001b[39m\nReceived string: \u001b[31m\"http://localhost:3002/\u001b[7mlogin\u001b[27m\"\u001b[39m\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    9 × unexpected value \"http://localhost:3002/login\"\u001b[22m\n\n\n   at ../utils/auth-helper.ts:30\n\n  28 |       await expect(this.page).toHaveURL(ROUTES.clientPortal.dashboard);\n  29 |     } else {\n> 30 |       await expect(this.page).toHaveURL(ROUTES.dashboard);\n     |                               ^\n  31 |     }\n  32 |     \n  33 |     // Verify user is logged in by checking for sidebar\n    at AuthHelper.login (/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/utils/auth-helper.ts:30:31)\n    at /Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/e2e/admin-interface.spec.ts:14:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2025-07-23T13:10:39.384Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/test-results/admin-interface-Admin-Inte-aea3c--admin-and-access-dashboard-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "video",
+                              "contentType": "video/webm",
+                              "path": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/test-results/admin-interface-Admin-Inte-aea3c--admin-and-access-dashboard-chromium/video.webm"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/test-results/admin-interface-Admin-Inte-aea3c--admin-and-access-dashboard-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/telli/Documents/augment-projects/Betts/sierra-leone-ctis/tests/utils/auth-helper.ts",
+                            "column": 31,
+                            "line": 30
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "025b3ab35dcc5cabbaad-79d788152a5f60f89086",
+                  "file": "admin-interface.spec.ts",
+                  "line": 13,
+                  "column": 9
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "message": "\u001b[31mTesting stopped early after 1 maximum allowed failures.\u001b[39m"
+    }
+  ],
+  "stats": {
+    "startTime": "2025-07-23T13:10:37.922Z",
+    "duration": 7984.290000000001,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}
