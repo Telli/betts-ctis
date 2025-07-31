@@ -17,12 +17,22 @@ interface ClientFormProps {
 
 export function ClientForm({ clientId, isEditMode = false }: ClientFormProps) {
   const [formData, setFormData] = useState<ClientDto>({
+    clientNumber: "",
+    businessName: "",
+    contactPerson: "",
+    email: "",
+    phoneNumber: "",
+    address: "",
+    clientType: "Limited Company",
+    taxpayerCategory: "Medium Taxpayer",
+    annualTurnover: 0,
+    tin: "",
+    status: "pending",
+    // Legacy compatibility
     name: "",
     type: "Limited Company",
     category: "Medium Taxpayer",
-    tin: "",
-    contact: "",
-    status: "pending",
+    contact: ""
   });
   const [isLoading, setIsLoading] = useState(false);
   const [loadingClient, setLoadingClient] = useState(isEditMode);

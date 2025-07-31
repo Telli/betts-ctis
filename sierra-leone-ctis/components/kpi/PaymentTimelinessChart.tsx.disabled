@@ -1,0 +1,135 @@
+'use client';
+
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { TrendDataPoint } from '@/lib/types/kpi';
+
+interface PaymentTimelinessChartProps {
+  data: TrendDataPoint[];
+  height?: number;
+}
+
+export default function PaymentTimelinessChart({ 
+  data, 
+  height = 200 
+}: PaymentTimelinessChartProps) {
+  const chartData = data.map(point => ({
+    name: point.label,
+    percentage: point.value,
+    date: new Date(point.date).toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric' 
+    })
+  }));
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0];
+      return (
+        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-md">
+          <p className="font-medium text-gray-900">{label}</p>
+          <p className="text-sierra-green-600">
+            On-time Payments: <span className="font-semibold">{data.value.toFixed(1)}%</span>
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-[200px] text-gray-500">
+        <div className="text-center">
+          <p className="font-medium">No payment history available</p>
+          <p className="text-sm">Data will appear as you make payments</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full">
+      <ResponsiveContainer width="100%" height={height}>
+        <AreaChart
+          data={chartData}
+          margin={{
+            top: 5,
+            right: 30,
+            left: 20,
+            bottom: 5,
+          }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <XAxis 
+            dataKey="name"
+            stroke="#6b7280"
+            fontSize={12}
+            tickLine={false}
+            axisLine={false}
+          />
+          <YAxis 
+            stroke="#6b7280"
+            fontSize={12}
+            tickLine={false}
+            axisLine={false}
+            domain={[0, 100]}
+            tickFormatter={(value) => `${value}%`}
+          />
+          <Tooltip content={<CustomTooltip />} />
+          
+          {/* Target reference lines */}
+          <ReferenceLine 
+            y={90} 
+            stroke="#10b981" 
+            strokeDasharray="5 5"
+            strokeWidth={1}
+            label={{ value: "Target: 90%", position: "topRight", fontSize: 10 }}
+          />
+          
+          {/* Payment timeliness area */}
+          <Area
+            type="monotone"
+            dataKey="percentage"
+            stroke="#10b981"
+            strokeWidth={2}
+            fill="url(#paymentGradient)"
+            dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
+            activeDot={{ r: 6, stroke: '#10b981', strokeWidth: 2 }}
+          />
+          
+          {/* Gradient definition */}
+          <defs>
+            <linearGradient id="paymentGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+              <stop offset="95%" stopColor="#10b981" stopOpacity={0.1}/>
+            </linearGradient>
+          </defs>
+        </AreaChart>
+      </ResponsiveContainer>
+      
+      {/* Performance Summary */}
+      <div className="mt-3 text-center">
+        <div className="flex justify-center space-x-6 text-sm">
+          <div>
+            <span className="font-medium text-sierra-green-600">
+              {chartData.length > 0 ? chartData[chartData.length - 1].percentage.toFixed(1) : '0'}%
+            </span>
+            <p className="text-xs text-gray-500">Latest</p>
+          </div>
+          <div>
+            <span className="font-medium text-sierra-green-600">
+              {chartData.length > 0 ? Math.max(...chartData.map(d => d.percentage)).toFixed(1) : '0'}%
+            </span>
+            <p className="text-xs text-gray-500">Best</p>
+          </div>
+          <div>
+            <span className="font-medium text-gray-600">
+              {chartData.length > 0 ? (chartData.reduce((sum, d) => sum + d.percentage, 0) / chartData.length).toFixed(1) : '0'}%
+            </span>
+            <p className="text-xs text-gray-500">Average</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

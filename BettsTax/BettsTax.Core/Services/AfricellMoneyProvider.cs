@@ -10,8 +10,8 @@ namespace BettsTax.Core.Services
     public class AfricellMoneyProvider : BaseMobileMoneyProvider
     {
         private readonly HttpClient _httpClient;
-        private readonly ILogger<AfricellMoneyProvider> _logger;
-        private readonly PaymentProviderConfig _config;
+        private new readonly ILogger<AfricellMoneyProvider> _logger;
+        private new readonly PaymentProviderConfig _config;
 
         public AfricellMoneyProvider(
             HttpClient httpClient,

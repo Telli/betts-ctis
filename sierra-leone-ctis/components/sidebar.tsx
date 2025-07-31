@@ -97,6 +97,12 @@ export function Sidebar() {
       badge: counts?.upcomingDeadlines,
     },
     {
+      name: "Reports",
+      href: "/reports",
+      icon: FileText,
+      current: pathname === "/reports",
+    },
+    {
       name: "Analytics",
       href: "/analytics",
       icon: BarChart3,

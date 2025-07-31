@@ -1,0 +1,233 @@
+# Prometheus Alert Rules for BettsTax Sierra Leone
+groups:
+  - name: betts-tax-system
+    rules:
+      # High Priority System Alerts
+      - alert: BettsTaxAPIDown
+        expr: up{job="betts-api"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: betts-api
+          country: sierra-leone
+        annotations:
+          summary: "BettsTax API is down"
+          description: "The BettsTax API has been down for more than 30 seconds. This affects tax filing capabilities for Sierra Leone taxpayers."
+          runbook_url: "https://docs.betts.sl/runbooks/api-down"
+
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: database
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "The main PostgreSQL database is unreachable. All tax operations are affected."
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          service: cache
+        annotations:
+          summary: "Redis cache is down"
+          description: "Redis caching service is unavailable. Performance may be degraded."
+
+      # Performance Alerts
+      - alert: HighAPIResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="betts-api"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: betts-api
+        annotations:
+          summary: "High API response time"
+          description: "95th percentile API response time is {{ $value }}s, which exceeds the 2s threshold."
+
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{name=~"betts-.*"}[5m]) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High CPU usage on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} CPU usage is {{ $value }}%"
+
+      - alert: HighMemoryUsage
+        expr: (container_memory_usage_bytes{name=~"betts-.*"} / container_spec_memory_limit_bytes{name=~"betts-.*"}) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High memory usage on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} memory usage is {{ $value }}%"
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 20
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "Low disk space"
+          description: "Available disk space is {{ $value }}%"
+
+  - name: betts-tax-business
+    rules:
+      # Business Logic Alerts for Sierra Leone Tax System
+      - alert: HighFailedTaxCalculations
+        expr: rate(tax_calculations_failed_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          service: tax-engine
+          compliance: finance-act-2025
+        annotations:
+          summary: "High rate of failed tax calculations"
+          description: "Tax calculation failure rate is {{ $value }} per second. This may indicate issues with Finance Act 2025 rule processing."
+
+      - alert: MobileMoneyPaymentFailures
+        expr: rate(mobile_money_payments_failed_total[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          service: mobile-money
+          provider: orange-africell
+        annotations:
+          summary: "High mobile money payment failures"
+          description: "Mobile money payment failure rate is {{ $value }} per second for Sierra Leone providers."
+
+      - alert: ComplianceDeadlineMissed
+        expr: compliance_deadlines_missed_total > 0
+        for: 0s
+        labels:
+          severity: critical
+          service: compliance
+          authority: nra-sierra-leone
+        annotations:
+          summary: "Tax compliance deadline missed"
+          description: "{{ $value }} compliance deadlines have been missed. Immediate action required for NRA compliance."
+
+      - alert: HighPenaltyCalculations
+        expr: rate(penalty_calculations_total[1h]) > 10
+        for: 15m
+        labels:
+          severity: warning
+          service: compliance
+        annotations:
+          summary: "High rate of penalty calculations"
+          description: "Penalty calculation rate is {{ $value }} per hour, indicating potential compliance issues."
+
+      - alert: SecurityBreach
+        expr: security_events_high_risk_total > 0
+        for: 0s
+        labels:
+          severity: critical
+          service: security
+          compliance: finance-act-2025
+        annotations:
+          summary: "High-risk security event detected"
+          description: "{{ $value }} high-risk security events detected. Immediate investigation required."
+
+      - alert: FailedMFAAttempts
+        expr: rate(mfa_failures_total[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          service: authentication
+        annotations:
+          summary: "High rate of MFA failures"
+          description: "MFA failure rate is {{ $value }} per second. Possible attack detected."
+
+  - name: betts-tax-infrastructure
+    rules:
+      # Infrastructure Monitoring
+      - alert: NginxDown
+        expr: up{job="nginx"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: reverse-proxy
+        annotations:
+          summary: "Nginx reverse proxy is down"
+          description: "Nginx is not responding. Web traffic cannot reach the application."
+
+      - alert: PrometheusDown
+        expr: up{job="prometheus"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: monitoring
+        annotations:
+          summary: "Prometheus monitoring is down"
+          description: "Prometheus server is not responding. Monitoring capabilities are compromised."
+
+      - alert: GrafanaDown
+        expr: up{job="grafana"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: dashboard
+        annotations:
+          summary: "Grafana dashboard is down"
+          description: "Grafana dashboard service is not responding."
+
+      - alert: CertificateExpiry
+        expr: (ssl_certificate_expiry_seconds - time()) / 86400 < 7
+        for: 1h
+        labels:
+          severity: warning
+          service: ssl
+        annotations:
+          summary: "SSL certificate expiring soon"
+          description: "SSL certificate for betts.sl expires in {{ $value }} days."
+
+  - name: betts-tax-sierra-leone-specific
+    rules:
+      # Sierra Leone specific business rules
+      - alert: ExchangeRateStale
+        expr: (time() - sierra_leone_exchange_rate_last_update) > 86400
+        for: 1h
+        labels:
+          severity: warning
+          service: currency
+          country: sierra-leone
+        annotations:
+          summary: "Sierra Leone Leone exchange rate is stale"
+          description: "SLE exchange rate hasn't been updated for more than 24 hours."
+
+      - alert: NRAConnectivityIssue
+        expr: nra_api_connection_failures_total > 5
+        for: 15m
+        labels:
+          severity: critical
+          service: nra-integration
+          authority: sierra-leone-nra
+        annotations:
+          summary: "NRA API connectivity issues"
+          description: "{{ $value }} failed connections to NRA API. Tax submissions may be affected."
+
+      - alert: SMSGatewayDown
+        expr: up{job="sms-gateway"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: sms
+          provider: orange-africell
+        annotations:
+          summary: "SMS gateway is down"
+          description: "SMS notifications for Sierra Leone taxpayers are not being delivered."
+
+      - alert: TaxFilingPeakLoad
+        expr: rate(tax_filings_submitted_total[5m]) > 50
+        for: 10m
+        labels:
+          severity: info
+          service: tax-filings
+        annotations:
+          summary: "High tax filing activity"
+          description: "Tax filing submission rate is {{ $value }} per second. Consider scaling resources."

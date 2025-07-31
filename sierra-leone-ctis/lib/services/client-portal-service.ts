@@ -98,6 +98,22 @@ export interface ClientProfile {
   status: string;
 }
 
+export interface CreateClientTaxFilingDto {
+  taxType: 'IncomeTax' | 'GST' | 'PayrollTax' | 'ExciseDuty';
+  taxYear: number;
+  dueDate: string;
+  taxLiability: number;
+  filingReference?: string;
+}
+
+export interface CreateClientPaymentDto {
+  taxFilingId?: number;
+  amount: number;
+  method: 'BankTransfer' | 'Cash' | 'Check' | 'OnlinePayment' | 'MobileMoney';
+  paymentReference: string;
+  paymentDate: string;
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   totalCount: number;
@@ -263,6 +279,22 @@ export const ClientPortalService = {
         'Content-Type': 'multipart/form-data',
       },
     });
+    return response.data.data;
+  },
+
+  /**
+   * Create a new tax filing for the current client
+   */
+  createTaxFiling: async (filingData: CreateClientTaxFilingDto): Promise<ClientTaxFiling> => {
+    const response = await apiClient.post<{ success: boolean; data: ClientTaxFiling }>('/api/client-portal/tax-filings', filingData);
+    return response.data.data;
+  },
+
+  /**
+   * Create a new payment for the current client
+   */
+  createPayment: async (paymentData: CreateClientPaymentDto): Promise<ClientPayment> => {
+    const response = await apiClient.post<{ success: boolean; data: ClientPayment }>('/api/client-portal/payments', paymentData);
     return response.data.data;
   }
 };

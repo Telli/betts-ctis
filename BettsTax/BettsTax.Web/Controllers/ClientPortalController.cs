@@ -73,6 +73,74 @@ namespace BettsTax.Web.Controllers
         }
 
         /// <summary>
+        /// Create a new tax filing for the current client
+        /// </summary>
+        [HttpPost("tax-filings")]
+        public async Task<ActionResult<object>> CreateTaxFiling([FromBody] CreateTaxFilingDto createDto)
+        {
+            try
+            {
+                var clientId = await _userContextService.GetCurrentUserClientIdAsync();
+                if (!clientId.HasValue)
+                {
+                    return BadRequest(new { success = false, message = "Client profile not found" });
+                }
+
+                var authResult = await _authorizationService.AuthorizeAsync(User, clientId.Value, ClientDataOperations.Create);
+                if (!authResult.Succeeded)
+                {
+                    return Forbid();
+                }
+
+                // Set the client ID from the authenticated user context
+                createDto.ClientId = clientId.Value;
+
+                var userId = _userContextService.GetCurrentUserId();
+                var taxFiling = await _taxFilingService.CreateTaxFilingAsync(createDto, userId!);
+                return Ok(new { success = true, data = taxFiling });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating tax filing for client");
+                return StatusCode(500, new { success = false, message = "Internal server error" });
+            }
+        }
+
+        /// <summary>
+        /// Create a new payment for the current client
+        /// </summary>
+        [HttpPost("payments")]
+        public async Task<ActionResult<object>> CreatePayment([FromBody] CreatePaymentDto createDto)
+        {
+            try
+            {
+                var clientId = await _userContextService.GetCurrentUserClientIdAsync();
+                if (!clientId.HasValue)
+                {
+                    return BadRequest(new { success = false, message = "Client profile not found" });
+                }
+
+                var authResult = await _authorizationService.AuthorizeAsync(User, clientId.Value, ClientDataOperations.Create);
+                if (!authResult.Succeeded)
+                {
+                    return Forbid();
+                }
+
+                // Set the client ID from the authenticated user context
+                createDto.ClientId = clientId.Value;
+
+                var userId = _userContextService.GetCurrentUserId();
+                var payment = await _paymentService.CreateAsync(createDto, userId!);
+                return Ok(new { success = true, data = payment });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating payment for client");
+                return StatusCode(500, new { success = false, message = "Internal server error" });
+            }
+        }
+
+        /// <summary>
         /// Get client's documents
         /// </summary>
         [HttpGet("documents")]

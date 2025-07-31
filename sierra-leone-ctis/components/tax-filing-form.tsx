@@ -33,11 +33,6 @@ interface TaxFilingFormProps {
   initialData?: Partial<CreateTaxFilingDto>
 }
 
-interface Client {
-  clientId: number
-  businessName: string
-  clientNumber: string
-}
 
 export default function TaxFilingForm({ onSuccess, initialData }: TaxFilingFormProps) {
   const { toast } = useToast()
@@ -175,7 +170,7 @@ export default function TaxFilingForm({ onSuccess, initialData }: TaxFilingFormP
                   <SelectContent>
                     {clients.filter(client => client.clientId).map((client) => (
                       <SelectItem key={client.clientId} value={client.clientId!.toString()}>
-                        {client.name || 'Unnamed Client'}
+                        {client.businessName || client.name || 'Unnamed Client'} ({client.clientNumber || 'No number'})
                       </SelectItem>
                     ))}
                   </SelectContent>

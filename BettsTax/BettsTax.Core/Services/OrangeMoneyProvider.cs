@@ -10,8 +10,8 @@ namespace BettsTax.Core.Services
     public class OrangeMoneyProvider : BaseMobileMoneyProvider
     {
         private readonly HttpClient _httpClient;
-        private readonly ILogger<OrangeMoneyProvider> _logger;
-        private readonly PaymentProviderConfig _config;
+        private new readonly ILogger<OrangeMoneyProvider> _logger;
+        private new readonly PaymentProviderConfig _config;
 
         public OrangeMoneyProvider(
             HttpClient httpClient,

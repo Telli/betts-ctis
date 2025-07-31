@@ -18,7 +18,7 @@ test.describe('Authentication', () => {
       await loginPage.expectLoginForm();
       
       // Check page title and branding
-      await expect(page).toHaveTitle(/Betts CTIS/);
+      await expect(page).toHaveTitle(/CTIS - Client Tax Information System/);
       await expect(page.locator('text=CTIS')).toBeVisible();
       await expect(page.locator('text=Betts')).toBeVisible();
     });

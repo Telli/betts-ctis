@@ -29,7 +29,7 @@ export default function CompliancePage() {
           ComplianceService.getComplianceOverview()
         ])
         
-        setComplianceData(complianceItems)
+        setComplianceData(complianceItems || [])
         setOverviewData(overview)
       } catch (err) {
         console.error('Error fetching compliance data:', err)
@@ -115,7 +115,7 @@ export default function CompliancePage() {
     )
   }
 
-  if (!complianceData.length && !loading) {
+  if (!complianceData?.length && !loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Card className="w-full max-w-md">
@@ -225,7 +225,7 @@ export default function CompliancePage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {complianceData.map((item) => (
+                {(complianceData || []).map((item) => (
                   <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
@@ -281,7 +281,7 @@ export default function CompliancePage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {complianceData
+                    {(complianceData || [])
                       .filter(item => item.status === status)
                       .map(item => (
                         <div key={item.id} className="text-sm">

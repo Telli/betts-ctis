@@ -1,0 +1,67 @@
+# Docker Compose Override for Development
+# This file is automatically loaded with docker-compose.yml
+# Use this for development-specific configurations
+
+version: '3.8'
+
+services:
+  # Development overrides for BettsTax API
+  betts-api:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080;https://+:8081
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=dev_cert_password
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
+      - Logging__LogLevel__Default=Debug
+      - Logging__LogLevel__Microsoft=Information
+      - JWT__ExpirationHours=24
+      - Security__RequireHttps=false
+      - HealthChecks__Timeout=10
+    volumes:
+      - ~/.aspnet/https:/https:ro
+      - ./BettsTax.Web/logs:/app/logs
+    ports:
+      - "5000:8080"
+      - "5001:8081"
+
+  # Development overrides for Frontend
+  betts-frontend:
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
+      - NEXT_PUBLIC_ENVIRONMENT=development
+    volumes:
+      - ./sierra-leone-ctis:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+
+  # Development PostgreSQL with easier access
+  postgres:
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=BettsTaxDb_Dev
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./database/dev-seed.sql:/docker-entrypoint-initdb.d/dev-seed.sql
+
+  # Development Redis
+  redis:
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass dev_redis_password
+
+  # MailHog for email testing in development
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: betts-mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - betts-network
+
+volumes:
+  postgres_dev_data:
+    driver: local

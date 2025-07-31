@@ -164,6 +164,50 @@ export class ClientPortalPage {
     await expect(this.page.locator('text=Payment History')).toBeVisible();
   }
 
+  async createPayment(data: {
+    amount: number;
+    method: string;
+    paymentReference: string;
+    taxFilingId?: string;
+  }) {
+    // Click New Payment button
+    await this.page.click('button:has-text("New Payment")');
+    
+    // Wait for dialog to open
+    await this.page.waitForSelector('[role="dialog"]', { timeout: TIMEOUTS.medium });
+    
+    // Fill form fields
+    await this.page.fill('input[name="amount"]', data.amount.toString());
+    await this.page.selectOption('select[name="method"]', data.method);
+    await this.page.fill('input[name="paymentReference"]', data.paymentReference);
+    
+    if (data.taxFilingId) {
+      await this.page.selectOption('select[name="taxFilingId"]', data.taxFilingId);
+    }
+    
+    // Submit form
+    await this.page.click('button:has-text("Create Payment")');
+    
+    // Wait for success message or form to close
+    await this.page.waitForSelector('text=Payment created successfully', { 
+      timeout: TIMEOUTS.medium,
+      state: 'visible'
+    });
+  }
+
+  async expectPaymentCreationDialog() {
+    await expect(this.page.locator('[role="dialog"]')).toBeVisible();
+    await expect(this.page.locator('text=Create Payment')).toBeVisible();
+    
+    // Verify form fields are present (no client selection for client portal)
+    await expect(this.page.locator('input[name="amount"]')).toBeVisible();
+    await expect(this.page.locator('select[name="method"]')).toBeVisible();
+    await expect(this.page.locator('input[name="paymentReference"]')).toBeVisible();
+    
+    // Verify no client selection dropdown
+    await expect(this.page.locator('select[name="clientId"]')).not.toBeVisible();
+  }
+
   // Tax filings methods
   async gotoTaxFilings() {
     await this.page.goto(ROUTES.clientPortal.taxFilings);
@@ -172,5 +216,56 @@ export class ClientPortalPage {
 
   async expectTaxFilings() {
     await expect(this.page.locator('text=Tax Filings')).toBeVisible();
+  }
+
+  async createTaxFiling(data: {
+    taxType: string;
+    taxYear: number;
+    dueDate: string;
+    taxLiability: number;
+    filingReference?: string;
+  }) {
+    // Click New Tax Filing button
+    await this.page.click('button:has-text("New Tax Filing")');
+    
+    // Wait for dialog to open
+    await this.page.waitForSelector('[role="dialog"]', { timeout: TIMEOUTS.medium });
+    
+    // Fill form fields
+    await this.page.selectOption('select[name="taxType"]', data.taxType);
+    await this.page.fill('input[name="taxYear"]', data.taxYear.toString());
+    await this.page.fill('input[name="taxLiability"]', data.taxLiability.toString());
+    
+    // Handle due date (calendar picker)
+    await this.page.click('button[data-testid="due-date-picker"]');
+    await this.page.waitForSelector('.calendar', { timeout: TIMEOUTS.short });
+    // For simplicity, just click today - in real tests you'd handle date selection properly
+    await this.page.click('.calendar [aria-selected="false"]:first-child');
+    
+    if (data.filingReference) {
+      await this.page.fill('input[name="filingReference"]', data.filingReference);
+    }
+    
+    // Submit form
+    await this.page.click('button:has-text("Create Tax Filing")');
+    
+    // Wait for success message or form to close
+    await this.page.waitForSelector('text=Tax filing created successfully', { 
+      timeout: TIMEOUTS.medium,
+      state: 'visible'
+    });
+  }
+
+  async expectTaxFilingCreationDialog() {
+    await expect(this.page.locator('[role="dialog"]')).toBeVisible();
+    await expect(this.page.locator('text=Create Tax Filing')).toBeVisible();
+    
+    // Verify form fields are present (no client selection for client portal)
+    await expect(this.page.locator('select[name="taxType"]')).toBeVisible();
+    await expect(this.page.locator('input[name="taxYear"]')).toBeVisible();
+    await expect(this.page.locator('input[name="taxLiability"]')).toBeVisible();
+    
+    // Verify no client selection dropdown
+    await expect(this.page.locator('select[name="clientId"]')).not.toBeVisible();
   }
 }

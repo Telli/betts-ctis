@@ -112,6 +112,21 @@ builder.Services.AddHsts(options =>
 // Rate limiting support
 builder.Services.AddMemoryCache();
 
+// Distributed cache for KPI system (using in-memory for development)
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddMemoryCache();
+    builder.Services.AddDistributedMemoryCache();
+}
+else
+{
+    // In production, use Redis
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = builder.Configuration.GetConnectionString("Redis");
+    });
+}
+
 // HTTP context accessor for user context service
 builder.Services.AddHttpContextAccessor();
 
@@ -176,6 +191,29 @@ builder.Services.AddScoped<BettsTax.Core.Services.IAssociatePermissionService, B
 builder.Services.AddScoped<BettsTax.Core.Services.IOnBehalfActionService, BettsTax.Core.Services.OnBehalfActionService>();
 builder.Services.AddScoped<BettsTax.Core.Services.IClientDelegationService, BettsTax.Core.Services.ClientDelegationService>();
 builder.Services.AddScoped<BettsTax.Core.Services.IPermissionTemplateService, BettsTax.Core.Services.PermissionTemplateService>();
+
+// KPI Services
+builder.Services.AddScoped<BettsTax.Core.Services.Interfaces.IKPIService, BettsTax.Core.Services.KPIService>();
+
+// Reporting Services
+// Temporarily commented out - depends on Quartz IScheduler
+// builder.Services.AddScoped<BettsTax.Core.Services.Interfaces.IReportService, BettsTax.Core.Services.ReportService>();
+builder.Services.AddScoped<BettsTax.Core.Services.Interfaces.IReportTemplateService, BettsTax.Core.Services.ReportTemplateService>();
+builder.Services.AddScoped<BettsTax.Core.Services.Interfaces.IReportGenerator, BettsTax.Core.Services.SimpleReportGenerator>();
+
+// Quartz.NET for background jobs - temporarily commented out
+// builder.Services.AddQuartz(q =>
+// {
+//     q.UseMicrosoftDependencyInjection();
+//     q.UseSimpleTypeLoader();
+//     q.UseInMemoryStore();
+//     q.UseDefaultThreadPool(tp =>
+//     {
+//         tp.MaxConcurrency = 10;
+//     });
+// });
+
+// builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
 
 builder.Services.AddScoped<BettsTax.Web.Filters.AuditActionFilter>();
 

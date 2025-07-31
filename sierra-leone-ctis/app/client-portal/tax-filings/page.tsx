@@ -15,9 +15,12 @@ import {
   Clock,
   Download,
   Upload,
-  Eye
+  Eye,
+  Plus
 } from 'lucide-react'
 import { format } from 'date-fns'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import ClientTaxFilingForm from '@/components/client-portal/forms/tax-filing-form'
 
 interface TaxFiling {
   id: string
@@ -40,6 +43,7 @@ export default function ClientTaxFilingsPage() {
   const [filings, setFilings] = useState<TaxFiling[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('current')
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
 
   useEffect(() => {
     // Mock data - replace with actual API call
@@ -174,10 +178,31 @@ export default function ClientTaxFilingsPage() {
             View and manage your tax filing history and status
           </p>
         </div>
-        <Button>
-          <Upload className="mr-2 h-4 w-4" />
-          Upload Documents
-        </Button>
+        <div className="flex gap-2">
+          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+            <DialogTrigger asChild>
+              <Button className="bg-sierra-blue hover:bg-sierra-blue/90">
+                <Plus className="mr-2 h-4 w-4" />
+                New Tax Filing
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Create New Tax Filing</DialogTitle>
+              </DialogHeader>
+              <ClientTaxFilingForm 
+                onSuccess={() => {
+                  setShowCreateDialog(false)
+                  // Refresh filings list when backend is ready
+                }}
+              />
+            </DialogContent>
+          </Dialog>
+          <Button variant="outline">
+            <Upload className="mr-2 h-4 w-4" />
+            Upload Documents
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}

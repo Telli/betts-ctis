@@ -1,0 +1,73 @@
+# Docker ignore file for BettsTax
+**/.dockerignore
+**/.env
+**/.git
+**/.gitignore
+**/.project
+**/.settings
+**/.toolstarget
+**/.vs
+**/.vscode
+**/.idea
+**/*.*proj.user
+**/*.dbmdl
+**/*.jfm
+**/azds.yaml
+**/bin
+**/charts
+**/docker-compose*
+**/Dockerfile*
+**/node_modules
+**/npm-debug.log
+**/obj
+**/secrets.dev.yaml
+**/values.dev.yaml
+LICENSE
+README.md
+
+# Test results
+**/TestResults
+**/test-results
+**/playwright-report
+
+# Build artifacts
+**/publish
+**/dist
+**/wwwroot/dist
+
+# Environment files
+**/.env
+**/.env.local
+**/.env.development
+**/.env.production
+
+# Database files
+**/*.db
+**/*.sqlite
+**/*.db-*
+
+# Logs
+**/logs
+**/*.log
+
+# Runtime data
+**/pids
+**/*.pid
+**/*.seed
+**/*.pid.lock
+
+# Coverage directory used by tools like istanbul
+**/coverage
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Sierra Leone specific ignores
+**/SierraLeoneKeys/
+**/LocalSecrets/

@@ -144,6 +144,123 @@ test.describe('API Integration', () => {
 
       expect(response.status()).toBe(401);
     });
+
+    test('should create tax filing via API', async ({ page }) => {
+      const taxFilingData = {
+        taxType: 'IncomeTax',
+        taxYear: 2024,
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
+        taxLiability: 25000,
+        filingReference: 'TEST-TF-001'
+      };
+
+      const response = await apiContext.post('http://localhost:5000/api/client-portal/tax-filings', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        data: taxFilingData
+      });
+
+      expect(response.status()).toBe(200);
+      
+      const responseData = await response.json();
+      expect(responseData.success).toBe(true);
+      expect(responseData.data).toHaveProperty('taxType', 'IncomeTax');
+      expect(responseData.data).toHaveProperty('taxYear', 2024);
+      expect(responseData.data).toHaveProperty('taxLiability', 25000);
+    });
+
+    test('should create payment via API', async ({ page }) => {
+      const paymentData = {
+        amount: 15000,
+        method: 'BankTransfer',
+        paymentReference: 'TEST-PAY-001',
+        paymentDate: new Date().toISOString()
+      };
+
+      const response = await apiContext.post('http://localhost:5000/api/client-portal/payments', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        data: paymentData
+      });
+
+      expect(response.status()).toBe(200);
+      
+      const responseData = await response.json();
+      expect(responseData.success).toBe(true);
+      expect(responseData.data).toHaveProperty('amount', 15000);
+      expect(responseData.data).toHaveProperty('method', 'BankTransfer');
+      expect(responseData.data).toHaveProperty('paymentReference', 'TEST-PAY-001');
+    });
+
+    test('should validate tax filing data', async ({ page }) => {
+      const invalidTaxFilingData = {
+        taxType: '', // Invalid empty tax type
+        taxYear: 1999, // Invalid year (too old)
+        dueDate: 'invalid-date', // Invalid date format
+        taxLiability: -1000 // Invalid negative amount
+      };
+
+      const response = await apiContext.post('http://localhost:5000/api/client-portal/tax-filings', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        data: invalidTaxFilingData
+      });
+
+      expect(response.status()).toBe(400);
+    });
+
+    test('should validate payment data', async ({ page }) => {
+      const invalidPaymentData = {
+        amount: -500, // Invalid negative amount
+        method: 'InvalidMethod', // Invalid payment method
+        paymentReference: '', // Invalid empty reference
+        paymentDate: 'not-a-date' // Invalid date format
+      };
+
+      const response = await apiContext.post('http://localhost:5000/api/client-portal/payments', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        data: invalidPaymentData
+      });
+
+      expect(response.status()).toBe(400);
+    });
+
+    test('should fetch client tax filings via API', async ({ page }) => {
+      const response = await apiContext.get('http://localhost:5000/api/client-portal/tax-filings', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+
+      expect(response.status()).toBe(200);
+      
+      const responseData = await response.json();
+      expect(responseData.success).toBe(true);
+      expect(Array.isArray(responseData.data)).toBe(true);
+    });
+
+    test('should fetch client payments via API', async ({ page }) => {
+      const response = await apiContext.get('http://localhost:5000/api/client-portal/payments', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+
+      expect(response.status()).toBe(200);
+      
+      const responseData = await response.json();
+      expect(responseData.success).toBe(true);
+      expect(Array.isArray(responseData.data)).toBe(true);
+    });
   });
 
   test.describe('Admin API', () => {

@@ -14,9 +14,12 @@ import {
   AlertTriangle,
   Download,
   Receipt,
-  Filter
+  Filter,
+  Plus
 } from 'lucide-react'
 import { format } from 'date-fns'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import ClientPaymentForm from '@/components/client-portal/forms/payment-form'
 
 interface Payment {
   id: string
@@ -43,6 +46,7 @@ export default function ClientPaymentsPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('recent')
   const [filterStatus, setFilterStatus] = useState<string>('all')
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
 
   useEffect(() => {
     // Mock data - replace with actual API call
@@ -229,10 +233,31 @@ export default function ClientPaymentsPage() {
             View your payment history and transaction details
           </p>
         </div>
-        <Button>
-          <Download className="mr-2 h-4 w-4" />
-          Export Report
-        </Button>
+        <div className="flex gap-2">
+          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+            <DialogTrigger asChild>
+              <Button className="bg-sierra-blue hover:bg-sierra-blue/90">
+                <Plus className="mr-2 h-4 w-4" />
+                New Payment
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Submit New Payment</DialogTitle>
+              </DialogHeader>
+              <ClientPaymentForm 
+                onSuccess={() => {
+                  setShowCreateDialog(false)
+                  // Refresh payments list when backend is ready
+                }}
+              />
+            </DialogContent>
+          </Dialog>
+          <Button variant="outline">
+            <Download className="mr-2 h-4 w-4" />
+            Export Report
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}

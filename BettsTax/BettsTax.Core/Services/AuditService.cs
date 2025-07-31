@@ -1,4 +1,5 @@
 using BettsTax.Data;
+using SecurityAuditLog = BettsTax.Data.Models.Security.AuditLog;
 using Microsoft.Extensions.Logging;
 
 namespace BettsTax.Core.Services
@@ -18,14 +19,17 @@ namespace BettsTax.Core.Services
         {
             try
             {
-                var log = new AuditLog
+                var log = new SecurityAuditLog
                 {
                     UserId = userId,
                     Action = action,
                     Entity = entity,
                     EntityId = entityId,
-                    Details = details,
-                    ActionType = AuditActionType.Create // Default for backward compatibility
+                    Description = details,
+                    Operation = BettsTax.Data.Models.Security.AuditOperation.Create,
+                    Severity = BettsTax.Data.Models.Security.AuditSeverity.Medium,
+                    Category = BettsTax.Data.Models.Security.AuditCategory.DataAccess,
+                    Timestamp = DateTime.UtcNow
                 };
                 _db.AuditLogs.Add(log);
                 await _db.SaveChangesAsync();
@@ -51,20 +55,26 @@ namespace BettsTax.Core.Services
         {
             try
             {
-                var log = new AuditLog
+                var log = new SecurityAuditLog
                 {
                     UserId = userId,
-                    ClientId = clientId,
-                    ActionType = actionType,
                     Action = actionType.ToString(),
                     Entity = entity,
                     EntityId = entityId,
-                    Details = details,
-                    IPAddress = ipAddress,
+                    Description = details,
+                    Operation = actionType switch
+                    {
+                        AuditActionType.Create => BettsTax.Data.Models.Security.AuditOperation.Create,
+                        AuditActionType.Read => BettsTax.Data.Models.Security.AuditOperation.Read,
+                        AuditActionType.Update => BettsTax.Data.Models.Security.AuditOperation.Update,
+                        AuditActionType.Delete => BettsTax.Data.Models.Security.AuditOperation.Delete,
+                        AuditActionType.Login => BettsTax.Data.Models.Security.AuditOperation.Login,
+                        _ => BettsTax.Data.Models.Security.AuditOperation.Update
+                    },
+                    IpAddress = ipAddress ?? "Unknown",
                     UserAgent = userAgent,
-                    RequestPath = requestPath,
-                    IsSuccess = isSuccess,
-                    ErrorMessage = errorMessage,
+                    Severity = isSuccess ? BettsTax.Data.Models.Security.AuditSeverity.Low : BettsTax.Data.Models.Security.AuditSeverity.Medium,
+                    Category = BettsTax.Data.Models.Security.AuditCategory.ClientData,
                     Timestamp = DateTime.UtcNow
                 };
 
@@ -102,18 +112,18 @@ namespace BettsTax.Core.Services
         {
             try
             {
-                var log = new AuditLog
+                var log = new SecurityAuditLog
                 {
                     UserId = userId ?? "SYSTEM",
-                    ActionType = actionType,
                     Action = actionType.ToString(),
                     Entity = "Security",
                     EntityId = "N/A",
-                    Details = details,
-                    IPAddress = ipAddress,
+                    Description = details,
+                    Operation = BettsTax.Data.Models.Security.AuditOperation.Login,
+                    IpAddress = ipAddress ?? "Unknown",
                     UserAgent = userAgent,
-                    IsSuccess = isSuccess,
-                    ErrorMessage = errorMessage,
+                    Severity = isSuccess ? BettsTax.Data.Models.Security.AuditSeverity.Low : BettsTax.Data.Models.Security.AuditSeverity.High,
+                    Category = BettsTax.Data.Models.Security.AuditCategory.SecurityEvent,
                     Timestamp = DateTime.UtcNow
                 };
 

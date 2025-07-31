@@ -1,0 +1,675 @@
+using BettsTax.Core.DTOs.Compliance;
+using BettsTax.Core.Services.Interfaces;
+using BettsTax.Data;
+using BettsTax.Data.Models;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace BettsTax.Core.Services;
+
+public class ComplianceEngine : IComplianceEngine
+{
+    private readonly ApplicationDbContext _context;
+    private readonly IPenaltyCalculationService _penaltyService;
+    private readonly IDeadlineMonitoringService _deadlineService;
+    private readonly IComplianceAlertService _alertService;
+    private readonly IFinanceAct2025Service _financeActService;
+    private readonly ILogger<ComplianceEngine> _logger;
+
+    // Finance Act 2025 compliance weights
+    private const decimal FILING_WEIGHT = 0.30m;
+    private const decimal PAYMENT_WEIGHT = 0.30m;
+    private const decimal DOCUMENT_WEIGHT = 0.20m;
+    private const decimal TIMELINESS_WEIGHT = 0.20m;
+
+    public ComplianceEngine(
+        ApplicationDbContext context,
+        IPenaltyCalculationService penaltyService,
+        IDeadlineMonitoringService deadlineService,
+        IComplianceAlertService alertService,
+        IFinanceAct2025Service financeActService,
+        ILogger<ComplianceEngine> logger)
+    {
+        _context = context;
+        _penaltyService = penaltyService;
+        _deadlineService = deadlineService;
+        _alertService = alertService;
+        _financeActService = financeActService;
+        _logger = logger;
+    }
+
+    public async Task<ComplianceOverviewDto> GetComplianceOverviewAsync(int clientId)
+    {
+        try
+        {
+            var client = await _context.Clients.FindAsync(clientId);
+            if (client == null)
+                throw new ArgumentException($"Client with ID {clientId} not found");
+
+            var latestCalculation = await _context.ComplianceCalculations
+                .Where(cc => cc.ClientId == clientId)
+                .OrderByDescending(cc => cc.CalculationDate)
+                .FirstOrDefaultAsync();
+
+            var overallScore = latestCalculation?.OverallScore ?? 0m;
+            var complianceLevel = GetComplianceLevel(overallScore);
+
+            var taxTypeCompliance = await GetTaxTypeComplianceAsync(clientId);
+            var upcomingDeadlines = await _deadlineService.GetUpcomingDeadlinesAsync(clientId, 30);
+            var activeAlerts = await _alertService.GetActiveAlertsAsync(clientId);
+            var riskAssessment = await CalculateRiskAssessmentAsync(clientId);
+
+            return new ComplianceOverviewDto
+            {
+                ClientId = clientId,
+                ClientName = client.BusinessName,
+                TIN = client.TIN ?? "Not Available",
+                OverallComplianceScore = overallScore,
+                ComplianceLevel = complianceLevel,
+                ComplianceGrade = GetComplianceGrade(overallScore),
+                LastCalculated = latestCalculation?.CalculationDate ?? DateTime.MinValue,
+                TaxTypeCompliance = taxTypeCompliance,
+                UpcomingDeadlines = upcomingDeadlines,
+                ActiveAlerts = activeAlerts,
+                RiskAssessment = riskAssessment
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting compliance overview for client {ClientId}", clientId);
+            throw;
+        }
+    }
+
+    public async Task<ComplianceDashboardDto> GetComplianceDashboardAsync(int clientId)
+    {
+        try
+        {
+            var overview = await GetComplianceOverviewAsync(clientId);
+            var taxTypeBreakdown = await GetTaxTypeComplianceAsync(clientId);
+            var upcomingDeadlines = await _deadlineService.GetUpcomingDeadlinesAsync(clientId, 60);
+            var activeAlerts = await _alertService.GetActiveAlertsAsync(clientId);
+            var trends = await GetComplianceTrendsAsync(clientId);
+            var recentPenalties = await _penaltyService.CalculateAllPenaltiesAsync(clientId);
+            var actionPlan = await GetActionPlanAsync(clientId);
+
+            return new ComplianceDashboardDto
+            {
+                Overview = overview,
+                TaxTypeBreakdown = taxTypeBreakdown,
+                UpcomingDeadlines = upcomingDeadlines,
+                ActiveAlerts = activeAlerts,
+                Trends = trends,
+                RecentPenalties = recentPenalties.Take(10).ToList(),
+                ActionPlan = new ComplianceActionPlanDto
+                {
+                    ActionItems = actionPlan,
+                    CreatedAt = DateTime.UtcNow,
+                    OverallPriority = GetOverallPriority(actionPlan),
+                    TargetCompletionDate = GetTargetCompletionDate(actionPlan)
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting compliance dashboard for client {ClientId}", clientId);
+            throw;
+        }
+    }
+
+    public async Task<List<UpcomingDeadlineDto>> GetUpcomingDeadlinesAsync(int? clientId = null, int daysAhead = 30)
+    {
+        return await _deadlineService.GetUpcomingDeadlinesAsync(clientId, daysAhead);
+    }
+
+    public async Task<List<ComplianceAlertDto>> GetActiveAlertsAsync(int? clientId = null)
+    {
+        return await _alertService.GetActiveAlertsAsync(clientId);
+    }
+
+    public async Task<ComplianceRiskAssessmentDto> CalculateRiskAssessmentAsync(int clientId)
+    {
+        try
+        {
+            var riskFactors = new List<ComplianceRiskFactorDto>();
+            
+            // Filing history risk factor
+            var filingRisk = await CalculateFilingRiskFactorAsync(clientId);
+            riskFactors.Add(filingRisk);
+
+            // Payment history risk factor
+            var paymentRisk = await CalculatePaymentRiskFactorAsync(clientId);
+            riskFactors.Add(paymentRisk);
+
+            // Penalty history risk factor
+            var penaltyRisk = await CalculatePenaltyRiskFactorAsync(clientId);
+            riskFactors.Add(penaltyRisk);
+
+            // Document compliance risk factor
+            var documentRisk = await CalculateDocumentRiskFactorAsync(clientId);
+            riskFactors.Add(documentRisk);
+
+            // Calculate overall risk score
+            var riskScore = riskFactors.Sum(rf => (decimal)rf.Impact * rf.Weight);
+            var riskLevel = GetRiskLevel(riskScore);
+
+            var recommendations = GenerateRiskRecommendations(riskFactors, riskLevel);
+            var projectedPenalties = await CalculateProjectedPenaltiesAsync(clientId, riskFactors);
+
+            return new ComplianceRiskAssessmentDto
+            {
+                RiskLevel = riskLevel,
+                RiskLevelName = riskLevel.ToString(),
+                RiskScore = riskScore,
+                RiskFactors = riskFactors,
+                Recommendations = recommendations,
+                ProjectedPenalties = projectedPenalties,
+                NextReviewDate = DateTime.UtcNow.AddDays(30)
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calculating risk assessment for client {ClientId}", clientId);
+            throw;
+        }
+    }
+
+    public async Task<decimal> CalculateComplianceScoreAsync(int clientId, DateTime? asOfDate = null)
+    {
+        try
+        {
+            var calculationDate = asOfDate ?? DateTime.UtcNow;
+            
+            var filingScore = await CalculateFilingScoreAsync(clientId, calculationDate);
+            var paymentScore = await CalculatePaymentScoreAsync(clientId, calculationDate);
+            var documentScore = await CalculateDocumentScoreAsync(clientId, calculationDate);
+            var timelinessScore = await CalculateTimelinessScoreAsync(clientId, calculationDate);
+
+            var overallScore = (filingScore * FILING_WEIGHT) +
+                              (paymentScore * PAYMENT_WEIGHT) +
+                              (documentScore * DOCUMENT_WEIGHT) +
+                              (timelinessScore * TIMELINESS_WEIGHT);
+
+            // Save calculation to database
+            var calculation = new ComplianceCalculation
+            {
+                ClientId = clientId,
+                CalculationDate = calculationDate,
+                FilingScore = filingScore,
+                PaymentScore = paymentScore,
+                DocumentScore = documentScore,
+                TimelinessScore = timelinessScore,
+                OverallScore = overallScore,
+                Level = GetComplianceLevel(overallScore),
+                RiskLevel = GetRiskLevel(100 - overallScore), // Inverse relationship
+                CalculatedBy = "System"
+            };
+
+            _context.ComplianceCalculations.Add(calculation);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Calculated compliance score {Score} for client {ClientId}", overallScore, clientId);
+            return overallScore;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calculating compliance score for client {ClientId}", clientId);
+            throw;
+        }
+    }
+
+    public async Task RefreshComplianceDataAsync(int? clientId = null)
+    {
+        try
+        {
+            _logger.LogInformation("Starting compliance data refresh for client {ClientId}", clientId?.ToString() ?? "all");
+
+            IQueryable<Client> clientsQuery = _context.Clients;
+            if (clientId.HasValue)
+            {
+                clientsQuery = clientsQuery.Where(c => c.ClientId == clientId.Value);
+            }
+
+            var clients = await clientsQuery.Where(c => c.Status == ClientStatus.Active).ToListAsync();
+
+            foreach (var client in clients)
+            {
+                await CalculateComplianceScoreAsync(client.ClientId);
+                await _alertService.ProcessAutomaticAlertsAsync();
+                await _deadlineService.ScheduleAutomaticDeadlineAlertsAsync();
+            }
+
+            _logger.LogInformation("Completed compliance data refresh for {ClientCount} clients", clients.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error refreshing compliance data");
+            throw;
+        }
+    }
+
+    public async Task<List<ComplianceActionItemDto>> GetActionPlanAsync(int clientId)
+    {
+        try
+        {
+            var actionItems = await _context.ComplianceActionItems
+                .Where(ai => ai.ClientId == clientId && ai.Status != ComplianceActionStatus.Completed)
+                .OrderBy(ai => ai.Priority)
+                .ThenBy(ai => ai.DueDate)
+                .Select(ai => new ComplianceActionItemDto
+                {
+                    Id = ai.Id,
+                    Title = ai.Title,
+                    Description = ai.Description,
+                    Priority = ai.Priority,
+                    PriorityName = ai.Priority.ToString(),
+                    TaxType = ai.TaxType,
+                    TaxTypeName = ai.TaxType.ToString(),
+                    DueDate = ai.DueDate,
+                    Status = ai.Status,
+                    StatusName = ai.Status.ToString(),
+                    AssignedTo = ai.AssignedTo,
+                    AssignedToName = ai.AssignedToUser != null ? ai.AssignedToUser.UserName : null,
+                    EstimatedImpact = ai.EstimatedImpact,
+                    CreatedAt = ai.CreatedAt,
+                    CompletedAt = ai.CompletedAt,
+                    CompletionNotes = ai.CompletionNotes
+                })
+                .ToListAsync();
+
+            return actionItems;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting action plan for client {ClientId}", clientId);
+            throw;
+        }
+    }
+
+    public async Task<ComplianceActionItemDto> CreateActionItemAsync(int clientId, ComplianceActionItemDto actionItem)
+    {
+        try
+        {
+            var newActionItem = new ComplianceActionItem
+            {
+                ClientId = clientId,
+                Title = actionItem.Title,
+                Description = actionItem.Description,
+                Priority = actionItem.Priority,
+                TaxType = actionItem.TaxType,
+                DueDate = actionItem.DueDate,
+                Status = ComplianceActionStatus.Open,
+                AssignedTo = actionItem.AssignedTo,
+                EstimatedImpact = actionItem.EstimatedImpact,
+                CreatedBy = "System" // This should come from the current user context
+            };
+
+            _context.ComplianceActionItems.Add(newActionItem);
+            await _context.SaveChangesAsync();
+
+            actionItem.Id = newActionItem.Id;
+            actionItem.CreatedAt = newActionItem.CreatedAt;
+            actionItem.Status = newActionItem.Status;
+            actionItem.StatusName = newActionItem.Status.ToString();
+
+            _logger.LogInformation("Created compliance action item {ActionItemId} for client {ClientId}", newActionItem.Id, clientId);
+            return actionItem;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating action item for client {ClientId}", clientId);
+            throw;
+        }
+    }
+
+    public async Task<bool> UpdateActionItemAsync(int actionItemId, ComplianceActionItemDto actionItem)
+    {
+        try
+        {
+            var existingItem = await _context.ComplianceActionItems.FindAsync(actionItemId);
+            if (existingItem == null)
+                return false;
+
+            existingItem.Title = actionItem.Title;
+            existingItem.Description = actionItem.Description;
+            existingItem.Priority = actionItem.Priority;
+            existingItem.TaxType = actionItem.TaxType;
+            existingItem.DueDate = actionItem.DueDate;
+            existingItem.Status = actionItem.Status;
+            existingItem.AssignedTo = actionItem.AssignedTo;
+            existingItem.EstimatedImpact = actionItem.EstimatedImpact;
+            existingItem.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Updated compliance action item {ActionItemId}", actionItemId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating action item {ActionItemId}", actionItemId);
+            throw;
+        }
+    }
+
+    public async Task<bool> CompleteActionItemAsync(int actionItemId, string completionNotes, string completedBy)
+    {
+        try
+        {
+            var actionItem = await _context.ComplianceActionItems.FindAsync(actionItemId);
+            if (actionItem == null)
+                return false;
+
+            actionItem.Status = ComplianceActionStatus.Completed;
+            actionItem.CompletedAt = DateTime.UtcNow;
+            actionItem.CompletionNotes = completionNotes;
+            actionItem.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Completed compliance action item {ActionItemId} by {CompletedBy}", actionItemId, completedBy);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error completing action item {ActionItemId}", actionItemId);
+            throw;
+        }
+    }
+
+    // Private helper methods
+    private async Task<List<TaxTypeComplianceDto>> GetTaxTypeComplianceAsync(int clientId)
+    {
+        var filings = await _context.TaxFilings
+            .Where(tf => tf.ClientId == clientId)
+            .GroupBy(tf => tf.TaxType)
+            .Select(g => new TaxTypeComplianceDto
+            {
+                TaxType = g.Key,
+                TaxTypeName = g.Key.ToString(),
+                TotalFilingsRequired = g.Count(),
+                OnTimeFilings = g.Count(f => f.FilingDate <= f.DueDate),
+                LateFilings = g.Count(f => f.FilingDate > f.DueDate),
+                MissedDeadlines = g.Count(f => f.Status == FilingStatus.Draft && f.DueDate < DateTime.UtcNow),
+                ComplianceScore = g.Count() > 0 ? g.Count(f => f.FilingDate <= f.DueDate) * 100m / g.Count() : 0m,
+                LastFilingDate = g.Max(f => f.FilingDate),
+                Level = ComplianceLevel.Green // This would be calculated based on the score
+            })
+            .ToListAsync();
+
+        return filings;
+    }
+
+    private async Task<ComplianceTrendDto> GetComplianceTrendsAsync(int clientId)
+    {
+        var calculations = await _context.ComplianceCalculations
+            .Where(cc => cc.ClientId == clientId)
+            .OrderBy(cc => cc.CalculationDate)
+            .Take(12) // Last 12 calculations
+            .ToListAsync();
+
+        var complianceHistory = calculations.Select(c => new ComplianceTrendDataPoint
+        {
+            Date = c.CalculationDate,
+            Value = c.OverallScore,
+            Label = c.CalculationDate.ToString("MMM yyyy")
+        }).ToList();
+
+        var penaltyHistory = calculations.Select(c => new ComplianceTrendDataPoint
+        {
+            Date = c.CalculationDate,
+            Value = c.ProjectedPenalties,
+            Label = c.CalculationDate.ToString("MMM yyyy")
+        }).ToList();
+
+        // Project future compliance based on trends
+        var projection = new ComplianceProjectionDto
+        {
+            ProjectedComplianceScore = calculations.Any() ? calculations.Last().OverallScore : 0m,
+            ProjectedPenalties = calculations.Any() ? calculations.Last().ProjectedPenalties : 0m,
+            ProjectedLevel = calculations.Any() ? calculations.Last().Level : ComplianceLevel.Red,
+            ProjectionDate = DateTime.UtcNow.AddMonths(3),
+            ProjectionBasis = "Historical trend analysis",
+            Confidence = 0.75m
+        };
+
+        return new ComplianceTrendDto
+        {
+            ComplianceScoreHistory = complianceHistory,
+            PenaltyHistory = penaltyHistory,
+            FilingTimelinessHistory = new List<ComplianceTrendDataPoint>(),
+            Projection = projection
+        };
+    }
+
+    private async Task<decimal> CalculateFilingScoreAsync(int clientId, DateTime asOfDate)
+    {
+        var filings = await _context.TaxFilings
+            .Where(tf => tf.ClientId == clientId && tf.DueDate <= asOfDate)
+            .ToListAsync();
+
+        if (!filings.Any()) return 100m;
+
+        var onTimeFilings = filings.Count(f => f.FilingDate <= f.DueDate);
+        return (decimal)onTimeFilings / filings.Count * 100m;
+    }
+
+    private async Task<decimal> CalculatePaymentScoreAsync(int clientId, DateTime asOfDate)
+    {
+        var payments = await _context.Payments
+            .Where(p => p.ClientId == clientId && p.PaymentDate <= asOfDate)
+            .ToListAsync();
+
+        if (!payments.Any()) return 100m;
+
+        var onTimePayments = payments.Count(p => p.Status == PaymentStatus.Approved);
+        return (decimal)onTimePayments / payments.Count * 100m;
+    }
+
+    private async Task<decimal> CalculateDocumentScoreAsync(int clientId, DateTime asOfDate)
+    {
+        // Simplified document score - would need to implement proper document requirements checking
+        await Task.CompletedTask;
+        return 85m; // Placeholder
+    }
+
+    private async Task<decimal> CalculateTimelinessScoreAsync(int clientId, DateTime asOfDate)
+    {
+        var filings = await _context.TaxFilings
+            .Where(tf => tf.ClientId == clientId && tf.DueDate <= asOfDate && tf.FilingDate.HasValue)
+            .ToListAsync();
+
+        if (!filings.Any()) return 100m;
+
+        var totalDaysLate = filings.Sum(f => Math.Max(0, (f.FilingDate!.Value - f.DueDate).Days));
+        var averageDaysLate = totalDaysLate / (double)filings.Count;
+
+        // Convert average days late to a score (0-100)
+        return Math.Max(0, 100m - (decimal)averageDaysLate * 2m);
+    }
+
+    private async Task<ComplianceRiskFactorDto> CalculateFilingRiskFactorAsync(int clientId)
+    {
+        var recentFilings = await _context.TaxFilings
+            .Where(tf => tf.ClientId == clientId && tf.DueDate >= DateTime.UtcNow.AddMonths(-6))
+            .ToListAsync();
+
+        var lateFilings = recentFilings.Count(f => f.FilingDate > f.DueDate);
+        var impact = lateFilings switch
+        {
+            0 => ComplianceRiskImpact.Minimal,
+            1 => ComplianceRiskImpact.Low,
+            2 or 3 => ComplianceRiskImpact.Medium,
+            4 or 5 => ComplianceRiskImpact.High,
+            _ => ComplianceRiskImpact.Severe
+        };
+
+        return new ComplianceRiskFactorDto
+        {
+            Factor = "Filing History",
+            Impact = impact,
+            ImpactName = impact.ToString(),
+            Weight = 0.3m,
+            Description = $"{lateFilings} late filings in the last 6 months",
+            LastOccurrence = recentFilings.Where(f => f.FilingDate > f.DueDate).Max(f => f.FilingDate),
+            Frequency = lateFilings
+        };
+    }
+
+    private async Task<ComplianceRiskFactorDto> CalculatePaymentRiskFactorAsync(int clientId)
+    {
+        var recentPayments = await _context.Payments
+            .Where(p => p.ClientId == clientId && p.PaymentDate >= DateTime.UtcNow.AddMonths(-6))
+            .ToListAsync();
+
+        var failedPayments = recentPayments.Count(p => p.Status == PaymentStatus.Rejected);
+        var impact = failedPayments switch
+        {
+            0 => ComplianceRiskImpact.Minimal,
+            1 => ComplianceRiskImpact.Low,
+            2 or 3 => ComplianceRiskImpact.Medium,
+            4 or 5 => ComplianceRiskImpact.High,
+            _ => ComplianceRiskImpact.Severe
+        };
+
+        return new ComplianceRiskFactorDto
+        {
+            Factor = "Payment History",
+            Impact = impact,
+            ImpactName = impact.ToString(),
+            Weight = 0.25m,
+            Description = $"{failedPayments} failed payments in the last 6 months",
+            Frequency = failedPayments
+        };
+    }
+
+    private async Task<ComplianceRiskFactorDto> CalculatePenaltyRiskFactorAsync(int clientId)
+    {
+        var recentPenalties = await _context.PenaltyCalculations
+            .Where(pc => pc.ClientId == clientId && pc.CalculatedAt >= DateTime.UtcNow.AddMonths(-12))
+            .ToListAsync();
+
+        var totalPenalties = recentPenalties.Sum(p => p.TotalPenalty);
+        var impact = totalPenalties switch
+        {
+            <= 1000 => ComplianceRiskImpact.Minimal,
+            <= 5000 => ComplianceRiskImpact.Low,
+            <= 15000 => ComplianceRiskImpact.Medium,
+            <= 50000 => ComplianceRiskImpact.High,
+            _ => ComplianceRiskImpact.Severe
+        };
+
+        return new ComplianceRiskFactorDto
+        {
+            Factor = "Penalty History",
+            Impact = impact,
+            ImpactName = impact.ToString(),
+            Weight = 0.25m,
+            Description = $"SLE {totalPenalties:N2} in penalties over the last 12 months",
+            Frequency = recentPenalties.Count
+        };
+    }
+
+    private async Task<ComplianceRiskFactorDto> CalculateDocumentRiskFactorAsync(int clientId)
+    {
+        // Simplified document risk calculation
+        await Task.CompletedTask;
+        return new ComplianceRiskFactorDto
+        {
+            Factor = "Document Compliance",
+            Impact = ComplianceRiskImpact.Low,
+            ImpactName = "Low",
+            Weight = 0.2m,
+            Description = "Document submission compliance analysis",
+            Frequency = 0
+        };
+    }
+
+    private async Task<decimal> CalculateProjectedPenaltiesAsync(int clientId, List<ComplianceRiskFactorDto> riskFactors)
+    {
+        // Calculate projected penalties based on risk factors and historical data
+        await Task.CompletedTask;
+        var baseProjection = riskFactors.Sum(rf => (decimal)rf.Impact * rf.Weight * 1000);
+        return Math.Max(0, baseProjection);
+    }
+
+    private static ComplianceLevel GetComplianceLevel(decimal score)
+    {
+        return score switch
+        {
+            >= 85 => ComplianceLevel.Green,
+            >= 70 => ComplianceLevel.Yellow,
+            _ => ComplianceLevel.Red
+        };
+    }
+
+    private static string GetComplianceGrade(decimal score)
+    {
+        return score switch
+        {
+            >= 95 => "A+",
+            >= 90 => "A",
+            >= 85 => "B+",
+            >= 80 => "B",
+            >= 75 => "C+",
+            >= 70 => "C",
+            >= 60 => "D",
+            _ => "F"
+        };
+    }
+
+    private static ComplianceRiskLevel GetRiskLevel(decimal riskScore)
+    {
+        return riskScore switch
+        {
+            <= 25 => ComplianceRiskLevel.Low,
+            <= 50 => ComplianceRiskLevel.Medium,
+            <= 75 => ComplianceRiskLevel.High,
+            _ => ComplianceRiskLevel.Critical
+        };
+    }
+
+    private static List<string> GenerateRiskRecommendations(List<ComplianceRiskFactorDto> riskFactors, ComplianceRiskLevel riskLevel)
+    {
+        var recommendations = new List<string>();
+
+        foreach (var factor in riskFactors.Where(rf => rf.Impact >= ComplianceRiskImpact.Medium))
+        {
+            switch (factor.Factor)
+            {
+                case "Filing History":
+                    recommendations.Add("Implement automated filing deadline reminders");
+                    recommendations.Add("Review filing processes and improve documentation");
+                    break;
+                case "Payment History":
+                    recommendations.Add("Set up automated payment scheduling");
+                    recommendations.Add("Verify payment methods and banking details");
+                    break;
+                case "Penalty History":
+                    recommendations.Add("Review penalty waivers and appeals options");
+                    recommendations.Add("Implement stricter deadline monitoring");
+                    break;
+            }
+        }
+
+        if (riskLevel >= ComplianceRiskLevel.High)
+        {
+            recommendations.Add("Schedule immediate compliance review meeting");
+            recommendations.Add("Consider engaging external tax compliance advisor");
+        }
+
+        return recommendations;
+    }
+
+    private static CompliancePriority GetOverallPriority(List<ComplianceActionItemDto> actionItems)
+    {
+        if (!actionItems.Any()) return CompliancePriority.Low;
+        return actionItems.Max(ai => ai.Priority);
+    }
+
+    private static DateTime GetTargetCompletionDate(List<ComplianceActionItemDto> actionItems)
+    {
+        if (!actionItems.Any()) return DateTime.UtcNow.AddDays(30);
+        return actionItems.Min(ai => ai.DueDate);
+    }
+}

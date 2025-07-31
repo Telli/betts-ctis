@@ -1,0 +1,456 @@
+using BettsTax.Core.Services.Interfaces;
+using BettsTax.Data;
+using BettsTax.Data.Models;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace BettsTax.Core.Services;
+
+public class FinanceAct2025Service : IFinanceAct2025Service
+{
+    private readonly ApplicationDbContext _context;
+    private readonly ILogger<FinanceAct2025Service> _logger;
+
+    // Sierra Leone Finance Act 2025 compliance requirements by taxpayer category
+    private readonly Dictionary<(TaxType, TaxpayerCategory), List<string>> _complianceRequirements = new()
+    {
+        [(TaxType.IncomeTax, TaxpayerCategory.Large)] = new()
+        {
+            "Audited financial statements by registered auditor",
+            "Monthly provisional tax payments",
+            "Quarterly return submissions",
+            "Annual income tax return with supporting schedules",
+            "Transfer pricing documentation (if applicable)",
+            "Related party transaction disclosures",
+            "Corporate governance compliance certificate"
+        },
+        [(TaxType.IncomeTax, TaxpayerCategory.Medium)] = new()
+        {
+            "Annual financial statements (audited or reviewed)",
+            "Quarterly provisional tax payments",
+            "Annual income tax return",
+            "Bank reconciliation statements",
+            "Supporting documentation for deductions"
+        },
+        [(TaxType.IncomeTax, TaxpayerCategory.Small)] = new()
+        {
+            "Annual income tax return",
+            "Basic financial records",
+            "Bank statements",
+            "Supporting receipts and invoices"
+        },
+        [(TaxType.GST, TaxpayerCategory.Large)] = new()
+        {
+            "Monthly GST returns",
+            "GST reconciliation statements",
+            "Input tax credit documentation",
+            "Export documentation (if applicable)",
+            "Electronic filing mandatory"
+        },
+        [(TaxType.GST, TaxpayerCategory.Medium)] = new()
+        {
+            "Monthly GST returns",
+            "Sales and purchase records",
+            "Input tax credit vouchers",
+            "GST account reconciliation"
+        },
+        [(TaxType.PayrollTax, TaxpayerCategory.Large)] = new()
+        {
+            "Monthly payroll tax returns",
+            "Employee PAYE certificates",
+            "NASSIT contribution records",
+            "Payroll reconciliation statements",
+            "Annual employment tax certificate"
+        }
+    };
+
+    public FinanceAct2025Service(
+        ApplicationDbContext context,
+        ILogger<FinanceAct2025Service> logger)
+    {
+        _context = context;
+        _logger = logger;
+    }
+
+    public async Task<List<FinanceAct2025Rule>> GetActiveRulesAsync()
+    {
+        try
+        {
+            var rules = await _context.FinanceAct2025Rules
+                .Where(r => r.IsActive && r.EffectiveDate <= DateTime.UtcNow)
+                .OrderBy(r => r.TaxType)
+                .ThenBy(r => r.Section)
+                .ToListAsync();
+
+            _logger.LogInformation("Retrieved {RuleCount} active Finance Act 2025 rules", rules.Count);
+            return rules;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving active Finance Act 2025 rules");
+            throw;
+        }
+    }
+
+    public async Task<FinanceAct2025Rule?> GetRuleByTaxTypeAsync(TaxType taxType)
+    {
+        try
+        {
+            var rule = await _context.FinanceAct2025Rules
+                .Where(r => r.TaxType == taxType && 
+                           r.IsActive && 
+                           r.EffectiveDate <= DateTime.UtcNow &&
+                           (r.ExpiryDate == null || r.ExpiryDate > DateTime.UtcNow))
+                .OrderByDescending(r => r.EffectiveDate)
+                .FirstOrDefaultAsync();
+
+            if (rule == null)
+            {
+                _logger.LogWarning("No active Finance Act 2025 rule found for tax type {TaxType}", taxType);
+                return null;
+            }
+
+            return rule;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving Finance Act 2025 rule for tax type {TaxType}", taxType);
+            throw;
+        }
+    }
+
+    public async Task<decimal> GetPenaltyRateAsync(TaxType taxType, int daysLate)
+    {
+        try
+        {
+            var rule = await GetRuleByTaxTypeAsync(taxType);
+            if (rule == null)
+                return GetDefaultPenaltyRate(taxType);
+
+            // Apply graduated penalty rates based on days late
+            var basePenaltyRate = rule.PenaltyRate;
+            
+            // Sierra Leone Finance Act 2025 progressive penalty structure
+            var multiplier = daysLate switch
+            {
+                <= 30 => 1.0m, // Base rate
+                <= 60 => 1.5m, // 50% increase
+                <= 90 => 2.0m, // 100% increase
+                _ => 2.5m // 150% increase for severe non-compliance
+            };
+
+            var adjustedRate = basePenaltyRate * multiplier;
+            
+            // Apply maximum penalty cap
+            var maxRate = rule.MaxPenaltyPercentage / 100m;
+            return Math.Min(adjustedRate, maxRate);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting penalty rate for tax type {TaxType}", taxType);
+            throw;
+        }
+    }
+
+    public async Task<decimal> GetInterestRateAsync(TaxType taxType)
+    {
+        try
+        {
+            var rule = await GetRuleByTaxTypeAsync(taxType);
+            if (rule == null)
+                return GetDefaultInterestRate(taxType);
+
+            return rule.InterestRate;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting interest rate for tax type {TaxType}", taxType);
+            throw;
+        }
+    }
+
+    public async Task<int> GetGracePeriodAsync(TaxType taxType)
+    {
+        try
+        {
+            var rule = await GetRuleByTaxTypeAsync(taxType);
+            if (rule == null)
+                return GetDefaultGracePeriod(taxType);
+
+            return rule.GracePeriodDays;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting grace period for tax type {TaxType}", taxType);
+            throw;
+        }
+    }
+
+    public async Task<decimal> GetMaxPenaltyPercentageAsync(TaxType taxType)
+    {
+        try
+        {
+            var rule = await GetRuleByTaxTypeAsync(taxType);
+            if (rule == null)
+                return GetDefaultMaxPenalty(taxType);
+
+            return rule.MaxPenaltyPercentage;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting max penalty percentage for tax type {TaxType}", taxType);
+            throw;
+        }
+    }
+
+    public async Task<bool> IsRuleActiveAsync(string ruleId, DateTime effectiveDate)
+    {
+        try
+        {
+            var rule = await _context.FinanceAct2025Rules.FindAsync(ruleId);
+            if (rule == null)
+                return false;
+
+            return rule.IsActive && 
+                   rule.EffectiveDate <= effectiveDate &&
+                   (rule.ExpiryDate == null || rule.ExpiryDate > effectiveDate);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking if rule {RuleId} is active", ruleId);
+            throw;
+        }
+    }
+
+    public async Task<List<string>> GetComplianceRequirementsAsync(TaxType taxType, TaxpayerCategory category)
+    {
+        try
+        {
+            await Task.CompletedTask; // For async consistency
+
+            var key = (taxType, category);
+            if (_complianceRequirements.TryGetValue(key, out var requirements))
+            {
+                return requirements;
+            }
+
+            // Fallback to general requirements based on tax type
+            return GetGeneralRequirements(taxType);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting compliance requirements for {TaxType} {Category}", taxType, category);
+            throw;
+        }
+    }
+
+    // Helper methods for default values when rules are not found
+    private static decimal GetDefaultPenaltyRate(TaxType taxType)
+    {
+        return taxType switch
+        {
+            TaxType.IncomeTax => 0.05m, // 5% per month
+            TaxType.GST => 0.02m, // 2% per month
+            TaxType.PayrollTax => 0.03m, // 3% per month
+            TaxType.WithholdingTax => 0.025m, // 2.5% per month
+            TaxType.ExciseDuty => 0.04m, // 4% per month
+            _ => 0.02m // Default 2% per month
+        };
+    }
+
+    private static decimal GetDefaultInterestRate(TaxType taxType)
+    {
+        return taxType switch
+        {
+            TaxType.IncomeTax => 0.15m, // 15% per annum
+            TaxType.GST => 0.12m, // 12% per annum
+            TaxType.PayrollTax => 0.12m, // 12% per annum
+            TaxType.WithholdingTax => 0.10m, // 10% per annum
+            TaxType.ExciseDuty => 0.18m, // 18% per annum
+            _ => 0.12m // Default 12% per annum
+        };
+    }
+
+    private static int GetDefaultGracePeriod(TaxType taxType)
+    {
+        return taxType switch
+        {
+            TaxType.IncomeTax => 7, // 7 days
+            TaxType.GST => 5, // 5 days
+            TaxType.PayrollTax => 10, // 10 days
+            TaxType.WithholdingTax => 7, // 7 days
+            TaxType.ExciseDuty => 5, // 5 days
+            _ => 7 // Default 7 days
+        };
+    }
+
+    private static decimal GetDefaultMaxPenalty(TaxType taxType)
+    {
+        return taxType switch
+        {
+            TaxType.IncomeTax => 100m, // 100% of tax liability
+            TaxType.GST => 75m, // 75% of tax liability
+            TaxType.PayrollTax => 50m, // 50% of tax liability
+            TaxType.WithholdingTax => 100m, // 100% of tax liability
+            TaxType.ExciseDuty => 200m, // 200% of tax liability (severe for excise)
+            _ => 100m // Default 100%
+        };
+    }
+
+    private static List<string> GetGeneralRequirements(TaxType taxType)
+    {
+        return taxType switch
+        {
+            TaxType.IncomeTax => new List<string>
+            {
+                "Annual income tax return",
+                "Supporting financial documents",
+                "Bank statements and reconciliations",
+                "Documentation for all deductions claimed"
+            },
+            TaxType.GST => new List<string>
+            {
+                "Monthly GST returns",
+                "Sales and purchase records",
+                "Input tax documentation",
+                "GST registration certificate"
+            },
+            TaxType.PayrollTax => new List<string>
+            {
+                "Monthly payroll returns",
+                "Employee records and contracts",
+                "PAYE and NASSIT calculations",
+                "Payroll register and reconciliations"
+            },
+            TaxType.WithholdingTax => new List<string>
+            {
+                "Withholding tax returns",
+                "Payment vouchers and receipts",
+                "Supplier/contractor details",
+                "Tax certificates issued"
+            },
+            TaxType.ExciseDuty => new List<string>
+            {
+                "Production and sales records",
+                "Excise duty calculations",
+                "Inventory movements",
+                "Export/import documentation"
+            },
+            _ => new List<string>
+            {
+                "Relevant tax returns",
+                "Supporting documentation",
+                "Payment records",
+                "Compliance certificates"
+            }
+        };
+    }
+
+    // Method to seed default Finance Act 2025 rules
+    public async Task<bool> SeedDefaultRulesAsync()
+    {
+        try
+        {
+            // Check if rules already exist
+            if (await _context.FinanceAct2025Rules.AnyAsync())
+            {
+                _logger.LogInformation("Finance Act 2025 rules already exist, skipping seeding");
+                return true;
+            }
+
+            var rules = new List<FinanceAct2025Rule>
+            {
+                // Income Tax Rules
+                new FinanceAct2025Rule
+                {
+                    RuleId = "FA2025_IT_001",
+                    RuleName = "Income Tax Base Penalty",
+                    Section = "Section 115",
+                    TaxType = TaxType.IncomeTax,
+                    PenaltyRate = 0.05m,
+                    InterestRate = 0.15m,
+                    GracePeriodDays = 7,
+                    MaxPenaltyPercentage = 100m,
+                    Description = "Base penalty and interest rates for income tax under Finance Act 2025",
+                    EffectiveDate = new DateTime(2025, 1, 1),
+                    IsActive = true
+                },
+
+                // GST Rules
+                new FinanceAct2025Rule
+                {
+                    RuleId = "FA2025_GST_001",
+                    RuleName = "GST Base Penalty",
+                    Section = "Section 142",
+                    TaxType = TaxType.GST,
+                    PenaltyRate = 0.02m,
+                    InterestRate = 0.12m,
+                    GracePeriodDays = 5,
+                    MaxPenaltyPercentage = 75m,
+                    Description = "Base penalty and interest rates for GST under Finance Act 2025",
+                    EffectiveDate = new DateTime(2025, 1, 1),
+                    IsActive = true
+                },
+
+                // Payroll Tax Rules
+                new FinanceAct2025Rule
+                {
+                    RuleId = "FA2025_PT_001",
+                    RuleName = "Payroll Tax Base Penalty",
+                    Section = "Section 165",
+                    TaxType = TaxType.PayrollTax,
+                    PenaltyRate = 0.03m,
+                    InterestRate = 0.12m,
+                    GracePeriodDays = 10,
+                    MaxPenaltyPercentage = 50m,
+                    Description = "Base penalty and interest rates for payroll tax under Finance Act 2025",
+                    EffectiveDate = new DateTime(2025, 1, 1),
+                    IsActive = true
+                },
+
+                // Withholding Tax Rules
+                new FinanceAct2025Rule
+                {
+                    RuleId = "FA2025_WT_001",
+                    RuleName = "Withholding Tax Base Penalty",
+                    Section = "Section 178",
+                    TaxType = TaxType.WithholdingTax,
+                    PenaltyRate = 0.025m,
+                    InterestRate = 0.10m,
+                    GracePeriodDays = 7,
+                    MaxPenaltyPercentage = 100m,
+                    Description = "Base penalty and interest rates for withholding tax under Finance Act 2025",
+                    EffectiveDate = new DateTime(2025, 1, 1),
+                    IsActive = true
+                },
+
+                // Excise Duty Rules
+                new FinanceAct2025Rule
+                {
+                    RuleId = "FA2025_ED_001",
+                    RuleName = "Excise Duty Base Penalty",
+                    Section = "Section 195",
+                    TaxType = TaxType.ExciseDuty,
+                    PenaltyRate = 0.04m,
+                    InterestRate = 0.18m,
+                    GracePeriodDays = 5,
+                    MaxPenaltyPercentage = 200m,
+                    Description = "Base penalty and interest rates for excise duty under Finance Act 2025",
+                    EffectiveDate = new DateTime(2025, 1, 1),
+                    IsActive = true
+                }
+            };
+
+            _context.FinanceAct2025Rules.AddRange(rules);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Seeded {RuleCount} Finance Act 2025 rules", rules.Count);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error seeding Finance Act 2025 rules");
+            throw;
+        }
+    }
+}

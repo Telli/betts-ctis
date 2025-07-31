@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
+using BettsTax.Data.Models.Security;
 
 namespace BettsTax.Data
 {
@@ -207,23 +208,77 @@ namespace BettsTax.Data
                     LastName = "Sesay",
                     IsActive = true,
                     CreatedDate = DateTime.UtcNow.AddDays(-120)
+                },
+                // Test users for Playwright tests
+                new() {
+                    UserName = "admin@bettsfirm.sl",
+                    Email = "admin@bettsfirm.sl",
+                    FirstName = "Test",
+                    LastName = "Admin",
+                    IsActive = true,
+                    EmailConfirmed = true,
+                    EmailVerified = true,
+                    RegistrationSource = RegistrationSource.AdminCreated,
+                    RegistrationCompletedDate = DateTime.UtcNow,
+                    CreatedDate = DateTime.UtcNow.AddDays(-200)
+                },
+                new() {
+                    UserName = "associate@bettsfirm.sl",
+                    Email = "associate@bettsfirm.sl",
+                    FirstName = "Test",
+                    LastName = "Associate",
+                    IsActive = true,
+                    EmailConfirmed = true,
+                    EmailVerified = true,
+                    RegistrationSource = RegistrationSource.AdminCreated,
+                    RegistrationCompletedDate = DateTime.UtcNow,
+                    CreatedDate = DateTime.UtcNow.AddDays(-190)
+                },
+                new() {
+                    UserName = "client@testcompany.sl",
+                    Email = "client@testcompany.sl",
+                    FirstName = "Test",
+                    LastName = "Client",
+                    IsActive = true,
+                    EmailConfirmed = true,
+                    EmailVerified = true,
+                    RegistrationSource = RegistrationSource.AdminCreated,
+                    RegistrationCompletedDate = DateTime.UtcNow,
+                    CreatedDate = DateTime.UtcNow.AddDays(-180)
                 }
             };
 
             // Create users
             foreach (var user in demoUsers)
             {
-                await userManager.CreateAsync(user, "Demo123!");
-                if (user.Email?.Contains("bettsfirm") == true)
+                var password = user.Email?.Contains("test") == true ? GetTestUserPassword(user.Email) : "Demo123!";
+                await userManager.CreateAsync(user, password);
+                
+                // Assign roles based on email
+                if (user.Email == "admin@bettsfirm.sl")
+                    await userManager.AddToRoleAsync(user, "Admin");
+                else if (user.Email == "associate@bettsfirm.sl" || user.Email?.Contains("bettsfirm") == true)
                     await userManager.AddToRoleAsync(user, "Associate");
                 else
                     await userManager.AddToRoleAsync(user, "Client");
+            }
+
+            string GetTestUserPassword(string email)
+            {
+                return email switch
+                {
+                    "admin@bettsfirm.sl" => "Admin123!",
+                    "associate@bettsfirm.sl" => "Associate123!",
+                    "client@testcompany.sl" => "Client123!",
+                    _ => "Demo123!"
+                };
             }
 
             // Refresh user references after creation
             var associate = await userManager.FindByEmailAsync("sarah.bangura@bettsfirm.sl");
             var clientUser1 = await userManager.FindByEmailAsync("john.kamara@sierramining.sl");
             var clientUser2 = await userManager.FindByEmailAsync("fatima.sesay@freetownlogistics.sl");
+            var testClientUser = await userManager.FindByEmailAsync("client@testcompany.sl");
 
             // Create demo clients
             var clients = new List<Client>
@@ -312,6 +367,24 @@ namespace BettsTax.Data
                     Status = ClientStatus.Active,
                     CreatedDate = DateTime.UtcNow.AddDays(-30),
                     UpdatedDate = DateTime.UtcNow
+                },
+                // Test client for Playwright tests
+                new() {
+                    UserId = testClientUser!.Id,
+                    ClientNumber = "CLN-TEST-2024",
+                    BusinessName = "Test Company Ltd",
+                    ContactPerson = "Test Client",
+                    Email = "client@testcompany.sl",
+                    PhoneNumber = "+232-76-999-888",
+                    Address = "123 Test Street, Freetown",
+                    ClientType = ClientType.Corporation,
+                    TaxpayerCategory = TaxpayerCategory.Medium,
+                    AnnualTurnover = 5000000m,
+                    TIN = "TIN-TEST-2024",
+                    AssignedAssociateId = associate!.Id,
+                    Status = ClientStatus.Active,
+                    CreatedDate = DateTime.UtcNow.AddDays(-100),
+                    UpdatedDate = DateTime.UtcNow.AddDays(-5)
                 }
             };
 
@@ -393,27 +466,35 @@ namespace BettsTax.Data
             context.Payments.AddRange(payments);
 
             // Create demo audit logs
-            var auditLogs = new List<AuditLog>();
+            var auditLogs = new List<Models.Security.AuditLog>();
             foreach (var client in clients)
             {
                 auditLogs.AddRange(new[]
                 {
-                    new AuditLog
+                    new Models.Security.AuditLog
                     {
                         UserId = associate!.Id,
                         Action = "Client Created",
                         Entity = "Client",
                         EntityId = client.ClientId.ToString(),
-                        Details = $"Created client: {client.BusinessName}",
+                        Operation = AuditOperation.Create,
+                        Description = $"Created client: {client.BusinessName}",
+                        Severity = AuditSeverity.Low,
+                        Category = AuditCategory.DataModification,
+                        IpAddress = "127.0.0.1",
                         Timestamp = client.CreatedDate
                     },
-                    new AuditLog
+                    new Models.Security.AuditLog
                     {
                         UserId = associate!.Id,
                         Action = "Client Updated",
                         Entity = "Client",
                         EntityId = client.ClientId.ToString(),
-                        Details = $"Updated client information for: {client.BusinessName}",
+                        Operation = AuditOperation.Update,
+                        Description = $"Updated client information for: {client.BusinessName}",
+                        Severity = AuditSeverity.Low,
+                        Category = AuditCategory.DataModification,
+                        IpAddress = "127.0.0.1",
                         Timestamp = client.UpdatedDate
                     }
                 });

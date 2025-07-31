@@ -63,7 +63,7 @@ namespace BettsTax.Core.Services
             _logger.LogInformation("Password reset email sent to {Email}", email);
         }
 
-        private async Task SendEmailAsync(string toEmail, string subject, string body)
+        public async Task<bool> SendEmailAsync(string toEmail, string subject, string body)
         {
             try
             {
@@ -83,7 +83,7 @@ namespace BettsTax.Core.Services
                 if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
                 {
                     _logger.LogWarning("Email settings not configured. Email sending skipped for {Email}", toEmail);
-                    return;
+                    return false;
                 }
 
                 // Create message using MimeKit
@@ -122,11 +122,12 @@ namespace BettsTax.Core.Services
                 await client.DisconnectAsync(true);
 
                 _logger.LogInformation("Email sent successfully to {Email} with subject '{Subject}'", toEmail, subject);
+                return true;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to send email to {Email} with subject '{Subject}'", toEmail, subject);
-                throw;
+                return false;
             }
         }
     }

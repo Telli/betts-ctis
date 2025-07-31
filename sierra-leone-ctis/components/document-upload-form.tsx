@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -10,10 +10,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
 import FileUpload, { FileUploadFile } from '@/components/ui/file-upload'
 import { DocumentService, DocumentUploadRequest } from '@/lib/services/document-service'
+import { ClientService, ClientDto } from '@/lib/services'
 import { X, Tag } from 'lucide-react'
 
 // Document categories with descriptions
@@ -51,6 +53,7 @@ const DOCUMENT_CATEGORIES = [
 ]
 
 const uploadSchema = z.object({
+  clientId: z.string().min(1, 'Client is required'),
   category: z.enum(['tax-return', 'financial-statement', 'supporting-document', 'receipt', 'correspondence']),
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
@@ -60,14 +63,12 @@ const uploadSchema = z.object({
 type UploadFormData = z.infer<typeof uploadSchema>
 
 interface DocumentUploadFormProps {
-  clientId?: number
   onUploadComplete?: (documents: any[]) => void
   onCancel?: () => void
   className?: string
 }
 
 export function DocumentUploadForm({
-  clientId = 1, // Default to first client for demo
   onUploadComplete,
   onCancel,
   className
@@ -77,16 +78,36 @@ export function DocumentUploadForm({
   const [uploading, setUploading] = useState(false)
   const [newTag, setNewTag] = useState('')
   const [tags, setTags] = useState<string[]>([])
+  const [clients, setClients] = useState<ClientDto[]>([])
 
   const form = useForm<UploadFormData>({
     resolver: zodResolver(uploadSchema),
     defaultValues: {
+      clientId: '',
       category: 'supporting-document',
       description: '',
       tags: [],
       taxYearId: undefined
     }
   })
+
+  // Load clients
+  useEffect(() => {
+    const loadClients = async () => {
+      try {
+        const clientsData = await ClientService.getAll()
+        setClients(clientsData || [])
+      } catch (error) {
+        console.error('Error loading clients:', error)
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Failed to load clients',
+        })
+      }
+    }
+    loadClients()
+  }, [toast])
 
   const handleFilesSelected = (selectedFiles: File[]) => {
     const newFiles: FileUploadFile[] = selectedFiles.map(file => ({
@@ -138,6 +159,15 @@ export function DocumentUploadForm({
       return
     }
 
+    if (!data.clientId) {
+      toast({
+        variant: 'destructive',
+        title: 'No client selected',
+        description: 'Please select a client for the documents.'
+      })
+      return
+    }
+
     setUploading(true)
     const uploadedDocuments = []
 
@@ -162,7 +192,7 @@ export function DocumentUploadForm({
             updateFileStatus(fileUpload.id, 'uploading', Math.min(90, fileUpload.progress + 10))
           }, 200)
 
-          const result = await DocumentService.upload(clientId, uploadRequest)
+          const result = await DocumentService.upload(parseInt(data.clientId), uploadRequest)
           
           clearInterval(progressInterval)
           updateFileStatus(fileUpload.id, 'success', 100)
@@ -219,10 +249,37 @@ export function DocumentUploadForm({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          {/* Document Category */}
-          <div className="space-y-2">
-            <Label htmlFor="category">Document Category *</Label>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* Client Selection */}
+            <FormField
+              control={form.control}
+              name="clientId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Client</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select client" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {clients.filter(client => client.clientId).map((client) => (
+                        <SelectItem key={client.clientId} value={client.clientId!.toString()}>
+                          {client.businessName || client.name || 'Unnamed Client'} ({client.clientNumber || 'No number'})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Document Category */}
+            <div className="space-y-2">
+              <Label htmlFor="category">Document Category *</Label>
             <Select
               value={form.watch('category')}
               onValueChange={(value) => form.setValue('category', value as any)}
@@ -329,13 +386,14 @@ export function DocumentUploadForm({
             )}
             <Button 
               type="submit" 
-              disabled={files.length === 0 || uploading}
+              disabled={files.length === 0 || uploading || !form.watch('clientId')}
               className="bg-sierra-blue-600 hover:bg-sierra-blue-700"
             >
               {uploading ? 'Uploading...' : `Upload ${files.length} File${files.length !== 1 ? 's' : ''}`}
             </Button>
           </div>
         </form>
+        </Form>
       </CardContent>
     </Card>
   )

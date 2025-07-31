@@ -9,11 +9,13 @@ namespace BettsTax.Data
         public int ClientId { get; set; }
         public int? TaxYearId { get; set; }
         public int? TaxFilingId { get; set; }
+        public TaxType? TaxType { get; set; }
         public decimal Amount { get; set; }
         public PaymentMethod Method { get; set; } = PaymentMethod.BankTransfer;
         public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
         public string PaymentReference { get; set; } = string.Empty;
         public DateTime PaymentDate { get; set; } = DateTime.UtcNow;
+        public DateTime? DueDate { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? ApprovedAt { get; set; }
         public string? ApprovedById { get; set; }

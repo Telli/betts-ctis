@@ -6,12 +6,25 @@ import { apiRequest } from '../api-client';
 
 export interface ClientDto {
   clientId?: number;
-  name: string;
-  type: string;
-  category: string;
-  tin: string;
-  contact: string;
-  status?: string;
+  clientNumber: string;
+  businessName: string;
+  contactPerson: string;
+  email: string;
+  phoneNumber: string;
+  address: string;
+  clientType: string;
+  taxpayerCategory: string;
+  annualTurnover: number;
+  tin?: string;
+  status: string;
+  // Computed properties from backend
+  firstName?: string;
+  lastName?: string;
+  // Legacy properties for compatibility
+  name?: string;
+  type?: string;
+  category?: string;
+  contact?: string;
   lastFiling?: string;
   taxLiability?: string;
   complianceScore?: number;

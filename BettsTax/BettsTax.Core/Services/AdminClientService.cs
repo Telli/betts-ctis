@@ -1,6 +1,7 @@
 using AutoMapper;
 using BettsTax.Core.DTOs;
 using BettsTax.Data;
+using BettsTax.Data.Models.Security;
 using BettsTax.Shared;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
@@ -85,7 +86,6 @@ namespace BettsTax.Core.Services
                     PendingFilings = _db.TaxYears.Count(t => t.ClientId == c.ClientId && 
                         (t.Status == TaxYearStatus.Draft || t.Status == TaxYearStatus.Pending)),
                     LastActivity = _db.AuditLogs
-                        .Where(a => a.ClientId == c.ClientId)
                         .OrderByDescending(a => a.Timestamp)
                         .Select(a => a.Timestamp)
                         .FirstOrDefault()
@@ -163,7 +163,7 @@ namespace BettsTax.Core.Services
                 .CountAsync();
 
             var recentActivity = await _db.AuditLogs
-                .Where(a => a.ActionType == AuditActionType.Login && a.Timestamp >= DateTime.UtcNow.AddDays(-7))
+                .Where(a => a.Action.Contains("LOGIN") && a.Timestamp >= DateTime.UtcNow.AddDays(-7))
                 .CountAsync();
 
             return new AdminClientStatsDto
@@ -182,23 +182,23 @@ namespace BettsTax.Core.Services
         {
             var logs = await _db.AuditLogs
                 .Include(a => a.User)
-                .Where(a => a.ClientId == clientId)
+                .Where(a => a.EntityId == clientId.ToString())
                 .OrderByDescending(a => a.Timestamp)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(a => new AuditLogDto
                 {
-                    AuditLogId = a.AuditLogId,
-                    UserId = a.UserId,
+                    AuditLogId = (int)a.Id,
+                    UserId = a.UserId ?? "",
                     UserName = a.User != null ? $"{a.User.FirstName} {a.User.LastName}" : "Unknown",
-                    Action = a.Action,
-                    Entity = a.Entity,
-                    EntityId = a.EntityId,
-                    Details = a.Details,
+                    Action = a.Action ?? "",
+                    Entity = a.Entity ?? "",
+                    EntityId = a.EntityId ?? "",
+                    Details = a.Description,
                     Timestamp = a.Timestamp,
-                    IPAddress = a.IPAddress,
-                    IsSuccess = a.IsSuccess,
-                    ActionType = a.ActionType.ToString()
+                    IPAddress = a.IpAddress,
+                    IsSuccess = true, // Security AuditLog doesn't have IsSuccess
+                    ActionType = a.Operation.ToString()
                 })
                 .ToListAsync();
 

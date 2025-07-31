@@ -624,7 +624,7 @@ namespace BettsTax.Core.Services
 
         public async Task<Result<byte[]>> ExportActivitiesToPdfAsync(int clientId, DateTime startDate, DateTime endDate)
         {
-            // PDF generation would require a library like iTextSharp or similar
+            // PDF generation would require a library like iText7 or similar
             // For now, returning a placeholder
             return Result.Failure<byte[]>("PDF export not implemented");
         }

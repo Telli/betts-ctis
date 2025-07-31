@@ -91,7 +91,7 @@ namespace BettsTax.Core.Services
             try
             {
                 // For now, we'll create a simple HTML file that can be converted to PDF
-                // In a real implementation, you would use iTextSharp, SelectPdf, or similar
+                // In a real implementation, you would use iText7, SelectPdf, or similar
                 var html = GenerateHtmlTable(data, title, request);
                 var htmlPath = Path.ChangeExtension(filePath, "html");
                 

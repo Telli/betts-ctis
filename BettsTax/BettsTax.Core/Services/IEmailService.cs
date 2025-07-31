@@ -7,5 +7,8 @@ namespace BettsTax.Core.Services
         Task SendEmailVerificationAsync(string email, string verificationUrl);
         Task SendRegistrationCompletedNotificationAsync(string associateEmail, string clientName);
         Task SendPasswordResetAsync(string email, string resetUrl);
+        
+        // Generic email sending method
+        Task<bool> SendEmailAsync(string to, string subject, string body);
     }
 }

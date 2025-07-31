@@ -5,32 +5,64 @@ namespace BettsTax.Core.Services
 {
     public class NotificationService : INotificationService
     {
-        private readonly ApplicationDbContext _db;
+        private readonly ApplicationDbContext _context;
 
-        public NotificationService(ApplicationDbContext db)
+        public NotificationService(ApplicationDbContext context)
         {
-            _db = db;
-        }
-
-        public async Task<Notification> CreateAsync(string userId, string message)
-        {
-            var n = new Notification { UserId = userId, Message = message };
-            _db.Notifications.Add(n);
-            await _db.SaveChangesAsync();
-            return n;
+            _context = context;
         }
 
         public async Task<IEnumerable<Notification>> GetUserNotificationsAsync(string userId)
         {
-            return await _db.Notifications.Where(n => n.UserId == userId).OrderByDescending(n => n.CreatedAt).ToListAsync();
+            return await _context.Notifications
+                .Where(n => n.UserId == userId)
+                .OrderByDescending(n => n.CreatedAt)
+                .ToListAsync();
+        }
+
+        public async Task<Notification> CreateAsync(string userId, string message)
+        {
+            var notification = new Notification
+            {
+                UserId = userId,
+                Message = message,
+                Status = NotificationStatus.Unread,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Notifications.Add(notification);
+            await _context.SaveChangesAsync();
+
+            return notification;
         }
 
         public async Task<bool> MarkReadAsync(int notificationId, string userId)
         {
-            var n = await _db.Notifications.FirstOrDefaultAsync(x => x.NotificationId == notificationId && x.UserId == userId);
-            if (n == null) return false;
-            n.Status = NotificationStatus.Read;
-            await _db.SaveChangesAsync();
+            var notification = await _context.Notifications
+                .FirstOrDefaultAsync(n => n.NotificationId == notificationId && n.UserId == userId);
+
+            if (notification == null)
+                return false;
+
+            notification.Status = NotificationStatus.Read;
+            await _context.SaveChangesAsync();
+
+            return true;
+        }
+
+        public async Task<bool> SendSmsAsync(string phoneNumber, string message)
+        {
+            // TODO: Implement SMS sending logic using an SMS provider
+            // For now, return true to indicate success
+            await Task.CompletedTask;
+            return true;
+        }
+
+        public async Task<bool> SendEmailAsync(string email, string subject, string body)
+        {
+            // TODO: Implement email sending logic using an email provider
+            // For now, return true to indicate success
+            await Task.CompletedTask;
             return true;
         }
     }

@@ -149,6 +149,55 @@ test.describe('Client Portal', () => {
       await expect(page.locator('text=Tax Year')).toBeVisible();
       await expect(page.locator('text=Status')).toBeVisible();
     });
+
+    test('should display New Tax Filing button', async ({ page }) => {
+      await clientPortalPage.gotoTaxFilings();
+      
+      await expect(page.locator('text=New Tax Filing')).toBeVisible();
+      await expect(page.locator('button:has-text("New Tax Filing")')).toBeEnabled();
+    });
+
+    test('should open tax filing creation dialog', async ({ page }) => {
+      await clientPortalPage.gotoTaxFilings();
+      
+      // Click the New Tax Filing button
+      await page.click('button:has-text("New Tax Filing")');
+      
+      // Use page object method to verify dialog
+      await clientPortalPage.expectTaxFilingCreationDialog();
+    });
+
+    test('should validate tax filing form', async ({ page }) => {
+      await clientPortalPage.gotoTaxFilings();
+      await page.click('button:has-text("New Tax Filing")');
+      
+      // Try to submit without required fields
+      await page.click('button:has-text("Create Tax Filing")');
+      
+      // Should show validation errors
+      await expect(
+        page.locator('text=Tax type is required').or(
+          page.locator('text=required')
+        )
+      ).toBeVisible();
+    });
+
+    test.skip('should create new tax filing', async ({ page }) => {
+      // Skip this test as it requires backend integration
+      await clientPortalPage.gotoTaxFilings();
+      await page.click('button:has-text("New Tax Filing")');
+      
+      // Fill form
+      await page.selectOption('select[name="taxType"]', 'IncomeTax');
+      await page.fill('input[name="taxYear"]', '2024');
+      await page.fill('input[name="taxLiability"]', '5000');
+      
+      // Submit form
+      await page.click('button:has-text("Create Tax Filing")');
+      
+      // Should show success message
+      await expect(page.locator('text=Tax filing created successfully')).toBeVisible();
+    });
   });
 
   test.describe('Payment History', () => {
@@ -158,6 +207,55 @@ test.describe('Client Portal', () => {
       
       await expect(page.locator('text=Amount')).toBeVisible();
       await expect(page.locator('text=Date')).toBeVisible();
+    });
+
+    test('should display New Payment button', async ({ page }) => {
+      await clientPortalPage.gotoPayments();
+      
+      await expect(page.locator('text=New Payment')).toBeVisible();
+      await expect(page.locator('button:has-text("New Payment")')).toBeEnabled();
+    });
+
+    test('should open payment creation dialog', async ({ page }) => {
+      await clientPortalPage.gotoPayments();
+      
+      // Click the New Payment button
+      await page.click('button:has-text("New Payment")');
+      
+      // Use page object method to verify dialog
+      await clientPortalPage.expectPaymentCreationDialog();
+    });
+
+    test('should validate payment form', async ({ page }) => {
+      await clientPortalPage.gotoPayments();
+      await page.click('button:has-text("New Payment")');
+      
+      // Try to submit without required fields
+      await page.click('button:has-text("Create Payment")');
+      
+      // Should show validation errors
+      await expect(
+        page.locator('text=Amount is required').or(
+          page.locator('text=required')
+        )
+      ).toBeVisible();
+    });
+
+    test.skip('should create new payment', async ({ page }) => {
+      // Skip this test as it requires backend integration
+      await clientPortalPage.gotoPayments();
+      await page.click('button:has-text("New Payment")');
+      
+      // Fill form
+      await page.fill('input[name="amount"]', '1000');
+      await page.selectOption('select[name="method"]', 'BankTransfer');
+      await page.fill('input[name="paymentReference"]', 'TEST-PAY-001');
+      
+      // Submit form
+      await page.click('button:has-text("Create Payment")');
+      
+      // Should show success message
+      await expect(page.locator('text=Payment created successfully')).toBeVisible();
     });
   });
 
