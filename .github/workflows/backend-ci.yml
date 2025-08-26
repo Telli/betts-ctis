@@ -1,0 +1,39 @@
+name: Backend CI (.NET)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        working-directory: BettsTax
+        run: dotnet restore BettsTax.sln
+
+      - name: Build
+        working-directory: BettsTax
+        run: dotnet build BettsTax.sln --configuration Release --no-restore
+
+      - name: Test
+        working-directory: BettsTax
+        run: dotnet test BettsTax.sln --configuration Release --no-build --logger "trx;LogFileName=test_results.trx"
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: BettsTax/**/TestResults/*.trx
+

@@ -79,6 +79,8 @@ This document outlines the comprehensive implementation plan for enhancing the S
 - [ ] 12.3 Production Data Migration – Pending
 - [ ] 12.4 Monitoring and Support – Pending
 - [ ] 12.5 Go-Live and Post-Launch Support – Pending
+- CI Added: .github/workflows/backend-ci.yml (dotnet), .github/workflows/frontend-ci.yml (Next.js)
+
 
 
 - ✅ **User Experience**: New users see zeros/empty lists, demo users see populated data
