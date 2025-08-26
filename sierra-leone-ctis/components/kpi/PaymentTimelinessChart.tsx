@@ -1,20 +1,20 @@
 'use client';
 
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { TrendDataPoint } from '@/lib/types/kpi';
 
-interface FilingTimelinessChartProps {
+interface PaymentTimelinessChartProps {
   data: TrendDataPoint[];
   height?: number;
 }
 
-export default function FilingTimelinessChart({ 
+export default function PaymentTimelinessChart({ 
   data, 
   height = 200 
-}: FilingTimelinessChartProps) {
+}: PaymentTimelinessChartProps) {
   const chartData = data.map(point => ({
     name: point.label,
-    days: point.value,
+    percentage: point.value,
     date: new Date(point.date).toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric' 
@@ -27,11 +27,8 @@ export default function FilingTimelinessChart({
       return (
         <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-md">
           <p className="font-medium text-gray-900">{label}</p>
-          <p className={`${
-            data.value <= 3 ? 'text-sierra-green-600' :
-            data.value <= 7 ? 'text-sierra-gold-600' : 'text-red-600'
-          }`}>
-            Filing Delay: <span className="font-semibold">{data.value.toFixed(1)} days</span>
+          <p className="text-sierra-green-600">
+            On-time Payments: <span className="font-semibold">{data.value.toFixed(1)}%</span>
           </p>
         </div>
       );
@@ -43,8 +40,8 @@ export default function FilingTimelinessChart({
     return (
       <div className="flex items-center justify-center h-[200px] text-gray-500">
         <div className="text-center">
-          <p className="font-medium">No filing history available</p>
-          <p className="text-sm">Data will appear as you file tax returns</p>
+          <p className="font-medium">No payment history available</p>
+          <p className="text-sm">Data will appear as you make payments</p>
         </div>
       </div>
     );
@@ -53,7 +50,7 @@ export default function FilingTimelinessChart({
   return (
     <div className="w-full">
       <ResponsiveContainer width="100%" height={height}>
-        <LineChart
+        <AreaChart
           data={chartData}
           margin={{
             top: 5,
@@ -75,56 +72,59 @@ export default function FilingTimelinessChart({
             fontSize={12}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(value) => `${value}d`}
+            domain={[0, 100]}
+            tickFormatter={(value) => `${value}%`}
           />
           <Tooltip content={<CustomTooltip />} />
           
           {/* Target reference lines */}
           <ReferenceLine 
-            y={3} 
+            y={90} 
             stroke="#10b981" 
             strokeDasharray="5 5"
             strokeWidth={1}
-            label={{ value: "Excellent (≤3 days)", position: "topRight", fontSize: 10 }}
-          />
-          <ReferenceLine 
-            y={7} 
-            stroke="#f59e0b" 
-            strokeDasharray="5 5"
-            strokeWidth={1}
-            label={{ value: "Good (≤7 days)", position: "topRight", fontSize: 10 }}
+            label={{ value: "Target: 90%", position: "top", fontSize: 10 }}
           />
           
-          {/* Filing timeliness line */}
-          <Line
+          {/* Payment timeliness area */}
+          <Area
             type="monotone"
-            dataKey="days"
-            stroke="#3b82f6"
-            strokeWidth={3}
-            dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
-            activeDot={{ r: 6, stroke: '#3b82f6', strokeWidth: 2 }}
+            dataKey="percentage"
+            stroke="#10b981"
+            strokeWidth={2}
+            fill="url(#paymentGradient)"
+            dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
+            activeDot={{ r: 6, stroke: '#10b981', strokeWidth: 2 }}
           />
-        </LineChart>
+          
+          {/* Gradient definition */}
+          <defs>
+            <linearGradient id="paymentGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+              <stop offset="95%" stopColor="#10b981" stopOpacity={0.1}/>
+            </linearGradient>
+          </defs>
+        </AreaChart>
       </ResponsiveContainer>
       
       {/* Performance Summary */}
       <div className="mt-3 text-center">
         <div className="flex justify-center space-x-6 text-sm">
           <div>
-            <span className="font-medium text-sierra-blue-600">
-              {chartData.length > 0 ? chartData[chartData.length - 1].days.toFixed(1) : '0'} days
+            <span className="font-medium text-sierra-green-600">
+              {chartData.length > 0 ? chartData[chartData.length - 1].percentage.toFixed(1) : '0'}%
             </span>
             <p className="text-xs text-gray-500">Latest</p>
           </div>
           <div>
             <span className="font-medium text-sierra-green-600">
-              {chartData.length > 0 ? Math.min(...chartData.map(d => d.days)).toFixed(1) : '0'} days
+              {chartData.length > 0 ? Math.max(...chartData.map(d => d.percentage)).toFixed(1) : '0'}%
             </span>
             <p className="text-xs text-gray-500">Best</p>
           </div>
           <div>
             <span className="font-medium text-gray-600">
-              {chartData.length > 0 ? (chartData.reduce((sum, d) => sum + d.days, 0) / chartData.length).toFixed(1) : '0'} days
+              {chartData.length > 0 ? (chartData.reduce((sum, d) => sum + d.percentage, 0) / chartData.length).toFixed(1) : '0'}%
             </span>
             <p className="text-xs text-gray-500">Average</p>
           </div>

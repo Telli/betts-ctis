@@ -100,6 +100,14 @@ This implementation plan converts the CTIS design into actionable coding tasks t
   - Write tests for report formatting and data accuracy
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
+- [x] 2.6 Additional Report Types for Tax Info
+  - Implement Document Submission Report (PDF/Excel) with status breakdown by tax type and period
+  - Implement Tax Calendar Summary Report (PDF/Excel) for upcoming/past obligations with statuses
+  - Add Internal Revenue Collected and Case Management reports for staff dashboards
+  - Update `IReportService` and templates; add endpoints and frontend download options
+  - _Requirements: 2.1, 2.2, 2.3_
+
+
 - [x] 3. Advanced Compliance Monitoring Implementation
   - Build comprehensive compliance scoring engine with Sierra Leone tax rules
   - Create visual compliance dashboard with status indicators and trend analysis
@@ -136,6 +144,12 @@ This implementation plan converts the CTIS design into actionable coding tasks t
   - Build `ComplianceScoreCard` with Sierra Leone color coding (green/yellow/red)
   - Implement `FilingStatusGrid` showing status for each tax type
   - Add `UpcomingDeadlines` component with countdown timers and priority indicators
+
+- [x] 3.6 Compliance Dashboard Metrics Tiles
+  - Add visual tiles for: Compliance Score, Filing Timeliness, Payment Timeliness, Documents Status, Deadline Adherence
+  - Update frontend components and hooks to fetch new metrics
+  - _Requirements: 3.1, 3.5_
+
   - Create `PenaltyWarnings` component highlighting overdue items with penalty amounts
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 

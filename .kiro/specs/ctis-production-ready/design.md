@@ -113,18 +113,18 @@ public class ClientKPIDto
 // components/kpi/InternalKPIDashboard.tsx
 export function InternalKPIDashboard() {
   const { data: kpis, isLoading } = useKPIs();
-  
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      <KPICard 
-        title="Client Compliance Rate" 
-        value={kpis?.clientComplianceRate} 
+      <KPICard
+        title="Client Compliance Rate"
+        value={kpis?.clientComplianceRate}
         format="percentage"
         trend={kpis?.complianceTrend}
       />
-      <KPICard 
-        title="Filing Timeliness" 
-        value={kpis?.averageFilingTimeliness} 
+      <KPICard
+        title="Filing Timeliness"
+        value={kpis?.averageFilingTimeliness}
         format="days"
         threshold={7}
       />
@@ -136,7 +136,7 @@ export function InternalKPIDashboard() {
 // components/kpi/ClientKPIDashboard.tsx
 export function ClientKPIDashboard({ clientId }: { clientId: number }) {
   const { data: clientKPIs } = useClientKPIs(clientId);
-  
+
   return (
     <div className="space-y-6">
       <ComplianceScoreCard score={clientKPIs?.complianceScore} />
@@ -164,6 +164,16 @@ public interface IReportService
     Task<ReportStatus> GetReportStatusAsync(string reportId);
 }
 
+// New report types per updated tax information requirements
+public interface IReportService // extension excerpt
+{
+    Task<byte[]> GenerateDocumentSubmissionReportAsync(int clientId, DateTime fromDate, DateTime toDate, ReportFormat format);
+    Task<byte[]> GenerateTaxCalendarSummaryReportAsync(int clientId, DateTime fromDate, DateTime toDate, ReportFormat format);
+    Task<byte[]> GenerateRevenueCollectedReportAsync(DateTime fromDate, DateTime toDate, ReportFormat format, int? clientId = null);
+    Task<byte[]> GenerateCaseManagementReportAsync(DateTime fromDate, DateTime toDate, ReportFormat format, int? clientId = null);
+}
+
+
 public class ReportService : IReportService
 {
     private readonly IBackgroundJobClient _backgroundJobClient;
@@ -182,9 +192,35 @@ public class TaxFilingReportTemplate
     {
         // PDF generation using iTextSharp or similar
         // Include Sierra Leone branding and formatting
+
+// New report templates per updated requirements
+public class DocumentSubmissionReportTemplate
+{
+    public async Task<byte[]> GeneratePdfAsync(DocumentSubmissionReportData data)
+    {
+        // Summaries: completed %, pending %, rejected %, by tax type and period
+    }
+    public async Task<byte[]> GenerateExcelAsync(DocumentSubmissionReportData data)
+    {
+        // Excel with pivot by TaxType x Status and monthly breakdown
+    }
+}
+
+public class TaxCalendarSummaryReportTemplate
+{
+    public async Task<byte[]> GeneratePdfAsync(TaxCalendarSummaryData data)
+    {
+        // Upcoming and past obligations; include due dates, statuses, and penalty flags
+    }
+    public async Task<byte[]> GenerateExcelAsync(TaxCalendarSummaryData data)
+    {
+        // Tabular calendar export with filters
+    }
+}
+
         // Support for multiple languages if needed
     }
-    
+
     public async Task<byte[]> GenerateExcelAsync(TaxFilingReportData data)
     {
         // Excel generation using EPPlus or similar
@@ -203,7 +239,7 @@ export function ReportGenerator() {
   const [reportType, setReportType] = useState<ReportType>('tax-filing');
   const [dateRange, setDateRange] = useState<DateRange>();
   const [format, setFormat] = useState<'pdf' | 'excel'>('pdf');
-  
+
   const generateReport = useMutation({
     mutationFn: (request: ReportRequest) => reportService.generateReport(request),
     onSuccess: (reportId) => {
@@ -211,7 +247,7 @@ export function ReportGenerator() {
       pollReportStatus(reportId);
     }
   });
-  
+
   return (
     <Card>
       <CardHeader>
@@ -262,12 +298,27 @@ public class ComplianceScoreCalculator
     public async Task<decimal> CalculateScoreAsync(int clientId, int taxYear)
     {
         var filingScore = await CalculateFilingScoreAsync(clientId, taxYear);
+
+// Compliance Dashboard additions: metrics tiles per updated requirements
+// components/compliance/MetricsTiles.tsx
+export function MetricsTiles({ data }: { data: ComplianceMetrics }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <KPICard title="Compliance Score" value={data.complianceScore} format="percentage" />
+      <KPICard title="Filing Timeliness" value={data.filingTimeliness} format="percentage" />
+      <KPICard title="Payment Timeliness" value={data.paymentTimeliness} format="percentage" />
+      <KPICard title="Documents Status" value={data.documentsCompletedPct} format="percentage" />
+      <KPICard title="Deadline Adherence" value={data.deadlineAdherencePct} format="percentage" />
+    </div>
+  );
+}
+
         var paymentScore = await CalculatePaymentScoreAsync(clientId, taxYear);
         var documentScore = await CalculateDocumentScoreAsync(clientId, taxYear);
         var timelinessScore = await CalculateTimelinessScoreAsync(clientId, taxYear);
-        
+
         // Weighted scoring: Filing 30%, Payment 30%, Documents 20%, Timeliness 20%
-        return (filingScore * 0.3m) + (paymentScore * 0.3m) + 
+        return (filingScore * 0.3m) + (paymentScore * 0.3m) +
                (documentScore * 0.2m) + (timelinessScore * 0.2m);
     }
 }
@@ -280,20 +331,20 @@ public class ComplianceScoreCalculator
 // components/compliance/ComplianceDashboard.tsx
 export function ComplianceDashboard({ clientId }: { clientId: number }) {
   const { data: compliance } = useComplianceStatus(clientId);
-  
+
   return (
     <div className="space-y-6">
-      <ComplianceScoreCard 
-        score={compliance?.overallScore} 
+      <ComplianceScoreCard
+        score={compliance?.overallScore}
         level={compliance?.level}
         trend={compliance?.trend}
       />
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <FilingStatusGrid statuses={compliance?.filingStatuses} />
         <UpcomingDeadlines deadlines={compliance?.upcomingDeadlines} />
       </div>
-      
+
       <PenaltyWarnings penalties={compliance?.potentialPenalties} />
       <DocumentTracker documents={compliance?.documentStatus} />
     </div>
@@ -307,7 +358,7 @@ export function ComplianceScoreCard({ score, level, trend }: ComplianceScoreProp
     if (score >= 70) return 'text-sierra-gold-500';
     return 'text-red-600';
   };
-  
+
   return (
     <Card>
       <CardContent className="p-6">
@@ -349,19 +400,19 @@ public class ChatHub : Hub
 {
     private readonly IChatService _chatService;
     private readonly IUserContextService _userContextService;
-    
+
     public async Task JoinClientGroup(string clientId)
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, $"Client_{clientId}");
     }
-    
+
     public async Task SendMessage(SendMessageDto message)
     {
         var sentMessage = await _chatService.SendMessageAsync(message);
         await Clients.Group($"Client_{message.ClientId}")
             .SendAsync("ReceiveMessage", sentMessage);
     }
-    
+
     public async Task TypingIndicator(string clientId, bool isTyping)
     {
         await Clients.Group($"Client_{clientId}")
@@ -379,23 +430,23 @@ export function ChatInterface({ clientId }: { clientId: number }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  
+
   const { connection } = useSignalR();
-  
+
   useEffect(() => {
     if (connection) {
       connection.invoke('JoinClientGroup', clientId.toString());
-      
+
       connection.on('ReceiveMessage', (message: Message) => {
         setMessages(prev => [...prev, message]);
       });
-      
+
       connection.on('UserTyping', (userName: string, typing: boolean) => {
         setIsTyping(typing);
       });
     }
   }, [connection, clientId]);
-  
+
   const sendMessage = async () => {
     if (newMessage.trim()) {
       await connection?.invoke('SendMessage', {
@@ -406,7 +457,7 @@ export function ChatInterface({ clientId }: { clientId: number }) {
       setNewMessage('');
     }
   };
-  
+
   return (
     <Card className="h-96 flex flex-col">
       <CardHeader>
@@ -417,7 +468,7 @@ export function ChatInterface({ clientId }: { clientId: number }) {
         {isTyping && <TypingIndicator />}
       </CardContent>
       <CardFooter>
-        <MessageInput 
+        <MessageInput
           value={newMessage}
           onChange={setNewMessage}
           onSend={sendMessage}
@@ -447,7 +498,7 @@ public interface IPaymentGateway
 public class OrangeMoneyProvider : IPaymentGateway
 {
     public string GatewayName => "Orange Money";
-    
+
     public async Task<PaymentResult> ProcessPaymentAsync(PaymentRequest request)
     {
         // Integration with Orange Money API
@@ -459,7 +510,7 @@ public class OrangeMoneyProvider : IPaymentGateway
 public class AfricellMoneyProvider : IPaymentGateway
 {
     public string GatewayName => "Africell Money";
-    
+
     public async Task<PaymentResult> ProcessPaymentAsync(PaymentRequest request)
     {
         // Integration with Africell Money API
@@ -490,7 +541,7 @@ public class PaymentGatewayFactory
 export function PaymentForm({ taxFilingId, amount }: PaymentFormProps) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bank-transfer');
   const [isProcessing, setIsProcessing] = useState(false);
-  
+
   const processPayment = useMutation({
     mutationFn: (payment: PaymentRequest) => paymentService.processPayment(payment),
     onSuccess: (result) => {
@@ -504,7 +555,7 @@ export function PaymentForm({ taxFilingId, amount }: PaymentFormProps) {
       showErrorNotification(error.message);
     }
   });
-  
+
   return (
     <Card>
       <CardHeader>
@@ -514,20 +565,20 @@ export function PaymentForm({ taxFilingId, amount }: PaymentFormProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <PaymentMethodSelector 
-          value={paymentMethod} 
+        <PaymentMethodSelector
+          value={paymentMethod}
           onChange={setPaymentMethod}
           availableMethods={['bank-transfer', 'orange-money', 'africell-money', 'cash']}
         />
-        
+
         {paymentMethod === 'orange-money' && (
           <OrangeMoneyForm onSubmit={(data) => processPayment.mutate(data)} />
         )}
-        
+
         {paymentMethod === 'africell-money' && (
           <AfricellMoneyForm onSubmit={(data) => processPayment.mutate(data)} />
         )}
-        
+
         {paymentMethod === 'bank-transfer' && (
           <BankTransferForm onSubmit={(data) => processPayment.mutate(data)} />
         )}
@@ -582,7 +633,7 @@ public class Conversation
     public string? AssignedToUserId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? ClosedAt { get; set; }
-    
+
     public Client Client { get; set; }
     public ApplicationUser? AssignedTo { get; set; }
     public List<Message> Messages { get; set; } = new();
@@ -596,7 +647,7 @@ public class InternalNote
     public string Content { get; set; }
     public string CreatedByUserId { get; set; }
     public DateTime CreatedAt { get; set; }
-    
+
     public Conversation Conversation { get; set; }
     public ApplicationUser CreatedBy { get; set; }
 }
@@ -617,7 +668,7 @@ public class ReportRequest
     public DateTime? CompletedAt { get; set; }
     public string? FilePath { get; set; }
     public string? ErrorMessage { get; set; }
-    
+
     public ApplicationUser RequestedBy { get; set; }
 }
 ```
@@ -632,7 +683,7 @@ public class GlobalExceptionMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<GlobalExceptionMiddleware> _logger;
-    
+
     public async Task InvokeAsync(HttpContext context)
     {
         try
@@ -645,7 +696,7 @@ public class GlobalExceptionMiddleware
             await HandleExceptionAsync(context, ex);
         }
     }
-    
+
     private static async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         var response = exception switch
@@ -656,10 +707,10 @@ public class GlobalExceptionMiddleware
             PaymentProcessingException => new ErrorResponse("PAYMENT_ERROR", exception.Message, 422),
             _ => new ErrorResponse("INTERNAL_ERROR", "An internal error occurred", 500)
         };
-        
+
         context.Response.StatusCode = response.StatusCode;
         context.Response.ContentType = "application/json";
-        
+
         await context.Response.WriteAsync(JsonSerializer.Serialize(response));
     }
 }
@@ -673,16 +724,16 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     super(props);
     this.state = { hasError: false, error: null };
   }
-  
+
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
-  
+
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     // Log error to monitoring service
     errorReportingService.reportError(error, errorInfo);
   }
-  
+
   render() {
     if (this.state.hasError) {
       return (
@@ -703,7 +754,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
         </div>
       );
     }
-    
+
     return this.props.children;
   }
 }
@@ -721,7 +772,7 @@ public class ComplianceEngineTests
     private readonly Mock<ITaxFilingService> _mockTaxFilingService;
     private readonly Mock<IPaymentService> _mockPaymentService;
     private readonly ComplianceEngine _complianceEngine;
-    
+
     [TestMethod]
     public async Task CalculateComplianceScore_AllFilingsOnTime_ReturnsHighScore()
     {
@@ -730,10 +781,10 @@ public class ComplianceEngineTests
         var taxYear = 2024;
         _mockTaxFilingService.Setup(x => x.GetClientFilingsAsync(clientId, taxYear))
             .ReturnsAsync(GetMockOnTimeFilings());
-        
+
         // Act
         var result = await _complianceEngine.CalculateComplianceStatusAsync(clientId);
-        
+
         // Assert
         Assert.IsTrue(result.OverallScore >= 85);
         Assert.AreEqual(ComplianceLevel.Green, result.Level);
@@ -748,7 +799,7 @@ public class PaymentControllerIntegrationTests : IClassFixture<WebApplicationFac
 {
     private readonly WebApplicationFactory<Program> _factory;
     private readonly HttpClient _client;
-    
+
     [TestMethod]
     public async Task ProcessPayment_ValidRequest_ReturnsSuccess()
     {
@@ -760,10 +811,10 @@ public class PaymentControllerIntegrationTests : IClassFixture<WebApplicationFac
             Method = PaymentMethod.BankTransfer,
             TaxFilingId = 1
         };
-        
+
         // Act
         var response = await _client.PostAsJsonAsync("/api/payments", paymentRequest);
-        
+
         // Assert
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync<PaymentResult>();
@@ -802,13 +853,13 @@ jest.mock('@/lib/services/compliance-service', () => ({
 describe('ComplianceDashboard', () => {
   it('displays compliance score correctly', async () => {
     const queryClient = new QueryClient();
-    
+
     render(
       <QueryClientProvider client={queryClient}>
         <ComplianceDashboard clientId={1} />
       </QueryClientProvider>
     );
-    
+
     await waitFor(() => {
       expect(screen.getByText('85.5%')).toBeInTheDocument();
       expect(screen.getByText('Green')).toBeInTheDocument();

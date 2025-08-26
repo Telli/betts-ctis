@@ -30,6 +30,10 @@ The Client Tax Information System (CTIS) for The Betts Firm is a comprehensive d
 4. WHEN an administrator generates internal reports THEN the system SHALL provide client compliance overview, revenue processed by tax type, client activity logs, and case management reports
 5. IF a report generation fails THEN the system SHALL notify the user and provide alternative access methods
 
+6. WHEN a client requests a document submission report THEN the system SHALL provide a breakdown of submitted, pending, and rejected documents by tax type and period in PDF/Excel formats
+7. WHEN a client requests a tax calendar summary THEN the system SHALL generate a PDF/Excel summary of upcoming and past obligations with status and due dates
+
+
 ### Requirement 3: Advanced Compliance Monitoring
 
 **User Story:** As a client, I want a comprehensive compliance dashboard so that I can track my tax obligations and avoid penalties.
@@ -41,12 +45,16 @@ The Client Tax Information System (CTIS) for The Betts Firm is a comprehensive d
 3. WHEN deadlines approach THEN the system SHALL display upcoming deadlines with countdown timers and priority indicators
 4. WHEN items are overdue THEN the system SHALL highlight penalty warnings with estimated penalty amounts based on Sierra Leone Finance Act 2025
 5. IF supporting documents are missing THEN the system SHALL show document tracker with completion percentages and pending items
+6. WHEN viewing compliance metrics THEN the system SHALL display visual tiles/graphs for Compliance Score, Filing Timeliness, Payment Timeliness, Supporting Documents Status, and Deadline Adherence History with month-by-month breakdowns
+
 
 ### Requirement 4: Integrated Communication System
 
 **User Story:** As a client, I want to communicate with The Betts Firm through a secure messaging system so that I can get support and track conversation history.
 
 #### Acceptance Criteria
+
+
 
 1. WHEN a client initiates a chat THEN the system SHALL provide real-time messaging with The Betts Firm staff
 2. WHEN messages are exchanged THEN the system SHALL store complete conversation history accessible to both client and firm staff
@@ -63,6 +71,8 @@ The Client Tax Information System (CTIS) for The Betts Firm is a comprehensive d
 1. WHEN a client initiates a payment THEN the system SHALL support bank transfers, cash, cheque, and online payment methods
 2. WHEN processing Sierra Leone payments THEN the system SHALL integrate with Orange Money, Africell Money, and local banking systems
 3. WHEN a payment is initiated THEN the system SHALL create an audit trail with payment reference, amount, method, and timestamp
+6. WHEN a client initiates a payment from their dashboard THEN the system SHALL enforce secure initiation flows and prefill tax filing references when available
+
 4. WHEN payments require approval THEN the system SHALL route through appropriate approval workflows based on amount thresholds
 5. IF a payment fails THEN the system SHALL provide clear error messages and alternative payment options
 

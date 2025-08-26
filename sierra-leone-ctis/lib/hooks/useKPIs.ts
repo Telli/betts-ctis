@@ -30,7 +30,7 @@ export function useKPIs(fromDate?: Date, toDate?: Date) {
         const queryString = params.toString();
         const url = `/api/kpi/internal${queryString ? `?${queryString}` : ''}`;
         
-        const response = await apiClient.get(url);
+        const response = await apiClient.get<InternalKPIDto>(url);
         return response.data;
       } catch (error: any) {
         console.error('Error fetching internal KPIs:', error);
@@ -54,7 +54,7 @@ export function useKPITrends(fromDate: Date, toDate: Date, period: string = 'Mon
           period
         });
         
-        const response = await apiClient.get(`/api/kpi/internal/trends?${params}`);
+        const response = await apiClient.get<InternalKPIDto[]>(`/api/kpi/internal/trends?${params}`);
         return response.data;
       } catch (error: any) {
         console.error('Error fetching KPI trends:', error);
@@ -79,7 +79,7 @@ export function useClientKPIs(clientId: number, fromDate?: Date, toDate?: Date) 
         const queryString = params.toString();
         const url = `/api/kpi/client/${clientId}${queryString ? `?${queryString}` : ''}`;
         
-        const response = await apiClient.get(url);
+        const response = await apiClient.get<ClientKPIDto>(url);
         return response.data;
       } catch (error: any) {
         console.error('Error fetching client KPIs:', error);
@@ -104,7 +104,7 @@ export function useMyKPIs(fromDate?: Date, toDate?: Date) {
         const queryString = params.toString();
         const url = `/api/kpi/my-kpis${queryString ? `?${queryString}` : ''}`;
         
-        const response = await apiClient.get(url);
+        const response = await apiClient.get<ClientKPIDto>(url);
         return response.data;
       } catch (error: any) {
         console.error('Error fetching my KPIs:', error);
@@ -127,7 +127,7 @@ export function useKPIAlerts(clientId?: number) {
         const queryString = params.toString();
         const url = `/api/kpi/alerts${queryString ? `?${queryString}` : ''}`;
         
-        const response = await apiClient.get(url);
+        const response = await apiClient.get<KPIAlertDto[]>(url);
         return response.data;
       } catch (error: any) {
         console.error('Error fetching KPI alerts:', error);

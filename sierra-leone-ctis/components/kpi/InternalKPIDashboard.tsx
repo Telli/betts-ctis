@@ -16,13 +16,13 @@ import TaxTypeBreakdownChart from './TaxTypeBreakdownChart';
 import { useKPIs, useKPIAlerts, useRefreshKPIs } from '@/lib/hooks/useKPIs';
 import { InternalKPIDto, KPIAlertDto } from '@/lib/types/kpi';
 
-interface DateRange {
+interface KPIDateRange {
   from?: Date;
   to?: Date;
 }
 
 export default function InternalKPIDashboard() {
-  const [dateRange, setDateRange] = useState<DateRange>({});
+  const [dateRange, setDateRange] = useState<KPIDateRange>({});
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: kpis, isLoading, refetch } = useKPIs(dateRange.from, dateRange.to);
@@ -103,8 +103,8 @@ export default function InternalKPIDashboard() {
                 initialFocus
                 mode="range"
                 defaultMonth={dateRange?.from}
-                selected={dateRange}
-                onSelect={setDateRange}
+                selected={dateRange.from && dateRange.to ? { from: dateRange.from, to: dateRange.to } : undefined}
+                onSelect={(range) => setDateRange(range ? { from: range.from, to: range.to } : {})}
                 numberOfMonths={2}
               />
             </PopoverContent>

@@ -32,6 +32,9 @@ import { format } from 'date-fns'
 import { ReportGenerationForm } from '@/components/reports/report-generation-form'
 import { ReportProgressCard } from '@/components/reports/report-progress-card'
 import { ReportStatisticsCard } from '@/components/reports/report-statistics-card'
+import ReportGenerator from '@/components/reports/ReportGenerator'
+import ReportHistory from '@/components/reports/ReportHistory'
+import ReportPreview from '@/components/reports/ReportPreview'
 import { reportService, ReportRequest, GenerateReportRequest, ReportStatistics } from '@/lib/services/report-service'
 
 const reportTypes = [
@@ -85,6 +88,9 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true)
   const [statisticsLoading, setStatisticsLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [showNewGenerator, setShowNewGenerator] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [selectedReport, setSelectedReport] = useState<ReportRequest | null>(null)
   const [filters, setFilters] = useState({
     status: '',
     type: '',
@@ -173,6 +179,56 @@ export default function ReportsPage() {
     )
   })
 
+  // Handle new report generator
+  if (showNewGenerator) {
+    return (
+      <div className="container mx-auto p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-sierra-blue">Generate New Report</h1>
+            <p className="text-muted-foreground">
+              Create comprehensive reports with advanced Sierra Leone tax compliance features
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setShowNewGenerator(false)}>
+            ← Back to Reports
+          </Button>
+        </div>
+        <ReportGenerator 
+          onReportGenerated={(report) => {
+            setReports([report, ...reports]);
+            setShowNewGenerator(false);
+            fetchStatistics();
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Handle report preview
+  if (showPreview && selectedReport) {
+    return (
+      <div className="container mx-auto p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-sierra-blue">Report Preview</h1>
+            <p className="text-muted-foreground">
+              {selectedReport.title}
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setShowPreview(false)}>
+            ← Back to Reports
+          </Button>
+        </div>
+        <ReportPreview 
+          report={selectedReport}
+          onClose={() => setShowPreview(false)}
+          onDownload={downloadReport}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -183,12 +239,84 @@ export default function ReportsPage() {
           </p>
         </div>
         <div className="flex items-center space-x-2">
+          <Button onClick={() => setShowNewGenerator(true)} size="sm">
+            <Plus className="h-4 w-4 mr-2" />
+            New Report
+          </Button>
           <Button onClick={fetchReports} variant="outline" size="sm">
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
         </div>
       </div>
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex items-center space-x-2">
+              <Filter className="h-4 w-4" />
+              <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Status</SelectItem>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="Processing">Processing</SelectItem>
+                  <SelectItem value="Completed">Completed</SelectItem>
+                  <SelectItem value="Failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Select value={filters.type} onValueChange={(value) => setFilters(prev => ({ ...prev, type: value }))}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="All Report Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Types</SelectItem>
+                  {reportTypes.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Calendar className="h-4 w-4" />
+              <Input
+                type="date"
+                placeholder="From date"
+                value={filters.dateFrom}
+                onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+                className="w-[150px]"
+              />
+              <span className="text-muted-foreground">to</span>
+              <Input
+                type="date"
+                placeholder="To date"
+                value={filters.dateTo}
+                onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+                className="w-[150px]"
+              />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Search className="h-4 w-4" />
+              <Input
+                placeholder="Search reports..."
+                value={filters.search}
+                onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                className="w-[200px]"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList className="grid w-full grid-cols-4">
@@ -215,80 +343,17 @@ export default function ReportsPage() {
         </TabsContent>
 
         <TabsContent value="history" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Report History</CardTitle>
-              <CardDescription>
-                View and manage all generated reports
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-4 mb-6">
-                <div className="flex items-center space-x-2">
-                  <Filter className="h-4 w-4" />
-                  <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
-                    <SelectTrigger className="w-[150px]">
-                      <SelectValue placeholder="All Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">All Status</SelectItem>
-                      <SelectItem value="Pending">Pending</SelectItem>
-                      <SelectItem value="Processing">Processing</SelectItem>
-                      <SelectItem value="Completed">Completed</SelectItem>
-                      <SelectItem value="Failed">Failed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Calendar className="h-4 w-4" />
-                  <Input
-                    type="date"
-                    placeholder="From date"
-                    value={filters.dateFrom}
-                    onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
-                    className="w-[150px]"
-                  />
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Search className="h-4 w-4" />
-                  <Input
-                    placeholder="Search reports..."
-                    value={filters.search}
-                    onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                    className="w-[200px]"
-                  />
-                </div>
-              </div>
-
-              <ScrollArea className="h-[600px]">
-                <div className="space-y-4">
-                  {loading ? (
-                    <div className="text-center py-8">
-                      <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2" />
-                      <p>Loading reports...</p>
-                    </div>
-                  ) : filteredReports.length === 0 ? (
-                    <div className="text-center py-8">
-                      <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                      <p className="text-muted-foreground">No reports found</p>
-                    </div>
-                  ) : (
-                    filteredReports.map((report) => (
-                      <ReportProgressCard
-                        key={report.id}
-                        report={report}
-                        onDownload={downloadReport}
-                        onCancel={cancelReport}
-                        onDelete={deleteReport}
-                      />
-                    ))
-                  )}
-                </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+          <ReportHistory 
+            reports={filteredReports}
+            loading={loading}
+            onDownload={downloadReport}
+            onDelete={deleteReport}
+            onPreview={(report) => {
+              setSelectedReport(report);
+              setShowPreview(true);
+            }}
+            onRefresh={fetchReports}
+          />
         </TabsContent>
 
         <TabsContent value="templates" className="space-y-6">

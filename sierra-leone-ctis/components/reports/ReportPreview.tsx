@@ -1,0 +1,638 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Separator } from '@/components/ui/separator';
+import { 
+  Download, 
+  Eye, 
+  FileText, 
+  BarChart3,
+  PieChart,
+  TrendingUp,
+  Calendar,
+  User,
+  Building,
+  DollarSign,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  Printer,
+  Share2,
+  Maximize2,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw
+} from 'lucide-react';
+import { format } from 'date-fns';
+import { useToast } from '@/components/ui/use-toast';
+import { ReportRequest } from '@/lib/services/report-service';
+
+interface ReportPreviewProps {
+  report: ReportRequest;
+  onClose: () => void;
+  onDownload?: (reportId: string, title: string) => void;
+}
+
+// Mock data for different report types
+const getMockReportData = (reportType: string) => {
+  switch (reportType) {
+    case 'TaxCompliance':
+    case 'TaxSummary':
+      return {
+        clientName: 'Freetown Trading Company Ltd',
+        clientNumber: 'CL-2024-001',
+        taxYear: 2024,
+        complianceScore: 85,
+        complianceGrade: 'B',
+        summary: {
+          totalTaxLiability: 45000000,
+          totalPaid: 40000000,
+          outstandingAmount: 5000000,
+          penaltiesApplied: 750000
+        },
+        filingStatus: [
+          { taxType: 'Income Tax', status: 'Filed', dueDate: '2024-04-30', filedDate: '2024-04-28' },
+          { taxType: 'GST', status: 'Filed', dueDate: '2024-01-15', filedDate: '2024-01-14' },
+          { taxType: 'Payroll Tax', status: 'Outstanding', dueDate: '2024-02-15', filedDate: null }
+        ],
+        upcomingDeadlines: [
+          { taxType: 'GST', description: 'February 2024 Return', dueDate: '2024-03-15', daysRemaining: 10 },
+          { taxType: 'Payroll Tax', description: 'February 2024 PAYE', dueDate: '2024-03-15', daysRemaining: 10 }
+        ]
+      };
+      
+    case 'PaymentHistory':
+      return {
+        totalPayments: 24,
+        totalAmount: 52000000,
+        paymentsByMonth: [
+          { month: 'Jan 2024', count: 4, amount: 12000000 },
+          { month: 'Feb 2024', count: 3, amount: 8500000 },
+          { month: 'Mar 2024', count: 5, amount: 15000000 },
+          { month: 'Apr 2024', count: 6, amount: 16500000 }
+        ],
+        paymentsByMethod: [
+          { method: 'Orange Money', count: 12, amount: 25000000, percentage: 48 },
+          { method: 'Africell Money', count: 8, amount: 18000000, percentage: 35 },
+          { method: 'Bank Transfer', count: 4, amount: 9000000, percentage: 17 }
+        ],
+        recentPayments: [
+          { date: '2024-01-25', amount: 5000000, method: 'Orange Money', taxType: 'Income Tax', status: 'Completed' },
+          { date: '2024-01-20', amount: 2500000, method: 'Africell Money', taxType: 'GST', status: 'Completed' },
+          { date: '2024-01-15', amount: 1800000, method: 'Bank Transfer', taxType: 'Payroll Tax', status: 'Completed' }
+        ]
+      };
+      
+    case 'KPISummary':
+      return {
+        reportPeriod: { startDate: '2024-01-01', endDate: '2024-01-31' },
+        clientMetrics: {
+          totalClients: 156,
+          activeClients: 142,
+          newClients: 8,
+          churnedClients: 2
+        },
+        revenueMetrics: {
+          totalRevenue: 125000000,
+          revenueGrowth: 15.5,
+          averageRevenuePerClient: 801282,
+          recurringRevenue: 95000000
+        },
+        complianceMetrics: {
+          averageComplianceScore: 87.3,
+          clientsWithGradeA: 45,
+          clientsWithIssues: 12,
+          totalPenaltiesIssued: 8500000
+        }
+      };
+      
+    default:
+      return {
+        summary: 'This is a preview of the ' + reportType + ' report.',
+        data: 'Detailed report data would be displayed here.'
+      };
+  }
+};
+
+export default function ReportPreview({ report, onClose, onDownload }: ReportPreviewProps) {
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState('preview');
+  const [zoomLevel, setZoomLevel] = useState(100);
+  const [reportData, setReportData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate loading report data
+    const timer = setTimeout(() => {
+      setReportData(getMockReportData(report.reportType));
+      setLoading(false);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [report]);
+
+  const handleDownload = () => {
+    if (onDownload) {
+      onDownload(report.id, report.title);
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: report.title,
+        text: report.description || 'Report generated by Sierra Leone CTIS',
+        url: window.location.href,
+      });
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      toast({
+        title: 'Link Copied',
+        description: 'Report link has been copied to clipboard.',
+      });
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return `SLE ${amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  };
+
+  const renderTaxCompliancePreview = (data: any) => (
+    <div className="space-y-6">
+      {/* Client Header */}
+      <Card className="bg-sierra-blue-50 border-sierra-blue-200">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-2xl font-bold text-sierra-blue-900">{data.clientName}</h2>
+              <p className="text-sierra-blue-700">Client ID: {data.clientNumber}</p>
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-bold text-sierra-blue-900">{data.complianceScore}/100</div>
+              <Badge className="mt-1" variant={data.complianceGrade === 'A' ? 'default' : 'secondary'}>
+                Grade {data.complianceGrade}
+              </Badge>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <div className="text-2xl font-bold">{formatCurrency(data.summary.totalTaxLiability)}</div>
+              <div className="text-sm text-muted-foreground">Total Tax Liability</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-green-600">{formatCurrency(data.summary.totalPaid)}</div>
+              <div className="text-sm text-muted-foreground">Total Paid</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-red-600">{formatCurrency(data.summary.outstandingAmount)}</div>
+              <div className="text-sm text-muted-foreground">Outstanding</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-orange-600">{formatCurrency(data.summary.penaltiesApplied)}</div>
+              <div className="text-sm text-muted-foreground">Penalties</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Filing Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Filing Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {data.filingStatus.map((filing: any, index: number) => (
+              <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="flex items-center gap-3">
+                  {filing.status === 'Filed' ? (
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                  ) : (
+                    <AlertCircle className="h-5 w-5 text-red-600" />
+                  )}
+                  <div>
+                    <div className="font-medium">{filing.taxType}</div>
+                    <div className="text-sm text-muted-foreground">
+                      Due: {format(new Date(filing.dueDate), 'MMM d, yyyy')}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <Badge variant={filing.status === 'Filed' ? 'default' : 'destructive'}>
+                    {filing.status}
+                  </Badge>
+                  {filing.filedDate && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Filed: {format(new Date(filing.filedDate), 'MMM d')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Upcoming Deadlines */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Upcoming Deadlines</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {data.upcomingDeadlines.map((deadline: any, index: number) => (
+              <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Clock className="h-5 w-5 text-orange-600" />
+                  <div>
+                    <div className="font-medium">{deadline.taxType}</div>
+                    <div className="text-sm text-muted-foreground">{deadline.description}</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-medium">
+                    {format(new Date(deadline.dueDate), 'MMM d, yyyy')}
+                  </div>
+                  <div className="text-xs text-orange-600">
+                    {deadline.daysRemaining} days remaining
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderPaymentHistoryPreview = (data: any) => (
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl font-bold">{data.totalPayments}</div>
+                <div className="text-sm text-muted-foreground">Total Payments</div>
+              </div>
+              <FileText className="h-8 w-8 text-sierra-blue-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl font-bold">{formatCurrency(data.totalAmount)}</div>
+                <div className="text-sm text-muted-foreground">Total Amount</div>
+              </div>
+              <DollarSign className="h-8 w-8 text-sierra-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl font-bold">{data.paymentsByMethod[0].method}</div>
+                <div className="text-sm text-muted-foreground">Most Used Method</div>
+              </div>
+              <TrendingUp className="h-8 w-8 text-sierra-gold-600" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Payment Methods Breakdown */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment Methods</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {data.paymentsByMethod.map((method: any, index: number) => (
+              <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <div className="font-medium">{method.method}</div>
+                  <div className="text-sm text-muted-foreground">{method.count} transactions</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold">{formatCurrency(method.amount)}</div>
+                  <div className="text-sm text-muted-foreground">{method.percentage}%</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Recent Payments */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Payments</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {data.recentPayments.map((payment: any, index: number) => (
+              <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                  <div>
+                    <div className="font-medium">{formatCurrency(payment.amount)}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {payment.taxType} • {payment.method}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm">{format(new Date(payment.date), 'MMM d, yyyy')}</div>
+                  <Badge variant="default" className="mt-1">
+                    {payment.status}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderKPISummaryPreview = (data: any) => (
+    <div className="space-y-6">
+      {/* Client Metrics */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Client Metrics</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-sierra-blue-600">{data.clientMetrics.totalClients}</div>
+              <div className="text-sm text-muted-foreground">Total Clients</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-green-600">{data.clientMetrics.activeClients}</div>
+              <div className="text-sm text-muted-foreground">Active Clients</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-sierra-gold-600">{data.clientMetrics.newClients}</div>
+              <div className="text-sm text-muted-foreground">New Clients</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-red-600">{data.clientMetrics.churnedClients}</div>
+              <div className="text-sm text-muted-foreground">Churned</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Revenue Metrics */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Revenue Metrics</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <div className="text-2xl font-bold">{formatCurrency(data.revenueMetrics.totalRevenue)}</div>
+              <div className="text-sm text-muted-foreground">Total Revenue</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-green-600">+{data.revenueMetrics.revenueGrowth}%</div>
+              <div className="text-sm text-muted-foreground">Growth Rate</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold">{formatCurrency(data.revenueMetrics.averageRevenuePerClient)}</div>
+              <div className="text-sm text-muted-foreground">Avg per Client</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold">{formatCurrency(data.revenueMetrics.recurringRevenue)}</div>
+              <div className="text-sm text-muted-foreground">Recurring</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Compliance Metrics */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Compliance Metrics</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <div className="text-2xl font-bold text-sierra-blue-600">{data.complianceMetrics.averageComplianceScore}</div>
+              <div className="text-sm text-muted-foreground">Avg Compliance Score</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-green-600">{data.complianceMetrics.clientsWithGradeA}</div>
+              <div className="text-sm text-muted-foreground">Grade A Clients</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-orange-600">{data.complianceMetrics.clientsWithIssues}</div>
+              <div className="text-sm text-muted-foreground">With Issues</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-red-600">{formatCurrency(data.complianceMetrics.totalPenaltiesIssued)}</div>
+              <div className="text-sm text-muted-foreground">Total Penalties</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderGenericPreview = (data: any) => (
+    <Card>
+      <CardContent className="p-8">
+        <div className="text-center">
+          <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+          <h3 className="text-lg font-medium mb-2">{report.reportType} Report</h3>
+          <p className="text-muted-foreground mb-4">
+            This is a preview of your {report.reportType} report. The actual report will contain detailed data and analysis.
+          </p>
+          <div className="text-sm text-muted-foreground">
+            <p>Generated: {format(new Date(report.createdAt), 'PPP pp')}</p>
+            {report.parameters && Object.keys(report.parameters).length > 0 && (
+              <p className="mt-2">Parameters: {Object.keys(report.parameters).join(', ')}</p>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                {report.title}
+              </CardTitle>
+              <CardDescription className="mt-2">
+                {report.description || `${report.reportType} report generated on ${format(new Date(report.createdAt), 'PPP')}`}
+              </CardDescription>
+            </div>
+            <Badge className="ml-4">
+              {report.status}
+            </Badge>
+          </div>
+        </CardHeader>
+      </Card>
+
+      {/* Action Bar */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setZoomLevel(Math.max(50, zoomLevel - 10))}>
+            <ZoomOut className="h-4 w-4" />
+          </Button>
+          <span className="text-sm text-muted-foreground">{zoomLevel}%</span>
+          <Button variant="outline" size="sm" onClick={() => setZoomLevel(Math.min(200, zoomLevel + 10))}>
+            <ZoomIn className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setZoomLevel(100)}>
+            <RotateCcw className="h-4 w-4" />
+          </Button>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleShare}>
+            <Share2 className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={handlePrint}>
+            <Printer className="h-4 w-4" />
+          </Button>
+          {report.status === 'Completed' && (
+            <Button size="sm" onClick={handleDownload}>
+              <Download className="mr-2 h-4 w-4" />
+              Download
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Preview Content */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="preview">Preview</TabsTrigger>
+          <TabsTrigger value="details">Details</TabsTrigger>
+          <TabsTrigger value="metadata">Metadata</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="preview" className="space-y-6">
+          <div style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top left' }}>
+            {loading ? (
+              <Card>
+                <CardContent className="p-8">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sierra-blue-600 mx-auto mb-4"></div>
+                    <p className="text-muted-foreground">Loading report preview...</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : reportData ? (
+              <>
+                {(report.reportType === 'TaxCompliance' || report.reportType === 'TaxSummary') && renderTaxCompliancePreview(reportData)}
+                {report.reportType === 'PaymentHistory' && renderPaymentHistoryPreview(reportData)}
+                {report.reportType === 'KPISummary' && renderKPISummaryPreview(reportData)}
+                {!['TaxCompliance', 'TaxSummary', 'PaymentHistory', 'KPISummary'].includes(report.reportType) && renderGenericPreview(reportData)}
+              </>
+            ) : (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Unable to load report preview. Please try downloading the report directly.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="details" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Report Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="font-medium">Report Type</div>
+                  <div className="text-sm text-muted-foreground">{report.reportType}</div>
+                </div>
+                <div>
+                  <div className="font-medium">Status</div>
+                  <div className="text-sm text-muted-foreground">{report.status}</div>
+                </div>
+                <div>
+                  <div className="font-medium">Created</div>
+                  <div className="text-sm text-muted-foreground">
+                    {format(new Date(report.createdAt), 'PPP pp')}
+                  </div>
+                </div>
+                {report.completedAt && (
+                  <div>
+                    <div className="font-medium">Completed</div>
+                    <div className="text-sm text-muted-foreground">
+                      {format(new Date(report.completedAt), 'PPP pp')}
+                    </div>
+                  </div>
+                )}
+                {report.fileSize && (
+                  <div>
+                    <div className="font-medium">File Size</div>
+                    <div className="text-sm text-muted-foreground">
+                      {(report.fileSize / 1024 / 1024).toFixed(2)} MB
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <div className="font-medium">User ID</div>
+                  <div className="text-sm text-muted-foreground">{report.userId}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="metadata" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Parameters & Configuration</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {report.parameters && Object.keys(report.parameters).length > 0 ? (
+                <div className="space-y-3">
+                  {Object.entries(report.parameters).map(([key, value]) => (
+                    <div key={key} className="flex justify-between">
+                      <span className="font-medium capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                      <span className="text-muted-foreground">
+                        {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">No parameters configured for this report.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

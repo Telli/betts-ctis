@@ -15,7 +15,7 @@ import { PaymentService, PaymentDto, PaymentStatus, PaymentMethod, CreatePayment
 import { Plus, Search, DollarSign, Filter, Eye, CheckCircle, XCircle, Clock, CreditCard } from 'lucide-react'
 import { formatSierraLeones } from '@/lib/utils/currency'
 import Loading from '@/app/loading'
-import PaymentForm from '@/components/payment-form'
+import { PaymentGatewayForm } from '@/components/payments'
 
 export default function PaymentsPage() {
   const { toast } = useToast()
@@ -54,12 +54,24 @@ export default function PaymentsPage() {
       }
     } catch (error) {
       console.error('Error fetching payments:', error)
+      
+      // Set empty state so UI still renders
+      setPayments([])
+      setTotalPages(1)
+      setTotalCount(0)
+      
+      // Check if it's an authentication error
+      const isAuthError = (error as any)?.response?.status === 401 || (error as any)?.message?.includes('401')
+      
       toast({
         variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to load payments',
+        title: isAuthError ? 'Authentication Required' : 'Error Loading Payments',
+        description: isAuthError 
+          ? 'Please log in to view payments. The page will still function for creating new payments.'
+          : 'Failed to load payments data. You can still create new payments.',
       })
     } finally {
+      // Always clear loading state so UI renders
       setLoading(false)
     }
   }
@@ -73,6 +85,12 @@ export default function PaymentsPage() {
       }
     } catch (error) {
       console.error('Error fetching pending approvals:', error)
+      
+      // Set empty state so UI still renders
+      setPendingApprovals([])
+      
+      // Don't show toast for this error since we already show one for main payments
+      // The user will see the authentication error from fetchPayments
     }
   }
 
@@ -200,16 +218,22 @@ export default function PaymentsPage() {
               New Payment
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Record New Payment</DialogTitle>
+              <DialogTitle>Process New Payment</DialogTitle>
             </DialogHeader>
-            <PaymentForm 
-              onSuccess={() => {
+            <PaymentGatewayForm 
+              amount={50000} // Default amount, can be changed in the form
+              onSuccess={(paymentReference) => {
                 setShowCreateDialog(false)
                 fetchPayments()
                 fetchPendingApprovals()
+                toast({
+                  title: 'Payment Processed',
+                  description: `Payment ${paymentReference} has been successfully processed`,
+                })
               }}
+              onCancel={() => setShowCreateDialog(false)}
             />
           </DialogContent>
         </Dialog>
@@ -349,8 +373,21 @@ export default function PaymentsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {payments.map((payment) => (
-                      <TableRow key={payment.paymentId}>
+                    {payments.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8">
+                          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                            <CreditCard className="h-8 w-8" />
+                            <p>No payments found</p>
+                            <p className="text-sm">
+                              {totalCount === 0 ? 'Use the "New Payment" button above to create your first payment.' : 'Try adjusting your search filters.'}
+                            </p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      payments.map((payment) => (
+                        <TableRow key={payment.paymentId}>
                         <TableCell className="font-mono text-sm">
                           {payment.paymentReference}
                         </TableCell>
@@ -420,7 +457,7 @@ export default function PaymentsPage() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )))}
                   </TableBody>
                 </Table>
               </div>
@@ -478,8 +515,19 @@ export default function PaymentsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pendingApprovals.map((payment) => (
-                      <TableRow key={payment.paymentId}>
+                    {pendingApprovals.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-8">
+                          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                            <Clock className="h-8 w-8" />
+                            <p>No pending approvals</p>
+                            <p className="text-sm">All payments have been processed or no payments require approval.</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      pendingApprovals.map((payment) => (
+                        <TableRow key={payment.paymentId}>
                         <TableCell className="font-mono text-sm">
                           {payment.paymentReference}
                         </TableCell>
@@ -533,7 +581,7 @@ export default function PaymentsPage() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )))}
                   </TableBody>
                 </Table>
               </div>

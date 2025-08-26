@@ -97,7 +97,7 @@ export default function ComplianceTrendChart({
               stroke="#10b981" 
               strokeDasharray="5 5"
               strokeWidth={2}
-              label={{ value: `Target: ${target}%`, position: "topRight" }}
+              label={{ value: `Target: ${target}%`, position: "top" }}
             />
           )}
           

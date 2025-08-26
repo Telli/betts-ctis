@@ -15,6 +15,9 @@ This document outlines the comprehensive implementation plan for enhancing the S
 - ✅ **Error Handling**: Fixed null pointer exceptions across all pages with proper optional chaining
 - ✅ **Navigation Updates**: Replaced dollar sign icons with credit card icons in navigation menus
 - ✅ **Payment Integration**: Updated payment icons to Sierra Leone providers (Orange Money, Africell Money, etc.)
+- ✅ **Reports Expansion**: Added Document Submission and Tax Calendar Summary reports (PDF/Excel)
+- ✅ **Compliance Metrics Tiles**: Dashboard now includes Payment Timeliness and Deadline Adherence tiles
+
 
 ### Key Files Modified/Created
 - ✅ `lib/utils/currency.ts` - Sierra Leone currency formatting utilities
@@ -27,6 +30,57 @@ This document outlines the comprehensive implementation plan for enhancing the S
 ### Technical Achievements
 - ✅ **Type Safety**: Complete TypeScript interfaces for all service contracts
 - ✅ **Null Safety**: Optional chaining and nullish coalescing throughout
+
+## Unified Task List and Timeline (Tax Info + Existing)
+
+### Status Summary
+- Completed: KPI Dashboards (1.x), Reporting Engine and templates (2.1–2.5), Compliance Engine and UI (3.1–3.5), Chat System (4.x), Payment Integration (5.x), Permissions (6.x), Documents (7.x), Notifications (8.x), Tax Calculation (9.x), Security Foundations (10.1–10.5, partial)
+- Newly Completed (Tax Info): Document Submission Report, Tax Calendar Summary, Compliance Metrics Tiles
+- In Progress: Production Deployment and Launch (12.x)
+- Pending: Specific 12.x tasks listed below
+
+### New Tax-Info Tasks (All Completed)
+- Document Submission Report (PDF/Excel) – Included in Reports module, API, and UI
+- Tax Calendar Summary Report (PDF/Excel) – Included in Reports module, API, and UI
+- Compliance Metrics Tiles – Added to dashboard (Payment Timeliness, Deadline Adherence)
+
+### Outstanding Tasks from Original Specifications (Prioritized)
+1) P0 – Production Deployment and Launch (12.x)
+   - 12.1 Production Environment Setup (3 days)
+     - Dependencies: Security configs (10.x), DB migrations finalized; Infra access
+   - 12.2 Deployment Automation (CI/CD) (3 days)
+     - Dependencies: Test suites green; Secrets management configured
+   - 12.3 Production Data Migration (4 days)
+     - Dependencies: Finalized schemas; Backups/rollback plan; Test migration dry-run
+   - 12.4 Monitoring and Support (3 days)
+     - Dependencies: APM provider credentials; Alert routing
+   - 12.5 Go-Live and Post-Launch Support (2 days)
+     - Dependencies: Stakeholder comms; Runbooks; Support rota
+
+2) P1 – Security Hardening Follow-ups (2 days total)
+   - CSP headers verification; token refresh edge-cases; rate-limit tuning
+
+3) P2 – UX Polish and Accessibility (2 days total)
+   - Keyboard navigation; WCAG tweaks; animation consistency
+
+### Dependencies Overview
+- Deployment (12.1–12.5) depends on: all 1.x–11.x features complete, test suites stable, secrets configured
+- Data Migration (12.3) depends on: finalized DB schemas and validated migrations
+- Monitoring (12.4) depends on: APM/logging integrations provisioned and keys stored
+
+### High-Level Timeline (Working Days)
+- Week 1: 12.1 (3d) + 12.2 (3d)
+- Week 2: 12.3 (4d) + 12.4 (3d)
+- Week 3: 12.5 (2d) + P1 (2d) + P2 (2d) and contingency
+
+### Phase 12 Execution Status
+- [x] 12.1 Production Environment Setup – Completed (docs, runbooks, config templates added under ops/production)
+- [/] 12.2 Deployment Automation (CI/CD) – In Progress
+- [ ] 12.3 Production Data Migration – Pending
+- [ ] 12.4 Monitoring and Support – Pending
+- [ ] 12.5 Go-Live and Post-Launch Support – Pending
+
+
 - ✅ **User Experience**: New users see zeros/empty lists, demo users see populated data
 - ✅ **Currency Localization**: Sierra Leone Leones formatting with proper Le symbol
 - ✅ **Error Resilience**: Graceful degradation when APIs are unavailable
@@ -385,7 +439,7 @@ public class TaxFiling
     public decimal TaxLiability { get; set; }
     public string FilingReference { get; set; }
     public List<Document> Documents { get; set; }
-    
+
     // Associate delegation fields
     public string? CreatedByAssociateId { get; set; }
     public ApplicationUser? CreatedByAssociate { get; set; }
@@ -408,7 +462,7 @@ public class Payment
     public string ApprovalWorkflow { get; set; }
     public int? TaxFilingId { get; set; }
     public TaxFiling TaxFiling { get; set; }
-    
+
     // Associate delegation fields
     public string? ProcessedByAssociateId { get; set; }
     public ApplicationUser? ProcessedByAssociate { get; set; }
@@ -432,7 +486,7 @@ public class Document
     public DocumentCategory Category { get; set; }
     public int? TaxFilingId { get; set; }
     public TaxFiling TaxFiling { get; set; }
-    
+
     // Associate delegation fields
     public string? UploadedByAssociateId { get; set; }
     public ApplicationUser? UploadedByAssociate { get; set; }
@@ -559,14 +613,14 @@ builder.Services.AddAuthorization(options =>
         policy.Requirements.Add(new AssociatePermissionRequirement("TaxFilings", AssociatePermissionLevel.Delete)));
     options.AddPolicy("TaxFilingSubmit", policy =>
         policy.Requirements.Add(new AssociatePermissionRequirement("TaxFilings", AssociatePermissionLevel.Submit)));
-    
+
     options.AddPolicy("PaymentRead", policy =>
         policy.Requirements.Add(new AssociatePermissionRequirement("Payments", AssociatePermissionLevel.Read)));
     options.AddPolicy("PaymentCreate", policy =>
         policy.Requirements.Add(new AssociatePermissionRequirement("Payments", AssociatePermissionLevel.Create)));
     options.AddPolicy("PaymentApprove", policy =>
         policy.Requirements.Add(new AssociatePermissionRequirement("Payments", AssociatePermissionLevel.Approve)));
-    
+
     options.AddPolicy("DocumentRead", policy =>
         policy.Requirements.Add(new AssociatePermissionRequirement("Documents", AssociatePermissionLevel.Read)));
     options.AddPolicy("DocumentCreate", policy =>
@@ -584,13 +638,13 @@ builder.Services.AddRateLimiter(options =>
         limiterOptions.Window = TimeSpan.FromMinutes(1);
         limiterOptions.PermitLimit = 200; // Higher limit for associates
     });
-    
+
     options.AddFixedWindowLimiter("client-api", limiterOptions =>
     {
         limiterOptions.Window = TimeSpan.FromMinutes(1);
         limiterOptions.PermitLimit = 60; // Standard limit for clients
     });
-    
+
     options.AddFixedWindowLimiter("admin-api", limiterOptions =>
     {
         limiterOptions.Window = TimeSpan.FromMinutes(1);

@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import ClientPaymentForm from '@/components/client-portal/forms/payment-form'
+import { PaymentGatewayForm } from '@/components/payments'
 
 interface Payment {
   id: string
@@ -241,15 +241,31 @@ export default function ClientPaymentsPage() {
                 New Payment
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Submit New Payment</DialogTitle>
               </DialogHeader>
-              <ClientPaymentForm 
-                onSuccess={() => {
+              <PaymentGatewayForm 
+                amount={50000} // Default amount, user can change
+                taxType="Income Tax"
+                taxYear={2024}
+                onSuccess={(paymentReference) => {
                   setShowCreateDialog(false)
-                  // Refresh payments list when backend is ready
+                  // Add the new payment to the mock data
+                  const newPayment = {
+                    id: Date.now().toString(),
+                    paymentReference,
+                    taxType: 'Income Tax',
+                    taxYear: 2024,
+                    amount: 50000,
+                    method: 'orange-money' as const,
+                    status: 'processing' as const,
+                    paymentDate: new Date(),
+                    currency: 'SLE'
+                  }
+                  setPayments(prev => [newPayment, ...prev])
                 }}
+                onCancel={() => setShowCreateDialog(false)}
               />
             </DialogContent>
           </Dialog>

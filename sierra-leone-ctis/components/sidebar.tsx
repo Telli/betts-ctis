@@ -24,6 +24,7 @@ import {
   Bell,
   Shield,
   UserCog,
+  TrendingUp,
 } from "lucide-react"
 
 export function Sidebar() {
@@ -44,6 +45,12 @@ export function Sidebar() {
       href: "/dashboard",
       icon: BarChart3,
       current: pathname === "/dashboard",
+    },
+    {
+      name: "KPI Dashboard",
+      href: "/kpi-dashboard",
+      icon: TrendingUp,
+      current: pathname.startsWith("/kpi-dashboard"),
     },
     {
       name: "Home",
@@ -79,9 +86,9 @@ export function Sidebar() {
     },
     {
       name: "Tax Calculator",
-      href: "/calculator",
+      href: "/tax-calculator",
       icon: Calculator,
-      current: pathname === "/calculator",
+      current: pathname.startsWith("/tax-calculator"),
     },
     {
       name: "Documents",

@@ -112,7 +112,11 @@ export default function ClientKPIDashboard({
       <ComplianceScoreCard 
         score={clientKPIs.complianceScore}
         level={clientKPIs.complianceLevel}
-        trend={clientKPIs.filingHistory}
+        trend={clientKPIs.filingHistory && clientKPIs.filingHistory.length >= 2 
+          ? ((clientKPIs.filingHistory[clientKPIs.filingHistory.length - 1].value - 
+              clientKPIs.filingHistory[clientKPIs.filingHistory.length - 2].value) / 
+              clientKPIs.filingHistory[clientKPIs.filingHistory.length - 2].value) * 100
+          : undefined}
       />
 
       {/* KPI Summary Cards */}
@@ -227,63 +231,6 @@ export default function ClientKPIDashboard({
         </CardContent>
       </Card>
     </div>
-  );
-}
-
-function ComplianceScoreCard({ score, level, trend }: any) {
-  const getScoreColor = (score: number) => {
-    if (score >= 85) return 'text-sierra-green-600 bg-sierra-green-100';
-    if (score >= 70) return 'text-sierra-gold-600 bg-sierra-gold-100';
-    return 'text-red-600 bg-red-100';
-  };
-
-  const getLevelColor = (level: ComplianceLevel) => {
-    switch (level) {
-      case ComplianceLevel.Green:
-        return 'bg-sierra-green-100 text-sierra-green-800';
-      case ComplianceLevel.Yellow:
-        return 'bg-sierra-gold-100 text-sierra-gold-800';
-      case ComplianceLevel.Red:
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  return (
-    <Card className="relative overflow-hidden">
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold mb-2">Overall Compliance Score</h3>
-            <div className="flex items-center space-x-4">
-              <div className={`p-4 rounded-full ${getScoreColor(score).split(' ')[1]}`}>
-                <p className={`text-3xl font-bold ${getScoreColor(score).split(' ')[0]}`}>
-                  {score.toFixed(1)}%
-                </p>
-              </div>
-              <div>
-                <Badge className={getLevelColor(level)}>
-                  {level} Level
-                </Badge>
-                <p className="text-sm text-gray-600 mt-1">
-                  {level === ComplianceLevel.Green && 'Excellent compliance'}
-                  {level === ComplianceLevel.Yellow && 'Good, with room for improvement'}
-                  {level === ComplianceLevel.Red && 'Needs immediate attention'}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="text-right">
-            <TrendingUp className="h-8 w-8 text-sierra-blue-600" />
-          </div>
-        </div>
-        
-        <div className="mt-4">
-          <Progress value={score} className="h-2" />
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 

@@ -6,6 +6,7 @@ import { AuthProvider } from "@/context/auth-context"
 import { ErrorBoundary } from "@/components/ui/error-boundary"
 import { Toaster } from "@/components/ui/toaster"
 import { ConditionalLayout } from "@/components/conditional-layout"
+import { Providers } from "@/lib/providers"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -25,12 +26,14 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <ErrorBoundary>
-          <AuthProvider>
-            <ConditionalLayout>
-              {children}
-            </ConditionalLayout>
-            <Toaster />
-          </AuthProvider>
+          <Providers>
+            <AuthProvider>
+              <ConditionalLayout>
+                {children}
+              </ConditionalLayout>
+              <Toaster />
+            </AuthProvider>
+          </Providers>
         </ErrorBoundary>
       </body>
     </html>
