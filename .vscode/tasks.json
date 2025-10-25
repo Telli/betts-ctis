@@ -1,0 +1,12 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Start CTIS (backend + frontend)",
+			"type": "shell",
+			"command": "pwsh -NoProfile -Command \"$env:NEXT_PUBLIC_API_URL='http://localhost:5001'; Start-Process -FilePath 'dotnet' -ArgumentList 'run','--project','Betts\\BettsTax\\BettsTax.Web\\BettsTax.Web.csproj' -WindowStyle Hidden; Set-Location 'Betts\\sierra-leone-ctis'; pnpm dev\"",
+			"isBackground": true,
+			"group": "build"
+		}
+	]
+}
