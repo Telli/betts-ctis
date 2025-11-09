@@ -1,5 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Security.Claims;
 using BettsTax.Web.Models;
 using BettsTax.Web.Services;
 
@@ -14,13 +17,18 @@ namespace BettsTax.Web.Controllers
     {
         private readonly IAuthenticationService _authService;
         private readonly ILogger<AuthController> _logger;
+        private readonly IHostEnvironment _environment;
+
+        private const string RefreshTokenCookieName = "BettsTax.RefreshToken";
 
         public AuthController(
             IAuthenticationService authService,
-            ILogger<AuthController> logger)
+            ILogger<AuthController> logger,
+            IHostEnvironment environment)
         {
             _authService = authService;
             _logger = logger;
+            _environment = environment;
         }
 
         /// <summary>
@@ -58,6 +66,13 @@ namespace BettsTax.Web.Controllers
                     return Unauthorized(response);
                 }
 
+                if (!string.IsNullOrEmpty(response.RefreshToken) && response.RefreshTokenExpiresAt.HasValue)
+                {
+                    SetRefreshTokenCookie(response.RefreshToken, response.RefreshTokenExpiresAt.Value);
+                }
+
+                response.RefreshToken = null;
+
                 _logger.LogInformation("Successful login for email: {Email}", request.Email);
                 return Ok(response);
             }
@@ -81,11 +96,16 @@ namespace BettsTax.Web.Controllers
         [AllowAnonymous]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> ValidateToken([FromBody] string token)
+        public async Task<IActionResult> ValidateToken([FromBody] TokenValidationRequest request)
         {
             try
             {
-                var isValid = await _authService.ValidateTokenAsync(token);
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(new { success = false, message = "Token is required" });
+                }
+
+                var isValid = await _authService.ValidateTokenAsync(request.Token);
 
                 if (!isValid)
                 {
@@ -98,6 +118,69 @@ namespace BettsTax.Web.Controllers
             {
                 _logger.LogError(ex, "Error validating token");
                 return Unauthorized(new { success = false, message = "Token validation failed" });
+            }
+        }
+
+        /// <summary>
+        /// Refresh access token using refresh token from cookie or request body
+        /// </summary>
+        /// <param name="request">Optional request containing refresh token</param>
+        /// <returns>New access token</returns>
+        [HttpPost("refresh")]
+        [AllowAnonymous]
+        [EnableRateLimiting("AuthenticationPolicy")]
+        [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> Refresh([FromBody] RefreshTokenRequest? request)
+        {
+            try
+            {
+                var refreshToken = request?.RefreshToken;
+                if (string.IsNullOrWhiteSpace(refreshToken))
+                {
+                    refreshToken = Request.Cookies[RefreshTokenCookieName];
+                }
+
+                if (string.IsNullOrWhiteSpace(refreshToken))
+                {
+                    return Unauthorized(new LoginResponse
+                    {
+                        Success = false,
+                        Message = "Refresh token is required"
+                    });
+                }
+
+                var response = await _authService.RefreshTokenAsync(refreshToken);
+
+                if (!response.Success || string.IsNullOrEmpty(response.Token) || string.IsNullOrEmpty(response.RefreshToken))
+                {
+                    ClearRefreshTokenCookie();
+                    return Unauthorized(new LoginResponse
+                    {
+                        Success = false,
+                        Message = response.Message ?? "Unable to refresh session"
+                    });
+                }
+
+                if (response.RefreshTokenExpiresAt.HasValue)
+                {
+                    SetRefreshTokenCookie(response.RefreshToken, response.RefreshTokenExpiresAt.Value);
+                }
+
+                response.RefreshToken = null;
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error refreshing token");
+                ClearRefreshTokenCookie();
+                return StatusCode(500, new LoginResponse
+                {
+                    Success = false,
+                    Message = "An error occurred while refreshing the token"
+                });
             }
         }
 
@@ -143,15 +226,52 @@ namespace BettsTax.Web.Controllers
         [HttpPost("logout")]
         [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        public IActionResult Logout()
+        public async Task<IActionResult> Logout([FromBody] RefreshTokenRequest? request)
         {
-            // In a more sophisticated implementation, you would:
-            // 1. Blacklist the token in Redis or database
-            // 2. Invalidate any refresh tokens
-            // 3. Log the logout event
+            var refreshToken = request?.RefreshToken;
+            if (string.IsNullOrWhiteSpace(refreshToken))
+            {
+                refreshToken = Request.Cookies[RefreshTokenCookieName];
+            }
 
-            _logger.LogInformation("User logged out");
+            if (!string.IsNullOrWhiteSpace(refreshToken))
+            {
+                await _authService.RevokeRefreshTokenAsync(refreshToken);
+            }
+
+            ClearRefreshTokenCookie();
+
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+            _logger.LogInformation("User {UserId} logged out", userId);
+
             return Ok(new { success = true, message = "Logged out successfully" });
+        }
+
+        private void SetRefreshTokenCookie(string refreshToken, DateTime expiresAt)
+        {
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Strict,
+                Expires = expiresAt,
+                Path = "/api/auth"
+            };
+
+            Response.Cookies.Append(RefreshTokenCookieName, refreshToken, cookieOptions);
+        }
+
+        private void ClearRefreshTokenCookie()
+        {
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Strict,
+                Path = "/api/auth"
+            };
+
+            Response.Cookies.Delete(RefreshTokenCookieName, cookieOptions);
         }
 
         /// <summary>
@@ -162,8 +282,15 @@ namespace BettsTax.Web.Controllers
         [HttpGet("demo-credentials")]
         [AllowAnonymous]
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public IActionResult GetDemoCredentials()
         {
+            if (!_environment.IsDevelopment())
+            {
+                _logger.LogWarning("Attempt to access demo credentials outside development environment");
+                return NotFound();
+            }
+
             var credentials = new[]
             {
                 new { email = "staff@bettsfirm.com", password = "password", role = "Staff", description = "Staff member with access to all clients" },

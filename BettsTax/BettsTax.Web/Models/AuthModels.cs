@@ -27,6 +27,7 @@ namespace BettsTax.Web.Models
         public string? RefreshToken { get; set; }
         public UserInfo? User { get; set; }
         public DateTime? ExpiresAt { get; set; }
+        public DateTime? RefreshTokenExpiresAt { get; set; }
     }
 
     /// <summary>
@@ -39,6 +40,23 @@ namespace BettsTax.Web.Models
         public string Role { get; set; } = string.Empty;
         public int? ClientId { get; set; }
         public string? ClientName { get; set; }
+    }
+
+    /// <summary>
+    /// Token validation request payload
+    /// </summary>
+    public class TokenValidationRequest
+    {
+        [Required]
+        public string Token { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Refresh token request payload
+    /// </summary>
+    public class RefreshTokenRequest
+    {
+        public string? RefreshToken { get; set; }
     }
 
     /// <summary>
