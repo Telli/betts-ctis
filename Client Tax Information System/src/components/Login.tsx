@@ -15,9 +15,39 @@ export function Login({ onLogin }: LoginProps) {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // For demo purposes, staff emails have @bettsfirm.com
-    const role = email.includes("@bettsfirm.com") ? "staff" : "client";
-    onLogin(role);
+
+    // TODO: Replace with actual authentication API call
+    // This is a temporary demo implementation
+    // In production, this should:
+    // 1. Send credentials to a secure authentication endpoint
+    // 2. Validate credentials server-side
+    // 3. Return a JWT or session token
+    // 4. Never trust client-side role determination
+
+    // SECURITY WARNING: This demo code does not validate credentials!
+    // Do not use in production without implementing proper authentication
+
+    if (!email || !password) {
+      alert("Please enter both email and password");
+      return;
+    }
+
+    // Demo validation - INSECURE, for demonstration only
+    const validDemoCredentials = [
+      { email: "staff@bettsfirm.com", password: "password", role: "staff" as const },
+      { email: "client@example.com", password: "password", role: "client" as const }
+    ];
+
+    const user = validDemoCredentials.find(
+      (cred) => cred.email === email && cred.password === password
+    );
+
+    if (!user) {
+      alert("Invalid credentials. Please use the demo credentials shown below.");
+      return;
+    }
+
+    onLogin(user.role);
   };
 
   return (
