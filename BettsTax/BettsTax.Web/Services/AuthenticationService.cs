@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Linq;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -16,6 +18,10 @@ namespace BettsTax.Web.Services
         private readonly JwtSettings _jwtSettings;
         private readonly ILogger<AuthenticationService> _logger;
 
+        private static readonly ConcurrentDictionary<string, RefreshTokenRecord> _refreshTokens = new();
+
+        private static string HashPassword(string password) => BCrypt.Net.BCrypt.HashPassword(password);
+
         // In-memory user store for demo purposes
         // In production, replace with database access (EF Core, Dapper, etc.)
         private static readonly List<User> _demoUsers = new()
@@ -24,8 +30,7 @@ namespace BettsTax.Web.Services
             {
                 UserId = "staff-001",
                 Email = "staff@bettsfirm.com",
-                // BCrypt hash of "password" - in production, use proper password hashing
-                PasswordHash = "$2a$11$8gF3z5VJZQx5YxYvK8Zv8ePqF3ZxJZDKJ6F5YxYvK8Zv8ePqF3ZxJ",
+                PasswordHash = HashPassword("password"),
                 Role = "Staff",
                 ClientId = null,
                 ClientName = null,
@@ -36,7 +41,7 @@ namespace BettsTax.Web.Services
             {
                 UserId = "client-001",
                 Email = "client@example.com",
-                PasswordHash = "$2a$11$8gF3z5VJZQx5YxYvK8Zv8ePqF3ZxJZDKJ6F5YxYvK8Zv8ePqF3ZxJ",
+                PasswordHash = HashPassword("password"),
                 Role = "Client",
                 ClientId = 1,
                 ClientName = "ABC Corporation",
@@ -47,7 +52,7 @@ namespace BettsTax.Web.Services
             {
                 UserId = "client-002",
                 Email = "john@xyztrad.com",
-                PasswordHash = "$2a$11$8gF3z5VJZQx5YxYvK8Zv8ePqF3ZxJZDKJ6F5YxYvK8Zv8ePqF3ZxJ",
+                PasswordHash = HashPassword("password"),
                 Role = "Client",
                 ClientId = 2,
                 ClientName = "XYZ Trading",
@@ -58,7 +63,7 @@ namespace BettsTax.Web.Services
             {
                 UserId = "admin-001",
                 Email = "admin@bettsfirm.com",
-                PasswordHash = "$2a$11$8gF3z5VJZQx5YxYvK8Zv8ePqF3ZxJZDKJ6F5YxYvK8Zv8ePqF3ZxJ",
+                PasswordHash = HashPassword("password"),
                 Role = "Admin",
                 ClientId = null,
                 ClientName = null,
@@ -104,9 +109,18 @@ namespace BettsTax.Web.Services
                     };
                 }
 
-                // Verify password - for demo, accepting "password" for all users
-                // In production, use BCrypt.Verify(request.Password, user.PasswordHash)
-                if (request.Password != "password")
+                // Verify password using bcrypt to avoid timing attacks and plaintext comparison
+                var isPasswordValid = false;
+                try
+                {
+                    isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Password verification failed for user: {UserId}", user.UserId);
+                }
+
+                if (!isPasswordValid)
                 {
                     _logger.LogWarning("Failed password verification for user: {UserId}", user.UserId);
                     return new LoginResponse
@@ -119,10 +133,13 @@ namespace BettsTax.Web.Services
                 // Update last login
                 user.LastLoginAt = DateTime.UtcNow;
 
-                // Generate JWT token
+                // Generate tokens
                 var token = GenerateJwtToken(user);
                 var refreshToken = GenerateRefreshToken();
                 var expiresAt = DateTime.UtcNow.AddMinutes(_jwtSettings.ExpirationMinutes);
+                var refreshTokenExpiresAt = DateTime.UtcNow.AddDays(GetRefreshTokenLifetimeDays());
+
+                SaveRefreshToken(user, refreshToken, refreshTokenExpiresAt);
 
                 _logger.LogInformation("Successful login for user: {UserId} with role: {Role}",
                     user.UserId, user.Role);
@@ -134,14 +151,8 @@ namespace BettsTax.Web.Services
                     Token = token,
                     RefreshToken = refreshToken,
                     ExpiresAt = expiresAt,
-                    User = new UserInfo
-                    {
-                        UserId = user.UserId,
-                        Email = user.Email,
-                        Role = user.Role,
-                        ClientId = user.ClientId,
-                        ClientName = user.ClientName
-                    }
+                    RefreshTokenExpiresAt = refreshTokenExpiresAt,
+                    User = MapToUserInfo(user)
                 };
             }
             catch (Exception ex)
@@ -219,16 +230,144 @@ namespace BettsTax.Web.Services
 
         public async Task<LoginResponse> RefreshTokenAsync(string refreshToken)
         {
-            // Simplified refresh token implementation
-            // In production, store refresh tokens in database with expiration
-            _logger.LogWarning("Refresh token functionality not fully implemented");
-
-            return await Task.FromResult(new LoginResponse
+            if (string.IsNullOrWhiteSpace(refreshToken))
             {
-                Success = false,
-                Message = "Refresh token functionality not implemented"
-            });
+                return await Task.FromResult(new LoginResponse
+                {
+                    Success = false,
+                    Message = "Refresh token is required"
+                });
+            }
+
+            try
+            {
+                PurgeExpiredTokens();
+
+                var tokenHash = HashRefreshToken(refreshToken);
+                if (!_refreshTokens.TryGetValue(tokenHash, out var tokenRecord))
+                {
+                    _logger.LogWarning("Attempt to use unknown refresh token");
+                    return await Task.FromResult(new LoginResponse
+                    {
+                        Success = false,
+                        Message = "Invalid refresh token"
+                    });
+                }
+
+                if (tokenRecord.ExpiresAt <= DateTime.UtcNow)
+                {
+                    _refreshTokens.TryRemove(tokenHash, out _);
+                    _logger.LogInformation("Expired refresh token rejected for user {UserId}", tokenRecord.UserId);
+                    return await Task.FromResult(new LoginResponse
+                    {
+                        Success = false,
+                        Message = "Refresh token has expired"
+                    });
+                }
+
+                var user = _demoUsers.FirstOrDefault(u =>
+                    u.UserId == tokenRecord.UserId && u.IsActive);
+
+                if (user == null)
+                {
+                    _refreshTokens.TryRemove(tokenHash, out _);
+                    _logger.LogWarning("Refresh token attempted for inactive or missing user {UserId}", tokenRecord.UserId);
+                    return await Task.FromResult(new LoginResponse
+                    {
+                        Success = false,
+                        Message = "User session is no longer valid"
+                    });
+                }
+
+                var newAccessToken = GenerateJwtToken(user);
+                var newRefreshToken = GenerateRefreshToken();
+                var expiresAt = DateTime.UtcNow.AddMinutes(_jwtSettings.ExpirationMinutes);
+                var refreshTokenExpiresAt = DateTime.UtcNow.AddDays(GetRefreshTokenLifetimeDays());
+
+                SaveRefreshToken(user, newRefreshToken, refreshTokenExpiresAt);
+
+                _logger.LogInformation("Refresh token rotated for user {UserId}", user.UserId);
+
+                return await Task.FromResult(new LoginResponse
+                {
+                    Success = true,
+                    Message = "Token refreshed successfully",
+                    Token = newAccessToken,
+                    RefreshToken = newRefreshToken,
+                    ExpiresAt = expiresAt,
+                    RefreshTokenExpiresAt = refreshTokenExpiresAt,
+                    User = MapToUserInfo(user)
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error refreshing token");
+                return await Task.FromResult(new LoginResponse
+                {
+                    Success = false,
+                    Message = "Unable to refresh session"
+                });
+            }
         }
+
+        public Task RevokeRefreshTokenAsync(string refreshToken)
+        {
+            if (string.IsNullOrWhiteSpace(refreshToken))
+            {
+                return Task.CompletedTask;
+            }
+
+            var tokenHash = HashRefreshToken(refreshToken);
+            _refreshTokens.TryRemove(tokenHash, out _);
+            _logger.LogInformation("Refresh token revoked");
+            return Task.CompletedTask;
+        }
+
+        private int GetRefreshTokenLifetimeDays()
+        {
+            return Math.Max(1, _jwtSettings.RefreshTokenExpirationDays <= 0
+                ? 7
+                : _jwtSettings.RefreshTokenExpirationDays);
+        }
+
+        private void SaveRefreshToken(User user, string refreshToken, DateTime expiresAt)
+        {
+            PurgeExpiredTokens();
+
+            foreach (var entry in _refreshTokens.Where(kvp => kvp.Value.UserId == user.UserId).ToList())
+            {
+                _refreshTokens.TryRemove(entry.Key, out _);
+            }
+
+            var tokenHash = HashRefreshToken(refreshToken);
+            _refreshTokens[tokenHash] = new RefreshTokenRecord(user.UserId, expiresAt, DateTime.UtcNow);
+        }
+
+        private void PurgeExpiredTokens()
+        {
+            foreach (var entry in _refreshTokens.Where(kvp => kvp.Value.ExpiresAt <= DateTime.UtcNow).ToList())
+            {
+                _refreshTokens.TryRemove(entry.Key, out _);
+            }
+        }
+
+        private static string HashRefreshToken(string refreshToken)
+        {
+            using var sha256 = SHA256.Create();
+            var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(refreshToken));
+            return Convert.ToBase64String(bytes);
+        }
+
+        private static UserInfo MapToUserInfo(User user) => new()
+        {
+            UserId = user.UserId,
+            Email = user.Email,
+            Role = user.Role,
+            ClientId = user.ClientId,
+            ClientName = user.ClientName
+        };
+
+        private sealed record RefreshTokenRecord(string UserId, DateTime ExpiresAt, DateTime CreatedAt);
 
         private string GenerateJwtToken(User user)
         {

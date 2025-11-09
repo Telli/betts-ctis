@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "./PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -6,74 +7,200 @@ import { Button } from "./ui/button";
 import {
   CheckCircle,
   Clock,
-  XCircle,
   AlertTriangle,
   Calendar,
   FileText,
   Download,
 } from "lucide-react";
+import { Alert, AlertDescription } from "./ui/alert";
+import {
+  DeadlineDto,
+  DeadlineStats,
+  fetchDeadlineStats,
+  fetchOverdueDeadlines,
+  fetchUpcomingDeadlines,
+} from "../lib/services/deadlines";
 
 export function Compliance() {
-  const complianceStats = [
-    { label: "Filed", count: 42, color: "success" },
-    { label: "Pending", count: 8, color: "warning" },
-    { label: "Paid", count: 38, color: "info" },
-    { label: "Overdue", count: 2, color: "danger" },
-    { label: "N/A", count: 5, color: "muted" },
-  ];
+  const [upcomingDeadlines, setUpcomingDeadlines] = useState<DeadlineDto[]>([]);
+  const [overdueDeadlines, setOverdueDeadlines] = useState<DeadlineDto[]>([]);
+  const [deadlineStats, setDeadlineStats] = useState<DeadlineStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filingChecklist = [
-    { type: "GST Returns", q1: "filed", q2: "filed", q3: "pending", q4: "upcoming" },
-    { type: "PAYE Returns", q1: "filed", q2: "filed", q3: "filed", q4: "upcoming" },
-    { type: "Income Tax", q1: "filed", q2: "n/a", q3: "n/a", q4: "n/a" },
-    { type: "Excise Duty", q1: "filed", q2: "filed", q3: "overdue", q4: "upcoming" },
-  ];
+  useEffect(() => {
+    let cancelled = false;
 
-  const upcomingDeadlines = [
-    {
-      title: "GST Return Q3 2025",
-      dueDate: "2025-10-15",
-      daysLeft: 8,
-      status: "pending",
-      progress: 75,
-    },
-    {
-      title: "Payroll Tax September",
-      dueDate: "2025-10-12",
-      daysLeft: 5,
-      status: "at-risk",
-      progress: 40,
-    },
-    {
-      title: "Excise Duty Q3",
-      dueDate: "2025-10-10",
-      daysLeft: 3,
-      status: "urgent",
-      progress: 20,
-    },
-  ];
+    async function loadComplianceData() {
+      setIsLoading(true);
+      try {
+        const [upcoming, overdue, stats] = await Promise.all([
+          fetchUpcomingDeadlines(),
+          fetchOverdueDeadlines(),
+          fetchDeadlineStats(),
+        ]);
 
-  const penaltyWarnings = [
-    {
-      type: "Excise Duty Q3",
-      reason: "Late filing",
-      estimatedAmount: 5000,
-      daysOverdue: 2,
-    },
-    {
-      type: "GST Return Q2",
-      reason: "Payment delay",
-      estimatedAmount: 2500,
-      daysOverdue: 15,
-    },
-  ];
+        if (cancelled) return;
 
-  const documentTracker = [
-    { name: "Financial Statements", required: 12, submitted: 12, progress: 100 },
-    { name: "Bank Statements", required: 12, submitted: 11, progress: 92 },
-    { name: "Payroll Records", required: 12, submitted: 10, progress: 83 },
-    { name: "Sales Invoices", required: 4, submitted: 3, progress: 75 },
-  ];
+        setUpcomingDeadlines(upcoming);
+        setOverdueDeadlines(overdue);
+        setDeadlineStats(stats);
+        setError(null);
+      } catch (err) {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : "Failed to load compliance data.";
+        setError(message);
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadComplianceData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const complianceStats = useMemo(
+    () =>
+      deadlineStats
+        ? [
+            { label: "Upcoming", count: deadlineStats.upcoming, color: "info" },
+            { label: "Due Soon", count: deadlineStats.dueSoon, color: "warning" },
+            { label: "Overdue", count: deadlineStats.overdue, color: "danger" },
+            { label: "This Week", count: deadlineStats.thisWeek, color: "success" },
+            { label: "This Month", count: deadlineStats.thisMonth, color: "info" },
+          ]
+        : [
+            { label: "Upcoming", count: 0, color: "info" },
+            { label: "Due Soon", count: 0, color: "warning" },
+            { label: "Overdue", count: 0, color: "danger" },
+            { label: "This Week", count: 0, color: "success" },
+            { label: "This Month", count: 0, color: "info" },
+          ],
+    [deadlineStats],
+  );
+
+  const combinedDeadlines = useMemo(() => [...upcomingDeadlines, ...overdueDeadlines], [upcomingDeadlines, overdueDeadlines]);
+
+  const filingOverview = useMemo(() => {
+    const grouped = new Map<string, { upcoming: number; dueSoon: number; overdue: number }>();
+    combinedDeadlines.forEach((deadline) => {
+      const entry = grouped.get(deadline.taxTypeName) ?? { upcoming: 0, dueSoon: 0, overdue: 0 };
+      const status = (deadline.status || '').toLowerCase();
+      if (status === 'overdue') {
+        entry.overdue += 1;
+      } else if (status === 'duesoon') {
+        entry.dueSoon += 1;
+      } else {
+        entry.upcoming += 1;
+      }
+      grouped.set(deadline.taxTypeName, entry);
+    });
+
+    return Array.from(grouped.entries()).map(([type, counts]) => ({
+      type,
+      ...counts,
+    }));
+  }, [combinedDeadlines]);
+
+  const clientDocumentTracker = useMemo(() => {
+    const grouped = new Map<string, { total: number; overdue: number }>();
+    combinedDeadlines.forEach((deadline) => {
+      const entry = grouped.get(deadline.clientName) ?? { total: 0, overdue: 0 };
+      entry.total += 1;
+      if ((deadline.status || '').toLowerCase() === 'overdue') {
+        entry.overdue += 1;
+      }
+      grouped.set(deadline.clientName, entry);
+    });
+
+    return Array.from(grouped.entries()).map(([clientName, counts]) => {
+      const submitted = Math.max(0, counts.total - counts.overdue);
+      const progress = counts.total === 0 ? 100 : Math.max(5, Math.round((submitted / counts.total) * 100));
+      return {
+        clientName,
+        required: counts.total,
+        submitted,
+        overdue: counts.overdue,
+        progress,
+      };
+    });
+  }, [combinedDeadlines]);
+
+  const timelineEvents = useMemo(() => {
+    return combinedDeadlines
+      .slice()
+      .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime())
+      .slice(0, 5)
+      .map((deadline) => ({
+        id: deadline.id,
+        event: `${deadline.taxTypeName} • ${deadline.clientName}`,
+        date: formatDate(deadline.dueDate),
+        status: (deadline.status || '').toLowerCase(),
+      }));
+  }, [combinedDeadlines]);
+
+  const calculateDaysLeft = (dueDate: string) => {
+    const due = new Date(dueDate).getTime();
+    const today = new Date().setHours(0, 0, 0, 0);
+    return Math.ceil((due - today) / (1000 * 60 * 60 * 24));
+  };
+
+  const determineDeadlineStatus = (deadline: DeadlineDto) => {
+    const daysLeft = calculateDaysLeft(deadline.dueDate);
+    if (daysLeft < 0) return "overdue";
+    if (daysLeft <= 3) return "urgent";
+    if (daysLeft <= 7) return "at-risk";
+    return "pending";
+  };
+
+  const computeProgress = (daysLeft: number) => {
+    if (daysLeft < 0) return 0;
+    const percentage = 100 - (Math.min(daysLeft, 30) / 30) * 100;
+    return Math.max(5, Math.min(100, Math.round(percentage)));
+  };
+
+  const formatDate = (value: string) =>
+    new Date(value).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+
+  const upcomingDisplay = useMemo(
+    () =>
+      upcomingDeadlines.map((deadline) => {
+        const daysLeft = calculateDaysLeft(deadline.dueDate);
+        const status = determineDeadlineStatus(deadline);
+        return {
+          id: deadline.id,
+          title: `${deadline.taxTypeName} • ${deadline.clientName}`,
+          dueDate: formatDate(deadline.dueDate),
+          daysLeft,
+          status,
+          progress: computeProgress(daysLeft),
+          assignedTo: deadline.assignedTo || "Unassigned",
+        };
+      }),
+    [upcomingDeadlines],
+  );
+
+  const penaltyWarnings = useMemo(
+    () =>
+      overdueDeadlines.map((deadline) => {
+        const daysLeft = calculateDaysLeft(deadline.dueDate);
+        return {
+          id: deadline.id,
+          type: `${deadline.taxTypeName} • ${deadline.clientName}`,
+          reason: `${deadline.priority} priority overdue task`,
+          daysOverdue: Math.abs(daysLeft),
+        };
+      }),
+    [overdueDeadlines],
+  );
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -88,18 +215,14 @@ export function Compliance() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getTimelineIcon = (status: string) => {
     switch (status) {
-      case "filed":
-        return <Badge className="bg-success">Filed</Badge>;
-      case "pending":
-        return <Badge className="bg-warning">Pending</Badge>;
       case "overdue":
-        return <Badge variant="destructive">Overdue</Badge>;
-      case "upcoming":
-        return <Badge variant="outline">Upcoming</Badge>;
+        return <AlertTriangle className="w-4 h-4 text-destructive" />;
+      case "duesoon":
+        return <Clock className="w-4 h-4 text-warning" />;
       default:
-        return <Badge variant="secondary">N/A</Badge>;
+        return <CheckCircle className="w-4 h-4 text-success" />;
     }
   };
 
@@ -115,6 +238,14 @@ export function Compliance() {
           </Button>
         }
       />
+
+      {error && (
+        <div className="px-6">
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        </div>
+      )}
 
       <div className="p-6 space-y-6">
         {/* Status Blocks */}
@@ -144,29 +275,37 @@ export function Compliance() {
           ))}
         </div>
 
-        {/* Filing Checklist */}
+        {/* Filing Overview */}
         <Card>
           <CardHeader>
-            <CardTitle>Filing Checklist - 2025</CardTitle>
+            <CardTitle>Filing Readiness by Tax Type</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="grid grid-cols-5 gap-4 pb-2 border-b">
+              <div className="grid grid-cols-4 gap-4 pb-2 border-b">
                 <div className="font-medium">Tax Type</div>
-                <div className="font-medium text-center">Q1</div>
-                <div className="font-medium text-center">Q2</div>
-                <div className="font-medium text-center">Q3</div>
-                <div className="font-medium text-center">Q4</div>
+                <div className="font-medium text-center">Upcoming</div>
+                <div className="font-medium text-center">Due Soon</div>
+                <div className="font-medium text-center">Overdue</div>
               </div>
-              {filingChecklist.map((item, index) => (
-                <div key={index} className="grid grid-cols-5 gap-4 items-center">
-                  <div>{item.type}</div>
-                  <div className="flex justify-center">{getStatusIcon(item.q1)}</div>
-                  <div className="flex justify-center">{getStatusIcon(item.q2)}</div>
-                  <div className="flex justify-center">{getStatusIcon(item.q3)}</div>
-                  <div className="flex justify-center">{getStatusIcon(item.q4)}</div>
-                </div>
-              ))}
+              {filingOverview.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No deadlines available.</p>
+              ) : (
+                filingOverview.map((item) => (
+                  <div key={item.type} className="grid grid-cols-4 gap-4 items-center">
+                    <div>{item.type}</div>
+                    <div className="flex justify-center">
+                      <Badge variant="outline">{item.upcoming}</Badge>
+                    </div>
+                    <div className="flex justify-center">
+                      <Badge className="bg-warning text-warning-foreground">{item.dueSoon}</Badge>
+                    </div>
+                    <div className="flex justify-center">
+                      <Badge variant="destructive">{item.overdue}</Badge>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </CardContent>
         </Card>
@@ -178,79 +317,91 @@ export function Compliance() {
               <CardTitle>Upcoming Deadlines</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {upcomingDeadlines.map((deadline, index) => (
-                <div key={index} className="space-y-2 p-3 border border-border rounded-lg">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-medium">{deadline.title}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Calendar className="w-3 h-3 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">Due {deadline.dueDate}</span>
+              {isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading upcoming deadlines...</p>
+              ) : upcomingDisplay.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No upcoming deadlines in the selected window.
+                </p>
+              ) : (
+                upcomingDisplay.map((deadline) => (
+                  <div key={deadline.id} className="space-y-2 p-3 border border-border rounded-lg">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-medium">{deadline.title}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Calendar className="w-3 h-3 text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">Due {deadline.dueDate}</span>
+                        </div>
                       </div>
-                    </div>
-                    <Badge
-                      variant={
-                        deadline.status === "urgent"
-                          ? "destructive"
+                      <Badge
+                        variant={
+                          deadline.status === "urgent"
+                            ? "destructive"
+                            : deadline.status === "at-risk"
+                            ? "default"
+                            : "outline"
+                        }
+                        className={
+                          deadline.status === "at-risk" ? "bg-warning text-warning-foreground" : ""
+                        }
+                      >
+                        {deadline.status === "urgent"
+                          ? "Urgent"
                           : deadline.status === "at-risk"
-                          ? "default"
-                          : "outline"
-                      }
-                      className={
-                        deadline.status === "at-risk" ? "bg-warning text-warning-foreground" : ""
-                      }
-                    >
-                      {deadline.daysLeft} days
-                    </Badge>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Progress</span>
-                      <span>{deadline.progress}%</span>
+                          ? "At Risk"
+                          : deadline.daysLeft >= 0
+                          ? `${deadline.daysLeft} days`
+                          : "Overdue"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>
+                        {deadline.daysLeft >= 0
+                          ? `${deadline.daysLeft} days remaining`
+                          : `${Math.abs(deadline.daysLeft)} days overdue`}
+                      </span>
+                      <span>{deadline.assignedTo}</span>
                     </div>
                     <Progress value={deadline.progress} />
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </CardContent>
           </Card>
 
           {/* Penalty Warnings */}
           <Card>
             <CardHeader>
-              <CardTitle>Penalty Warnings</CardTitle>
+              <CardTitle>Penalty & Risk Alerts</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {penaltyWarnings.map((warning, index) => (
-                <div
-                  key={index}
-                  className="flex items-start gap-3 p-3 border border-destructive/20 bg-destructive/5 rounded-lg"
-                >
-                  <AlertTriangle className="w-5 h-5 text-destructive mt-0.5" />
-                  <div className="flex-1">
-                    <p className="font-medium">{warning.type}</p>
-                    <p className="text-sm text-muted-foreground">{warning.reason}</p>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-sm text-destructive font-medium">
-                        Estimated: SLE {warning.estimatedAmount.toLocaleString()}
-                      </span>
-                      <Badge variant="destructive" className="text-xs">
-                        {warning.daysOverdue} days overdue
-                      </Badge>
+              {isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading overdue deadlines...</p>
+              ) : penaltyWarnings.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No overdue filings. Great work!</p>
+              ) : (
+                penaltyWarnings.map((warning) => (
+                  <div
+                    key={warning.id}
+                    className="flex items-start gap-3 p-3 border border-destructive/20 bg-destructive/5 rounded-lg"
+                  >
+                    <AlertTriangle className="w-5 h-5 text-destructive mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-medium">{warning.type}</p>
+                      <p className="text-sm text-muted-foreground">{warning.reason}</p>
+                      <div className="flex items-center justify-between mt-2">
+                        <Badge variant="destructive" className="text-xs">
+                          {warning.daysOverdue} days overdue
+                        </Badge>
+                        <Button variant="link" className="h-auto p-0 text-sm">
+                          Resolve now
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-
-              <div className="p-3 border border-border rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Total Potential Penalties</p>
-                    <p className="text-sm text-muted-foreground">If not addressed</p>
-                  </div>
-                  <span className="text-xl font-semibold text-destructive">SLE 7,500</span>
-                </div>
-              </div>
+                ))
+              )}
             </CardContent>
           </Card>
         </div>
@@ -261,23 +412,32 @@ export function Compliance() {
             <CardTitle>Document Submission Tracker</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {documentTracker.map((doc, index) => (
-              <div key={index} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-medium">{doc.name}</span>
+            {clientDocumentTracker.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No active client deadlines.</p>
+            ) : (
+              clientDocumentTracker.map((doc) => (
+                <div key={doc.clientName} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-muted-foreground" />
+                      <span className="font-medium">{doc.clientName}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">
+                        {doc.submitted}/{doc.required} on track
+                      </span>
+                      {doc.overdue > 0 && (
+                        <Badge variant="destructive" className="text-xs">
+                          {doc.overdue} overdue
+                        </Badge>
+                      )}
+                      <span className="text-sm font-medium">{doc.progress}%</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">
-                      {doc.submitted}/{doc.required} submitted
-                    </span>
-                    <span className="text-sm font-medium">{doc.progress}%</span>
-                  </div>
+                  <Progress value={doc.progress} />
                 </div>
-                <Progress value={doc.progress} />
-              </div>
-            ))}
+              ))
+            )}
           </CardContent>
         </Card>
 
@@ -288,39 +448,22 @@ export function Compliance() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {[
-                {
-                  date: "Oct 5, 2025",
-                  event: "GST Return Q3 filed on time",
-                  status: "success",
-                },
-                {
-                  date: "Sep 28, 2025",
-                  event: "Payroll tax payment processed",
-                  status: "success",
-                },
-                {
-                  date: "Sep 15, 2025",
-                  event: "Income tax filed 5 days early",
-                  status: "success",
-                },
-                {
-                  date: "Aug 30, 2025",
-                  event: "GST Return Q2 filed on time",
-                  status: "success",
-                },
-              ].map((item, index) => (
-                <div key={index} className="flex gap-3">
-                  <div className="flex flex-col items-center">
-                    <CheckCircle className="w-4 h-4 text-success" />
-                    {index < 3 && <div className="w-0.5 h-8 bg-border mt-2" />}
+              {timelineEvents.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No recent filing activity.</p>
+              ) : (
+                timelineEvents.map((item, index) => (
+                  <div key={item.id ?? index} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      {getTimelineIcon(item.status)}
+                      {index < timelineEvents.length - 1 && <div className="w-0.5 h-8 bg-border mt-2" />}
+                    </div>
+                    <div>
+                      <p className="font-medium">{item.event}</p>
+                      <p className="text-sm text-muted-foreground">{item.date}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium">{item.event}</p>
-                    <p className="text-sm text-muted-foreground">{item.date}</p>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </CardContent>
         </Card>

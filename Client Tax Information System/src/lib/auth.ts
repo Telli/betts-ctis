@@ -24,38 +24,131 @@ export interface LoginResponse {
   refreshToken?: string;
   user?: UserInfo;
   expiresAt?: string;
+  refreshTokenExpiresAt?: string;
 }
 
-/**
- * Token storage keys
- */
-const TOKEN_KEY = 'auth_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
 const USER_KEY = 'user_info';
+if (typeof window !== 'undefined') {
+  try {
+    window.localStorage.removeItem('auth_token');
+    window.localStorage.removeItem('refresh_token');
+  } catch (error) {
+    console.warn('Unable to clear legacy auth tokens', error);
+  }
+}
 
-/**
- * Authenticate user with email and password
- */
+let accessToken: string | null = null;
+let accessTokenExpiresAt: number | null = null;
+let refreshInFlight: Promise<string | null> | null = null;
+
+const safeSessionStorage = typeof window !== 'undefined' ? window.sessionStorage : undefined;
+
+function persistUser(user?: UserInfo) {
+  if (!user || !safeSessionStorage) return;
+
+  try {
+    safeSessionStorage.setItem(USER_KEY, JSON.stringify(user));
+  } catch (error) {
+    console.warn('Unable to persist user information', error);
+  }
+}
+
+function clearUser() {
+  if (!safeSessionStorage) return;
+
+  try {
+    safeSessionStorage.removeItem(USER_KEY);
+  } catch (error) {
+    console.warn('Unable to clear persisted user information', error);
+  }
+}
+
+function setSession(token?: string, expiresAt?: string) {
+  accessToken = token ?? null;
+  accessTokenExpiresAt = expiresAt ? Date.parse(expiresAt) : null;
+}
+
+function clearSession() {
+  setSession(undefined, undefined);
+  clearUser();
+}
+
+function shouldRefreshToken() {
+  if (!accessToken) return true;
+  if (!accessTokenExpiresAt) return false;
+  const threshold = accessTokenExpiresAt - Date.now();
+  return threshold <= 60_000;
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
+
+  const pending = (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+
+      const isJson = response.headers.get('content-type')?.includes('application/json');
+      const data: LoginResponse | undefined = isJson ? await response.json() : undefined;
+
+      if (!response.ok || !data?.success || !data.token) {
+        clearSession();
+        return null;
+      }
+
+      setSession(data.token, data.expiresAt);
+      if (data.user) {
+        persistUser(data.user);
+      }
+
+      return data.token;
+    } catch (error) {
+      console.error('Refresh token error:', error);
+      clearSession();
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  refreshInFlight = pending;
+  return pending;
+}
+
 export async function login(email: string, password: string): Promise<LoginResponse> {
   try {
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ email, password }),
     });
 
-    const data: LoginResponse = await response.json();
+    const isJson = response.headers.get('content-type')?.includes('application/json');
+    const data: LoginResponse | undefined = isJson ? await response.json() : undefined;
+
+    if (!response.ok || !data) {
+      const message = data?.message || `Authentication failed with status ${response.status}`;
+      return {
+        success: false,
+        message,
+      };
+    }
 
     if (data.success && data.token) {
-      // Store tokens and user info
-      localStorage.setItem(TOKEN_KEY, data.token);
-      if (data.refreshToken) {
-        localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-      }
+      setSession(data.token, data.expiresAt);
       if (data.user) {
-        localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+        persistUser(data.user);
       }
     }
 
@@ -69,90 +162,81 @@ export async function login(email: string, password: string): Promise<LoginRespo
   }
 }
 
-/**
- * Get stored authentication token
- */
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return accessToken;
 }
 
-/**
- * Get stored user information
- */
 export function getUser(): UserInfo | null {
-  const userStr = localStorage.getItem(USER_KEY);
-  if (!userStr) return null;
+  if (!safeSessionStorage) return null;
+  const raw = safeSessionStorage.getItem(USER_KEY);
+  if (!raw) return null;
 
   try {
-    return JSON.parse(userStr);
-  } catch {
+    return JSON.parse(raw) as UserInfo;
+  } catch (error) {
+    console.warn('Unable to parse stored user', error);
     return null;
   }
 }
 
-/**
- * Check if user is authenticated
- */
 export function isAuthenticated(): boolean {
-  return !!getToken();
+  return !!accessToken;
 }
 
-/**
- * Logout user (clear stored data)
- */
-export function logout(): void {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
+export async function logout(): Promise<void> {
+  try {
+    await authenticatedFetch(`${API_BASE_URL}/auth/logout`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  } catch (error) {
+    console.warn('Logout request failed', error);
+  } finally {
+    clearSession();
+  }
 }
 
-/**
- * Make authenticated API request
- */
 export async function authenticatedFetch(
   url: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<Response> {
-  const token = getToken();
-
-  if (!token) {
-    throw new Error('No authentication token found');
+  if (!accessToken || shouldRefreshToken()) {
+    const refreshed = await refreshAccessToken();
+    if (!refreshed) {
+      throw new Error('Unable to refresh authentication token');
+    }
   }
 
-  const headers = {
-    ...options.headers,
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
+  const headers = new Headers(options.headers ?? {});
+  headers.set('Content-Type', 'application/json');
+  headers.set('Authorization', `Bearer ${accessToken}`);
 
   return fetch(url, {
     ...options,
+    credentials: 'include',
     headers,
   });
 }
 
-/**
- * Get current user from API (validates token)
- */
 export async function getCurrentUser(): Promise<UserInfo | null> {
   try {
     const response = await authenticatedFetch(`${API_BASE_URL}/auth/me`);
 
     if (!response.ok) {
-      // Token is invalid, clear storage
-      logout();
+      await logout();
       return null;
     }
 
     const data = await response.json();
     if (data.success && data.data) {
-      localStorage.setItem(USER_KEY, JSON.stringify(data.data));
-      return data.data;
+      persistUser(data.data as UserInfo);
+      return data.data as UserInfo;
     }
 
     return null;
   } catch (error) {
     console.error('Error getting current user:', error);
+    await logout();
     return null;
   }
 }
