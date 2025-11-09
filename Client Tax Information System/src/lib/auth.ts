@@ -185,12 +185,8 @@ export function isAuthenticated(): boolean {
 
 export async function logout(): Promise<void> {
   try {
-    await fetch(`${API_BASE_URL}/auth/logout`, {
+    await authenticatedFetch(`${API_BASE_URL}/auth/logout`, {
       method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({}),
     });
   } catch (error) {
