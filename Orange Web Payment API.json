@@ -1,0 +1,362 @@
+Web Payment API
+ 1.0.0 
+OAS 2.0
+[ Base URL: api.orange.com/orange-money-webpay/dev/v1 ]
+Pay with the Orange Money Web Payment API
+
+The body of the request should contain only the data without additional characters or newline.
+
+The character that separates floating point numbers must be a dot.
+
+Schemes
+
+https
+transaction
+
+
+POST
+/webpayment
+Web Payment
+
+
+Initiates a payment transaction
+
+Parameters
+Name	Description
+TransactionInitInfo *
+object
+(body)
+Informations to initialize a transaction
+
+Example Value
+Model
+{
+  "merchant_key": "e8b7be44",
+  "currency": "XAF",
+  "order_id": "merchant_order_123",
+  "amount": 100,
+  "return_url": "http://www.merchant-example.org/return",
+  "cancel_url": "http://www.merchant-example.org/cancel",
+  "notif_url": "http://www.merchant-example.org/notif",
+  "lang": "fr",
+  "reference": "ref-xyz.456"
+}
+Parameter content type
+
+application/json
+Responses
+Response content type
+
+application/json
+Code	Description
+201	
+Success, the transaction is initialized
+
+Example Value
+Model
+{
+  "status": 201,
+  "message": "OK",
+  "pay_token": "9b871512327c09ce91dd649b3f96a63b7408ef267c8cc5710114e629730cb61f",
+  "payment_url": "http://orange-money.com/payment/pay_token/9b871512327c09ce91dd649b3f96a63b7408ef267c8cc5710114e629730cb61f",
+  "notif_token": "bcbe3365e6ac95ea2c0343a2395834dd"
+}
+400	
+Bad Request
+21 (Missing body),
+22 (Invalid body),
+23 (Missing body field),
+24 (Invalid body field),
+25 (Missing header),
+26 (Invalid header value)
+
+Example Value
+Model
+{
+  "code": 23,
+  "message": "Missing body field",
+  "description": "The field 'productionDate' is missing from posted body"
+}
+401	
+Authentication failed
+40 (Missing credentials)
+41 (Invalid credentials)
+
+Example Value
+Model
+{
+  "code": 23,
+  "message": "Missing body field",
+  "description": "The field 'productionDate' is missing from posted body"
+}
+403	
+forbidden access to the api
+50 (Access denied by ACL)
+1201 (forbidden transaction)
+1202 (invalid merchant key)
+1203 (Unauthorized currency for this country)
+1204 (order already exists)
+
+Example Value
+Model
+{
+  "code": 23,
+  "message": "Missing body field",
+  "description": "The field 'productionDate' is missing from posted body"
+}
+404	
+60 (Resource not found)
+
+Example Value
+Model
+{
+  "code": 23,
+  "message": "Missing body field",
+  "description": "The field 'productionDate' is missing from posted body"
+}
+405	
+61 (Method not allowed)
+
+Example Value
+Model
+{
+  "code": 23,
+  "message": "Missing body field",
+  "description": "The field 'productionDate' is missing from posted body"
+}
+406	
+62 (Not acceptable)
+
+Example Value
+Model
+{
+  "code": 23,
+  "message": "Missing body field",
+  "description": "The field 'productionDate' is missing from posted body"
+}
+413	
+66 (Request entity too large)
+
+Example Value
+Model
+{
+  "code": 23,
+  "message": "Missing body field",
+  "description": "The field 'productionDate' is missing from posted body"
+}
+415	
+68 (Unsupported Media Type)
+
+Example Value
+Model
+{
+  "code": 23,
+  "message": "Missing body field",
+  "description": "The field 'productionDate' is missing from posted body"
+}
+500	
+1 (Internal error)
+
+Example Value
+Model
+{
+  "code": 23,
+  "message": "Missing body field",
+  "description": "The field 'productionDate' is missing from posted body"
+}
+
+POST
+/transactionstatus
+Transaction status
+
+
+
+Models
+error_def
+TransactionInitInfo{
+description:	
+request's object to initialize a transaction
+
+merchant_key*	[...]
+currency*	[...]
+order_id*	[...]
+amount*	[...]
+return_url*	[...]
+cancel_url*	[...]
+notif_url*	[...]
+lang	[...]
+reference	[...]
+ 
+}
+TransactionCreatedInfo{
+description:	
+response's object of the initialized transaction
+
+status*	[...]
+message*	[...]
+pay_token*	[...]
+payment_url*	[...]
+notif_token*	[...]
+ 
+}
+GetTransactionStatusInfo{
+description:	
+request's object to get the status transaction
+
+order_id*	[...]
+amount*	[...]
+pay_token*	[...]
+ 
+}
+TransactionStatusInfo{
+description:	
+response's object of the transaction status
+
+status*	[...]
+order_id*	[...]
+txnid*	[...]
+ 
+}
+Common errors
+HTTP status code	Reason	Response model
+400	List of supported error codes:
+- 20: Invalid URL parameter value
+- 21: Missing body
+- 22: Invalid body
+- 23: Missing body field
+- 24: Invalid body field
+- 25: Missing header
+- 26: Invalid header value
+- 27: Missing query-string parameter
+- 28: Invalid query-string parameter value	
+{
+  "code": 28,
+  "message": "Invalid query-string parameter value",
+  "description": "One or more query-string parameters contain invalid values."
+}
+401	List of supported error codes:
+- 40: Missing credentials
+- 41: Invalid credentials
+- 42: Expired credentials	
+{
+  "code": 42,
+  "message": "Expired credentials",
+  "description": "The requested service needs credentials, and the ones provided were out-of-date."
+}
+403	List of supported error codes:
+- 50: Access denied
+- 51: Forbidden requester
+- 52: Forbidden user
+- 53: Too many requests	
+{
+  "code": 53,
+  "message": "Too many requests",
+  "description": "The application has made too many calls and has exceeded the rate limit for this service."
+}
+404	List of supported error codes:
+- 60: Resource not found	
+{
+  "code": 60,
+  "message": "Resource not found",
+  "description": "The requested URI or the requested resource does not exist."
+}
+405	List of supported error codes:
+- 61: Method not allowed	
+{
+  "code": 61,
+  "message": "Method not allowed",
+  "description": "The URI does not support the requested method. The available methods should be set in the response header 'Allow'"
+}
+406	List of supported error codes:
+- 62: Not acceptable	
+{
+  "code": 62,
+  "message": "Not acceptable",
+  "description": "The Accept incoming header does not match any available content-type."
+}
+408	List of supported error codes:
+- 63: Request time-out	
+{
+  "code": 63,
+  "message": "Request time-out",
+  "description": "The server timed out waiting for the incoming request."
+}
+409	List of supported error codes:
+- 69: Conflict	
+{
+  "code": 69,
+  "message": "Conflict",
+  "description": "The request could not be completed due to a conflict with the current state of the resource."
+}
+411	List of supported error codes:
+- 64: Length required	
+{
+  "code": 64,
+  "message": "Length required",
+  "description": "The request did not specify a Content-Length header, which is required by the requested resource."
+}
+412	List of supported error codes:
+- 65: Precondition failed	
+{
+  "code": 65,
+  "message": "Precondition failed",
+  "description": "One of the precondition request headers (aka. 'If-None-Match', 'If-Match', 'If-Modified-Since', and 'If-Unmodified-Since') failed to match."
+}
+413	List of supported error codes:
+- 66: Request entity too large	
+{
+  "code": 66,
+  "message": "Request entity too large",
+  "description": "The body of the request/response (PATCH, POST and PUT methods) is larger than the server is willing or able to process."
+}
+414	List of supported error codes:
+- 67: Request-URI too long	
+{
+  "code": 67,
+  "message": "Request-URI too long",
+  "description": "The URI provided was too long for the server to process."
+}
+415	List of supported error codes:
+- 68: Unsupported Media Type	
+{
+  "code": 68,
+  "message": "Unsupported Media Type",
+  "description": "The format of the posted body is not supported by the endpoint."
+}
+429	List of supported error codes:
+- 53: Too many requests	
+{
+  "code": 53,
+  "message": "Too many requests",
+  "description": "The application has made too many calls and has exceeded the rate limit for this service."
+}
+500	List of supported error codes:
+- 1: Internal error	
+{
+  "code": 1,
+  "message": "Internal error",
+  "description": "Generic failure message, used if no more precise code can be provided."
+}
+502	List of supported error codes:
+- 1: Internal error
+- 3: Bad gateway	
+{
+  "code": 1,
+  "message": "Bad gateway",
+  "description": "A runtime execution error occurs (RaiseFault)."
+}
+503	List of supported error codes:
+- 5: The service is temporarily unavailable
+- 6: Orange API is over capacity, retry later !	
+{
+  "code": 6,
+  "message": "Orange API is over capacity, retry later !",
+  "description": "The service faces too much requests and can not handle the call."
+}
+504	List of supported error codes:
+- 6: Gateway timeout	
+{
+  "code": 6,
+  "message": "Gateway timeout",
+  "description": "No response was received in time from a backend server acting as gateway or proxy."
+}
