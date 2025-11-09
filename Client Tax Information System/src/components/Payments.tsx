@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "./PageHeader";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -31,68 +31,62 @@ import {
 import { Label } from "./ui/label";
 import { Search, Plus, Receipt, DollarSign, CheckCircle, Clock } from "lucide-react";
 import { Textarea } from "./ui/textarea";
+import { Alert, AlertDescription } from "./ui/alert";
+import { fetchPayments, PaymentRecord, PaymentsPayload } from "../lib/services/payments";
 
-const mockPayments = [
-  {
-    id: 1,
-    client: "ABC Corporation",
-    taxType: "GST",
-    period: "Q3 2025",
-    amount: 22500,
-    method: "Bank Transfer",
-    status: "Paid",
-    date: "2025-10-01",
-    receiptNo: "RCP-2025-001",
-  },
-  {
-    id: 2,
-    client: "XYZ Trading",
-    taxType: "Income Tax",
-    period: "2024",
-    amount: 150000,
-    method: "Cheque",
-    status: "Pending",
-    date: "2025-09-28",
-    receiptNo: "RCP-2025-002",
-  },
-  {
-    id: 3,
-    client: "Tech Solutions",
-    taxType: "PAYE",
-    period: "Sep 2025",
-    amount: 45000,
-    method: "Cash",
-    status: "Paid",
-    date: "2025-09-25",
-    receiptNo: "RCP-2025-003",
-  },
-  {
-    id: 4,
-    client: "Global Imports",
-    taxType: "Excise Duty",
-    period: "Q3 2025",
-    amount: 78000,
-    method: "Bank Transfer",
-    status: "Overdue",
-    date: "2025-09-15",
-    receiptNo: "RCP-2025-004",
-  },
-];
+interface PaymentsProps {
+  clientId?: number | null;
+}
 
-export function Payments() {
+export function Payments({ clientId }: PaymentsProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [taxTypeFilter, setTaxTypeFilter] = useState("all");
   const [isRecordDialogOpen, setIsRecordDialogOpen] = useState(false);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [summary, setSummary] = useState<PaymentsPayload["summary"]>({ paid: 0, pending: 0, overdue: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredPayments = mockPayments.filter((payment) => {
-    const matchesSearch =
-      payment.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.receiptNo.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || payment.status === statusFilter;
-    const matchesTaxType = taxTypeFilter === "all" || payment.taxType === taxTypeFilter;
-    return matchesSearch && matchesStatus && matchesTaxType;
-  });
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPayments() {
+      setIsLoading(true);
+      try {
+        const result = await fetchPayments(clientId ?? undefined);
+        if (!cancelled) {
+          setPayments(result.items ?? []);
+          setSummary(result.summary ?? { paid: 0, pending: 0, overdue: 0 });
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load payments.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadPayments();
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+
+  const filteredPayments = useMemo(() => {
+    return payments.filter((payment) => {
+      const matchesSearch =
+        payment.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        payment.receiptNumber.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === "all" || payment.status === statusFilter;
+      const matchesTaxType = taxTypeFilter === "all" || payment.taxType === taxTypeFilter;
+      return matchesSearch && matchesStatus && matchesTaxType;
+    });
+  }, [payments, searchTerm, statusFilter, taxTypeFilter]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -107,15 +101,9 @@ export function Payments() {
     }
   };
 
-  const totalPaid = filteredPayments
-    .filter((p) => p.status === "Paid")
-    .reduce((sum, p) => sum + p.amount, 0);
-  const totalPending = filteredPayments
-    .filter((p) => p.status === "Pending")
-    .reduce((sum, p) => sum + p.amount, 0);
-  const totalOverdue = filteredPayments
-    .filter((p) => p.status === "Overdue")
-    .reduce((sum, p) => sum + p.amount, 0);
+  const totalPaid = summary.paid ?? 0;
+  const totalPending = summary.pending ?? 0;
+  const totalOverdue = summary.overdue ?? 0;
 
   return (
     <div>
@@ -220,6 +208,12 @@ export function Payments() {
       />
 
       <div className="p-6">
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <Card className="border-t-4 border-t-success">
@@ -227,7 +221,7 @@ export function Payments() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Total Paid</p>
-                  <p className="text-2xl font-semibold">SLE {totalPaid.toLocaleString()}</p>
+                  <p className="text-2xl font-semibold">SLE {Math.round(totalPaid).toLocaleString()}</p>
                 </div>
                 <CheckCircle className="w-8 h-8 text-success" />
               </div>
@@ -238,7 +232,7 @@ export function Payments() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Pending</p>
-                  <p className="text-2xl font-semibold">SLE {totalPending.toLocaleString()}</p>
+                    <p className="text-2xl font-semibold">SLE {Math.round(totalPending).toLocaleString()}</p>
                 </div>
                 <Clock className="w-8 h-8 text-warning" />
               </div>
@@ -249,7 +243,7 @@ export function Payments() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Overdue</p>
-                  <p className="text-2xl font-semibold">SLE {totalOverdue.toLocaleString()}</p>
+                    <p className="text-2xl font-semibold">SLE {Math.round(totalOverdue).toLocaleString()}</p>
                 </div>
                 <DollarSign className="w-8 h-8 text-destructive" />
               </div>
@@ -295,43 +289,49 @@ export function Payments() {
 
         {/* Table */}
         <div className="border border-border rounded-lg bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Receipt No.</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Tax Type</TableHead>
-                <TableHead>Period</TableHead>
-                <TableHead className="text-right">Amount (SLE)</TableHead>
-                <TableHead>Payment Method</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-[100px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredPayments.map((payment) => (
-                <TableRow key={payment.id}>
-                  <TableCell className="font-mono text-sm">{payment.receiptNo}</TableCell>
-                  <TableCell className="font-medium">{payment.client}</TableCell>
-                  <TableCell>{payment.taxType}</TableCell>
-                  <TableCell>{payment.period}</TableCell>
-                  <TableCell className="text-right font-mono">
-                    {payment.amount.toLocaleString()}
-                  </TableCell>
-                  <TableCell>{payment.method}</TableCell>
-                  <TableCell>{payment.date}</TableCell>
-                  <TableCell>{getStatusBadge(payment.status)}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm">
-                      <Receipt className="w-4 h-4 mr-1" />
-                      View
-                    </Button>
-                  </TableCell>
+          {isLoading ? (
+            <div className="p-6 text-sm text-muted-foreground">Loading payments...</div>
+          ) : filteredPayments.length === 0 ? (
+            <div className="p-6 text-sm text-muted-foreground">No payments match the selected filters.</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Receipt No.</TableHead>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Tax Type</TableHead>
+                  <TableHead>Period</TableHead>
+                  <TableHead className="text-right">Amount (SLE)</TableHead>
+                  <TableHead>Payment Method</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredPayments.map((payment) => (
+                  <TableRow key={payment.id}>
+                    <TableCell className="font-mono text-sm">{payment.receiptNumber}</TableCell>
+                    <TableCell className="font-medium">{payment.client}</TableCell>
+                    <TableCell>{payment.taxType}</TableCell>
+                    <TableCell>{payment.period}</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {Math.round(payment.amount).toLocaleString()}
+                    </TableCell>
+                    <TableCell>{payment.method}</TableCell>
+                    <TableCell>{payment.date ? new Date(payment.date).toLocaleDateString() : "Not available"}</TableCell>
+                    <TableCell>{getStatusBadge(payment.status)}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="sm">
+                        <Receipt className="w-4 h-4 mr-1" />
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </div>
       </div>
     </div>

@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Alert, AlertDescription } from "./ui/alert";
-import { login } from "../lib/auth";
+import { DemoCredential, UserInfo, fetchDemoCredentials, login } from "../lib/auth";
 import logo from "figma:asset/c09e3416d3f18d5dd7594d245d067b31f50605af.png";
 
 interface LoginProps {
-  onLogin: (role: "client" | "staff") => void;
+  onLogin: (user: UserInfo) => void;
 }
 
 export function Login({ onLogin }: LoginProps) {
@@ -16,6 +16,30 @@ export function Login({ onLogin }: LoginProps) {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [demoCredentials, setDemoCredentials] = useState<DemoCredential[]>([]);
+  const [isLoadingDemo, setIsLoadingDemo] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDemoCredentials() {
+      try {
+        const credentials = await fetchDemoCredentials();
+        if (!cancelled) {
+          setDemoCredentials(credentials);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDemo(false);
+        }
+      }
+    }
+
+    loadDemoCredentials();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,10 +56,8 @@ export function Login({ onLogin }: LoginProps) {
       // Call the authentication API
       const response = await login(email, password);
 
-      if (response.success && response.user) {
-        // Determine role from user info
-        const role = response.user.role.toLowerCase() === "client" ? "client" : "staff";
-        onLogin(role);
+      if (response.success && response.user && response.token) {
+        onLogin(response.user);
       } else {
         setError(response.message || "Invalid email or password");
       }
@@ -94,27 +116,30 @@ export function Login({ onLogin }: LoginProps) {
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
-            <div className="text-center">
-              <Button variant="link" type="button" className="text-sm">
-                Forgot password?
-              </Button>
-            </div>
-          </form>
+              <div className="text-center">
+                <Button variant="link" type="button" className="text-sm">
+                  Forgot password?
+                </Button>
+              </div>
+            </form>
 
-          <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-            <p className="text-sm font-medium mb-2">Demo Credentials</p>
-            <div className="text-xs space-y-1 text-muted-foreground">
-              <p>
-                <strong>Staff:</strong> staff@bettsfirm.com / password
-              </p>
-              <p>
-                <strong>Client:</strong> client@example.com / password
-              </p>
-              <p>
-                <strong>Admin:</strong> admin@bettsfirm.com / password
-              </p>
+            <div className="mt-6 p-4 bg-muted/50 rounded-lg">
+              <p className="text-sm font-medium mb-2">Demo Credentials</p>
+              {isLoadingDemo ? (
+                <p className="text-xs text-muted-foreground">Loading demo credentials...</p>
+              ) : demoCredentials.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No demo credentials available.</p>
+              ) : (
+                <div className="text-xs space-y-1 text-muted-foreground">
+                  {demoCredentials.map((credential) => (
+                    <p key={credential.email}>
+                      <strong>{credential.role}:</strong> {credential.email} / {credential.password}
+                      {credential.description ? ` — ${credential.description}` : ""}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
         </CardContent>
       </Card>
     </div>
