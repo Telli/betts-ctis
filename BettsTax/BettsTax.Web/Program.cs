@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 using BettsTax.Web.Models;
 using BettsTax.Web.Services;
+using BettsTax.Web.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -75,6 +77,17 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
+
+// Database configuration
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? "Server=(localdb)\\mssqllocaldb;Database=BettsTaxDb;Trusted_Connection=True;MultipleActiveResultSets=true";
+    options.UseSqlServer(connectionString);
+});
+
+// Add HttpContextAccessor for accessing current user in services
+builder.Services.AddHttpContextAccessor();
 
 builder.Services.AddRateLimiter(options =>
 {

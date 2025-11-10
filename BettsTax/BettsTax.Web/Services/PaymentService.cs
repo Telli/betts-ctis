@@ -1,5 +1,7 @@
 using BettsTax.Core.DTOs.Payment;
 using BettsTax.Core.Services.Interfaces;
+using BettsTax.Web.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace BettsTax.Web.Services;
 
@@ -8,10 +10,12 @@ namespace BettsTax.Web.Services;
 /// </summary>
 public class PaymentService : IPaymentService
 {
+    private readonly ApplicationDbContext _context;
     private readonly ILogger<PaymentService> _logger;
 
-    public PaymentService(ILogger<PaymentService> logger)
+    public PaymentService(ApplicationDbContext context, ILogger<PaymentService> logger)
     {
+        _context = context;
         _logger = logger;
     }
 
@@ -19,25 +23,30 @@ public class PaymentService : IPaymentService
     {
         _logger.LogInformation("Retrieving payments for clientId={ClientId}", clientId);
 
-        await Task.CompletedTask;
+        var query = _context.Payments
+            .Include(p => p.Client)
+            .AsQueryable();
 
-        // Mock data - replace with actual database query
-        var payments = new List<PaymentDto>
-        {
-            new() { Id = 1, Client = "Sierra Leone Breweries Ltd", TaxType = "VAT", Period = "Q1 2025", Amount = 45000.00m, Method = "Bank Transfer", Status = "Completed", Date = "2025-01-15", ReceiptNo = "RCP-2025-001" },
-            new() { Id = 2, Client = "Standard Chartered Bank SL", TaxType = "Corporate Tax", Period = "Q4 2024", Amount = 125000.00m, Method = "Direct Debit", Status = "Completed", Date = "2025-01-10", ReceiptNo = "RCP-2025-002" },
-            new() { Id = 3, Client = "Orange Sierra Leone", TaxType = "Withholding Tax", Period = "December 2024", Amount = 32000.00m, Method = "Bank Transfer", Status = "Pending", Date = "2025-01-20", ReceiptNo = "RCP-2025-003" },
-            new() { Id = 4, Client = "Rokel Commercial Bank", TaxType = "VAT", Period = "Q1 2025", Amount = 28000.00m, Method = "Check", Status = "Completed", Date = "2025-01-12", ReceiptNo = "RCP-2025-004" },
-            new() { Id = 5, Client = "Freetown Terminal Ltd", TaxType = "Corporate Tax", Period = "Q4 2024", Amount = 18500.00m, Method = "Bank Transfer", Status = "Processing", Date = "2025-01-18", ReceiptNo = "RCP-2025-005" }
-        };
-
-        // Filter by clientId if provided
         if (clientId.HasValue)
         {
-            // In real implementation, would filter by actual client ID
-            // For mock, just return first payment for demo
-            return payments.Take(1).ToList();
+            query = query.Where(p => p.ClientId == clientId.Value);
         }
+
+        var payments = await query
+            .Select(p => new PaymentDto
+            {
+                Id = p.Id,
+                Client = p.Client.Name,
+                TaxType = p.TaxType,
+                Period = p.Period,
+                Amount = p.Amount,
+                Method = p.Method,
+                Status = p.Status,
+                Date = p.Date.ToString("yyyy-MM-dd"),
+                ReceiptNo = p.ReceiptNo
+            })
+            .OrderByDescending(p => p.Date)
+            .ToListAsync();
 
         return payments;
     }
@@ -46,39 +55,78 @@ public class PaymentService : IPaymentService
     {
         _logger.LogInformation("Retrieving payment summary for clientId={ClientId}", clientId);
 
-        var payments = await GetPaymentsAsync(clientId);
+        var query = _context.Payments.AsQueryable();
 
-        var summary = new PaymentSummaryDto
+        if (clientId.HasValue)
         {
-            TotalAmount = payments.Sum(p => p.Amount),
-            TotalCount = payments.Count,
-            CompletedCount = payments.Count(p => p.Status == "Completed"),
-            PendingCount = payments.Count(p => p.Status == "Pending" || p.Status == "Processing")
-        };
+            query = query.Where(p => p.ClientId == clientId.Value);
+        }
 
-        return summary;
+        var totalAmount = await query.SumAsync(p => (decimal?)p.Amount) ?? 0;
+        var totalCount = await query.CountAsync();
+        var completedCount = await query.CountAsync(p => p.Status == "Completed");
+        var pendingCount = await query.CountAsync(p => p.Status == "Pending" || p.Status == "Processing");
+
+        return new PaymentSummaryDto
+        {
+            TotalAmount = totalAmount,
+            TotalCount = totalCount,
+            CompletedCount = completedCount,
+            PendingCount = pendingCount
+        };
     }
 
     public async Task<PaymentDto> CreatePaymentAsync(CreatePaymentDto dto, int? clientId = null)
     {
         _logger.LogInformation("Creating new payment for client={Client}, amount={Amount}", dto.Client, dto.Amount);
 
-        await Task.CompletedTask;
-
-        // Mock implementation - replace with actual database insert
-        var newPayment = new PaymentDto
+        int effectiveClientId;
+        if (clientId.HasValue)
         {
-            Id = new Random().Next(100, 999),
-            Client = dto.Client,
+            effectiveClientId = clientId.Value;
+        }
+        else
+        {
+            var client = await _context.Clients.FirstOrDefaultAsync(c => c.Name == dto.Client);
+            if (client == null)
+            {
+                throw new InvalidOperationException($"Client '{dto.Client}' not found");
+            }
+            effectiveClientId = client.Id;
+        }
+
+        var payment = new Models.Entities.Payment
+        {
+            ClientId = effectiveClientId,
             TaxType = dto.TaxType,
             Period = dto.Period,
             Amount = dto.Amount,
             Method = dto.Method,
             Status = "Pending",
-            Date = DateTime.Now.ToString("yyyy-MM-dd"),
-            ReceiptNo = $"RCP-{DateTime.Now.Year}-{new Random().Next(100, 999):D3}"
+            Date = DateTime.UtcNow,
+            ReceiptNo = $"RCP-{DateTime.UtcNow.Year}-{new Random().Next(100, 999):D3}",
+            IsDemo = false
         };
 
-        return newPayment;
+        _context.Payments.Add(payment);
+        await _context.SaveChangesAsync();
+
+        var clientName = await _context.Clients
+            .Where(c => c.Id == effectiveClientId)
+            .Select(c => c.Name)
+            .FirstOrDefaultAsync() ?? dto.Client;
+
+        return new PaymentDto
+        {
+            Id = payment.Id,
+            Client = clientName,
+            TaxType = payment.TaxType,
+            Period = payment.Period,
+            Amount = payment.Amount,
+            Method = payment.Method,
+            Status = payment.Status,
+            Date = payment.Date.ToString("yyyy-MM-dd"),
+            ReceiptNo = payment.ReceiptNo
+        };
     }
 }

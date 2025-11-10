@@ -60,6 +60,39 @@ namespace BettsTax.Web.Models
     }
 
     /// <summary>
+    /// User registration request DTO
+    /// </summary>
+    public class RegisterRequest
+    {
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email format")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Password is required")]
+        [MinLength(8, ErrorMessage = "Password must be at least 8 characters")]
+        public string Password { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Password confirmation is required")]
+        [Compare("Password", ErrorMessage = "Passwords do not match")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+
+        // Optional fields for client users
+        public string? CompanyName { get; set; }
+        public string? Tin { get; set; }
+        public string? Industry { get; set; }
+    }
+
+    /// <summary>
+    /// Registration response DTO
+    /// </summary>
+    public class RegisterResponse
+    {
+        public bool Success { get; set; }
+        public string? Message { get; set; }
+        public UserInfo? User { get; set; }
+    }
+
+    /// <summary>
     /// JWT configuration settings
     /// </summary>
     public class JwtSettings
