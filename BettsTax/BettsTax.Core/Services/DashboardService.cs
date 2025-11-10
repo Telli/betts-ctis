@@ -283,11 +283,11 @@ namespace BettsTax.Core.Services
 
             // Calculate Compliance Rate
             var currentMonthTaxYears = await _db.TaxYears
-                .Where(t => t.UpdatedDate >= currentMonth.AddDays(-30) && t.UpdatedDate <= currentMonth)
+                .Where(t => t.FilingDeadline >= currentMonth.AddDays(-30) && t.FilingDeadline <= currentMonth)
                 .ToListAsync();
 
             var lastMonthTaxYears = await _db.TaxYears
-                .Where(t => t.UpdatedDate >= lastMonth.AddDays(-30) && t.UpdatedDate <= lastMonth)
+                .Where(t => t.FilingDeadline >= lastMonth.AddDays(-30) && t.FilingDeadline <= lastMonth)
                 .ToListAsync();
 
             var currentCompliance = currentMonthTaxYears.Count > 0
@@ -302,21 +302,21 @@ namespace BettsTax.Core.Services
 
             // Calculate Filing Timeliness (average days before deadline)
             var recentFilings = await _db.TaxYears
-                .Where(t => t.FilingDate != null && t.FilingDeadline != null &&
-                           t.FilingDate >= currentMonth.AddDays(-30))
+                .Where(t => t.DateFiled != null && t.FilingDeadline != null &&
+                           t.DateFiled >= currentMonth.AddDays(-30))
                 .ToListAsync();
 
             var avgDaysBeforeDeadline = recentFilings.Count > 0
-                ? (int)recentFilings.Average(t => (t.FilingDeadline!.Value - t.FilingDate!.Value).TotalDays)
+                ? (int)recentFilings.Average(t => (t.FilingDeadline!.Value - t.DateFiled!.Value).TotalDays)
                 : 0;
 
             var lastMonthFilings = await _db.TaxYears
-                .Where(t => t.FilingDate != null && t.FilingDeadline != null &&
-                           t.FilingDate >= lastMonth.AddDays(-30) && t.FilingDate < currentMonth.AddDays(-30))
+                .Where(t => t.DateFiled != null && t.FilingDeadline != null &&
+                           t.DateFiled >= lastMonth.AddDays(-30) && t.DateFiled < currentMonth.AddDays(-30))
                 .ToListAsync();
 
             var lastAvgDaysBeforeDeadline = lastMonthFilings.Count > 0
-                ? (int)lastMonthFilings.Average(t => (t.FilingDeadline!.Value - t.FilingDate!.Value).TotalDays)
+                ? (int)lastMonthFilings.Average(t => (t.FilingDeadline!.Value - t.DateFiled!.Value).TotalDays)
                 : 0;
 
             var timelinessTrendDays = avgDaysBeforeDeadline - lastAvgDaysBeforeDeadline;
@@ -344,7 +344,7 @@ namespace BettsTax.Core.Services
 
             // Calculate Document Submission Rate
             var requiredDocuments = await _db.TaxYears
-                .Where(t => t.UpdatedDate >= currentMonth.AddDays(-30))
+                .Where(t => t.FilingDeadline >= currentMonth.AddDays(-30))
                 .CountAsync();
 
             var submittedDocuments = await _db.Documents
@@ -356,7 +356,7 @@ namespace BettsTax.Core.Services
                 : 100m;
 
             var lastRequiredDocuments = await _db.TaxYears
-                .Where(t => t.UpdatedDate >= lastMonth.AddDays(-30) && t.UpdatedDate < currentMonth.AddDays(-30))
+                .Where(t => t.FilingDeadline >= lastMonth.AddDays(-30) && t.FilingDeadline < currentMonth.AddDays(-30))
                 .CountAsync();
 
             var lastSubmittedDocuments = await _db.Documents
