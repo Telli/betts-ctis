@@ -87,6 +87,8 @@ namespace BettsTax.Data
             await SeedDefaultSystemSettings(sp);
             // Seed default tax settings (e.g., GST registration threshold)
             await SeedDefaultTaxSettings(sp);
+            // Seed report templates
+            await ReportTemplateSeeder.SeedReportTemplatesAsync(sp);
         }
 
         public static async Task SeedDefaultSystemSettings(IServiceProvider sp)
