@@ -92,7 +92,6 @@ export default function ClientMessagesPage() {
   // Show connection status
   useEffect(() => {
     if (chatConnected) {
-      console.log('✅ Real-time chat connected')
     }
   }, [chatConnected])
 

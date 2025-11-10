@@ -61,12 +61,28 @@ export interface NavigationCounts {
   unreadNotifications: number;
 }
 
+export interface DashboardMetrics {
+  complianceRate: number;
+  complianceRateTrend: string;
+  complianceRateTrendUp: boolean;
+  filingTimelinessAvgDays: number;
+  filingTimelinessTrend: string;
+  filingTimelinessTrendUp: boolean;
+  paymentOnTimeRate: number;
+  paymentOnTimeRateTrend: string;
+  paymentOnTimeRateTrendUp: boolean;
+  documentSubmissionRate: number;
+  documentSubmissionRateTrend: string;
+  documentSubmissionRateTrendUp: boolean;
+}
+
 export interface DashboardData {
   clientSummary: ClientSummary;
   complianceOverview: ComplianceOverview;
   recentActivity: RecentActivity[];
   upcomingDeadlines: UpcomingDeadline[];
   pendingApprovals: PendingApproval[];
+  metrics: DashboardMetrics;
 }
 
 export const DashboardService = {

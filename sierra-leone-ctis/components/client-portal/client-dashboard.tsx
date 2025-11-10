@@ -100,20 +100,6 @@ export function ClientDashboard() {
   useEffect(() => {
     fetchDashboardData();
   }, []);
-  
-  // Show real-time notification connection status
-  useEffect(() => {
-    if (notifConnected) {
-      console.log('✅ Real-time notifications connected');
-    }
-  }, [notifConnected]);
-  
-  // Display notification count badge
-  useEffect(() => {
-    if (unreadCount > 0) {
-      console.log(`📬 ${unreadCount} unread notifications`);
-    }
-  }, [unreadCount]);
 
   if (loading) {
     return <DashboardSkeleton />;

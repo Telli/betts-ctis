@@ -75,7 +75,6 @@ export default function ClientPaymentsPage() {
   // Show connection status
   useEffect(() => {
     if (paymentConnected) {
-      console.log('✅ Real-time payment updates connected')
     }
   }, [paymentConnected])
 

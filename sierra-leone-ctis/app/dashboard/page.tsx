@@ -102,36 +102,36 @@ function DashboardPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <MetricCard
               title="Compliance Rate"
-              value="94%"
-              trend="up"
-              trendValue="+3%"
+              value={`${dashboardData.metrics?.complianceRate ?? 0}%`}
+              trend={dashboardData.metrics?.complianceRateTrendUp ? "up" : "down"}
+              trendValue={dashboardData.metrics?.complianceRateTrend ?? "0%"}
               subtitle="vs last month"
               icon={<CheckCircle className="w-4 h-4" />}
               color="success"
             />
             <MetricCard
               title="Filing Timeliness"
-              value="15 days"
-              trend="up"
-              trendValue="+2 days"
+              value={`${dashboardData.metrics?.filingTimelinessAvgDays ?? 0} days`}
+              trend={dashboardData.metrics?.filingTimelinessTrendUp ? "up" : "down"}
+              trendValue={dashboardData.metrics?.filingTimelinessTrend ?? "0 days"}
               subtitle="avg before deadline"
               icon={<Clock className="w-4 h-4" />}
               color="info"
             />
             <MetricCard
               title="Payment Status"
-              value="87%"
-              trend="down"
-              trendValue="-3%"
+              value={`${dashboardData.metrics?.paymentOnTimeRate ?? 0}%`}
+              trend={dashboardData.metrics?.paymentOnTimeRateTrendUp ? "up" : "down"}
+              trendValue={dashboardData.metrics?.paymentOnTimeRateTrend ?? "0%"}
               subtitle="on-time payments"
               icon={<DollarSign className="w-4 h-4" />}
               color="warning"
             />
             <MetricCard
               title="Documents"
-              value="94%"
-              trend="up"
-              trendValue="+8%"
+              value={`${dashboardData.metrics?.documentSubmissionRate ?? 0}%`}
+              trend={dashboardData.metrics?.documentSubmissionRateTrendUp ? "up" : "down"}
+              trendValue={dashboardData.metrics?.documentSubmissionRateTrend ?? "0%"}
               subtitle="submission rate"
               icon={<FileText className="w-4 h-4" />}
               color="primary"

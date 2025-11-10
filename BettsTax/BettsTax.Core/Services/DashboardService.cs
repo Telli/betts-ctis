@@ -34,7 +34,8 @@ namespace BettsTax.Core.Services
                 ComplianceOverview = await GetComplianceOverviewAsync(),
                 RecentActivity = await GetRecentActivityAsync(),
                 UpcomingDeadlines = await GetUpcomingDeadlinesAsync(),
-                PendingApprovals = await GetPendingApprovalsAsync(userId)
+                PendingApprovals = await GetPendingApprovalsAsync(userId),
+                Metrics = await GetDashboardMetricsAsync()
             };
         }
 
@@ -271,6 +272,120 @@ namespace BettsTax.Core.Services
                 TotalTaxFilings = totalTaxFilings,
                 UpcomingDeadlines = upcomingDeadlines,
                 UnreadNotifications = unreadNotifications
+            };
+        }
+
+        public async Task<DashboardMetricsDto> GetDashboardMetricsAsync()
+        {
+            // Get current month's data
+            var currentMonth = DateTime.Today;
+            var lastMonth = currentMonth.AddMonths(-1);
+
+            // Calculate Compliance Rate
+            var currentMonthTaxYears = await _db.TaxYears
+                .Where(t => t.UpdatedDate >= currentMonth.AddDays(-30) && t.UpdatedDate <= currentMonth)
+                .ToListAsync();
+
+            var lastMonthTaxYears = await _db.TaxYears
+                .Where(t => t.UpdatedDate >= lastMonth.AddDays(-30) && t.UpdatedDate <= lastMonth)
+                .ToListAsync();
+
+            var currentCompliance = currentMonthTaxYears.Count > 0
+                ? (decimal)currentMonthTaxYears.Count(t => t.Status == TaxYearStatus.Filed || t.Status == TaxYearStatus.Paid) / currentMonthTaxYears.Count * 100
+                : 0m;
+
+            var lastCompliance = lastMonthTaxYears.Count > 0
+                ? (decimal)lastMonthTaxYears.Count(t => t.Status == TaxYearStatus.Filed || t.Status == TaxYearStatus.Paid) / lastMonthTaxYears.Count * 100
+                : 0m;
+
+            var complianceTrend = currentCompliance - lastCompliance;
+
+            // Calculate Filing Timeliness (average days before deadline)
+            var recentFilings = await _db.TaxYears
+                .Where(t => t.FilingDate != null && t.FilingDeadline != null &&
+                           t.FilingDate >= currentMonth.AddDays(-30))
+                .ToListAsync();
+
+            var avgDaysBeforeDeadline = recentFilings.Count > 0
+                ? (int)recentFilings.Average(t => (t.FilingDeadline!.Value - t.FilingDate!.Value).TotalDays)
+                : 0;
+
+            var lastMonthFilings = await _db.TaxYears
+                .Where(t => t.FilingDate != null && t.FilingDeadline != null &&
+                           t.FilingDate >= lastMonth.AddDays(-30) && t.FilingDate < currentMonth.AddDays(-30))
+                .ToListAsync();
+
+            var lastAvgDaysBeforeDeadline = lastMonthFilings.Count > 0
+                ? (int)lastMonthFilings.Average(t => (t.FilingDeadline!.Value - t.FilingDate!.Value).TotalDays)
+                : 0;
+
+            var timelinessTrendDays = avgDaysBeforeDeadline - lastAvgDaysBeforeDeadline;
+
+            // Calculate Payment On-Time Rate
+            var currentPayments = await _db.Payments
+                .Where(p => p.CreatedAt >= currentMonth.AddDays(-30) && p.CreatedAt <= currentMonth)
+                .ToListAsync();
+
+            var onTimePayments = currentPayments.Count(p => p.Status == PaymentStatus.Approved);
+            var paymentOnTimeRate = currentPayments.Count > 0
+                ? (decimal)onTimePayments / currentPayments.Count * 100
+                : 0m;
+
+            var lastMonthPayments = await _db.Payments
+                .Where(p => p.CreatedAt >= lastMonth.AddDays(-30) && p.CreatedAt < currentMonth.AddDays(-30))
+                .ToListAsync();
+
+            var lastOnTimePayments = lastMonthPayments.Count(p => p.Status == PaymentStatus.Approved);
+            var lastPaymentOnTimeRate = lastMonthPayments.Count > 0
+                ? (decimal)lastOnTimePayments / lastMonthPayments.Count * 100
+                : 0m;
+
+            var paymentTrend = paymentOnTimeRate - lastPaymentOnTimeRate;
+
+            // Calculate Document Submission Rate
+            var requiredDocuments = await _db.TaxYears
+                .Where(t => t.UpdatedDate >= currentMonth.AddDays(-30))
+                .CountAsync();
+
+            var submittedDocuments = await _db.Documents
+                .Where(d => d.UploadedAt >= currentMonth.AddDays(-30))
+                .CountAsync();
+
+            var documentRate = requiredDocuments > 0
+                ? (decimal)submittedDocuments / requiredDocuments * 100
+                : 100m;
+
+            var lastRequiredDocuments = await _db.TaxYears
+                .Where(t => t.UpdatedDate >= lastMonth.AddDays(-30) && t.UpdatedDate < currentMonth.AddDays(-30))
+                .CountAsync();
+
+            var lastSubmittedDocuments = await _db.Documents
+                .Where(d => d.UploadedAt >= lastMonth.AddDays(-30) && d.UploadedAt < currentMonth.AddDays(-30))
+                .CountAsync();
+
+            var lastDocumentRate = lastRequiredDocuments > 0
+                ? (decimal)lastSubmittedDocuments / lastRequiredDocuments * 100
+                : 100m;
+
+            var documentTrend = documentRate - lastDocumentRate;
+
+            return new DashboardMetricsDto
+            {
+                ComplianceRate = Math.Round(currentCompliance, 1),
+                ComplianceRateTrend = complianceTrend >= 0 ? $"+{Math.Abs(Math.Round(complianceTrend, 1))}%" : $"-{Math.Abs(Math.Round(complianceTrend, 1))}%",
+                ComplianceRateTrendUp = complianceTrend >= 0,
+
+                FilingTimelinessAvgDays = Math.Max(0, avgDaysBeforeDeadline),
+                FilingTimelinessTrend = timelinessTrendDays >= 0 ? $"+{Math.Abs(timelinessTrendDays)} days" : $"-{Math.Abs(timelinessTrendDays)} days",
+                FilingTimelinessTrendUp = timelinessTrendDays >= 0,
+
+                PaymentOnTimeRate = Math.Round(paymentOnTimeRate, 1),
+                PaymentOnTimeRateTrend = paymentTrend >= 0 ? $"+{Math.Abs(Math.Round(paymentTrend, 1))}%" : $"-{Math.Abs(Math.Round(paymentTrend, 1))}%",
+                PaymentOnTimeRateTrendUp = paymentTrend >= 0,
+
+                DocumentSubmissionRate = Math.Round(documentRate, 1),
+                DocumentSubmissionRateTrend = documentTrend >= 0 ? $"+{Math.Abs(Math.Round(documentTrend, 1))}%" : $"-{Math.Abs(Math.Round(documentTrend, 1))}%",
+                DocumentSubmissionRateTrendUp = documentTrend >= 0
             };
         }
 

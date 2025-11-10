@@ -29,12 +29,7 @@ export function LoginForm() {
     const trimmedPassword = password.trim();
 
     try {
-      console.log("Attempting login...");
-      console.log("Email (length):", trimmedEmail, `(${trimmedEmail.length} chars)`);
-      console.log("Password (length):", "***", `(${trimmedPassword.length} chars)`);
-      
       await AuthService.login({ Email: trimmedEmail, Password: trimmedPassword });
-      console.log("Login successful!");
 
       // Verify token was stored and authentication works
       const authenticated = isAuthenticated();
