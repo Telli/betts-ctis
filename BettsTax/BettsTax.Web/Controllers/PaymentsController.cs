@@ -32,6 +32,14 @@ namespace BettsTax.Web.Controllers
         }
 
         /// <summary>
+        /// Helper method to safely extract userId from claims
+        /// </summary>
+        private string? GetUserId()
+        {
+            return User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        }
+
+        /// <summary>
         /// Get paginated list of payments with optional filtering
         /// </summary>
         [HttpGet]
@@ -146,7 +154,12 @@ namespace BettsTax.Web.Controllers
                     return BadRequest(new { success = false, message = "Invalid data", errors = ModelState });
                 }
 
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value!;
+                var userId = GetUserId();
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(new { success = false, message = "User not authenticated" });
+                }
+
                 var payment = await _paymentService.CreateAsync(createDto, userId);
 
                 // Log on-behalf action if applicable
@@ -197,7 +210,11 @@ namespace BettsTax.Web.Controllers
                     return BadRequest(new { success = false, message = "Invalid data", errors = ModelState });
                 }
 
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value!;
+                var userId = GetUserId();
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(new { success = false, message = "User not authenticated" });
+                }
                 
                 // Get original payment for audit logging
                 var originalPayment = await _paymentService.GetPaymentByIdAsync(id);
@@ -244,7 +261,11 @@ namespace BettsTax.Web.Controllers
         {
             try
             {
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value!;
+                var userId = GetUserId();
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(new { success = false, message = "User not authenticated" });
+                }
                 
                 // Get payment details for audit logging before deletion
                 var paymentToDelete = await _paymentService.GetPaymentByIdAsync(id);
@@ -296,7 +317,12 @@ namespace BettsTax.Web.Controllers
         {
             try
             {
-                var approverId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value!;
+                var approverId = GetUserId();
+                if (string.IsNullOrEmpty(approverId))
+                {
+                    return Unauthorized(new { success = false, message = "User not authenticated" });
+                }
+
                 var payment = await _paymentService.ApproveAsync(id, approveDto, approverId);
 
                 // Log on-behalf action if applicable
@@ -344,7 +370,12 @@ namespace BettsTax.Web.Controllers
                     return BadRequest(new { success = false, message = "Invalid data", errors = ModelState });
                 }
 
-                var approverId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value!;
+                var approverId = GetUserId();
+                if (string.IsNullOrEmpty(approverId))
+                {
+                    return Unauthorized(new { success = false, message = "User not authenticated" });
+                }
+
                 var payment = await _paymentService.RejectAsync(id, rejectDto, approverId);
 
                 // Log on-behalf action if applicable
@@ -398,7 +429,12 @@ namespace BettsTax.Web.Controllers
                     return BadRequest(new { success = false, message = "Invalid data", errors = ModelState });
                 }
 
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value!;
+                var userId = GetUserId();
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(new { success = false, message = "User not authenticated" });
+                }
+
                 var document = await _paymentService.UploadEvidenceAsync(id, dto, file, userId);
 
                 return Ok(new { success = true, data = document, message = "Payment evidence uploaded" });
@@ -429,7 +465,12 @@ namespace BettsTax.Web.Controllers
                     return BadRequest(new { success = false, message = "Invalid data", errors = ModelState });
                 }
 
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value!;
+                var userId = GetUserId();
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(new { success = false, message = "User not authenticated" });
+                }
+
                 var payment = await _paymentService.ReconcileAsync(id, dto, userId);
 
                 return Ok(new { success = true, data = payment, message = "Payment reconciled" });
