@@ -65,7 +65,7 @@ export function Compliance({ clientId }: ComplianceProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+    }, [clientId]);
 
   const complianceStats = useMemo(
     () =>
