@@ -565,7 +565,7 @@ namespace BettsTax.Data
                         ? DateTime.UtcNow.AddDays(45)  // Current year - upcoming deadline
                         : new DateTime(year + 1, 3, 31); // Past years
 
-                    var filingDate = yearOffset > 0
+                    var dateFiled = yearOffset > 0
                         ? filingDeadline.AddDays(-10)  // Filed before deadline
                         : (DateTime?)null;              // Not yet filed
 
@@ -575,10 +575,8 @@ namespace BettsTax.Data
                         Year = year,
                         Status = status,
                         FilingDeadline = filingDeadline,
-                        FilingDate = filingDate,
-                        TaxLiability = client.AnnualTurnover * 0.25m,
-                        CreatedDate = new DateTime(year, 1, 1),
-                        UpdatedDate = filingDate ?? DateTime.UtcNow
+                        DateFiled = dateFiled,
+                        IncomeTaxOwed = client.AnnualTurnover * 0.25m
                     });
                 }
             }
