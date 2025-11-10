@@ -100,21 +100,6 @@ export function Login({ onLogin }: LoginProps) {
               </Button>
             </div>
           </form>
-
-          <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-            <p className="text-sm font-medium mb-2">Demo Credentials</p>
-            <div className="text-xs space-y-1 text-muted-foreground">
-              <p>
-                <strong>Staff:</strong> staff@bettsfirm.com / password
-              </p>
-              <p>
-                <strong>Client:</strong> client@example.com / password
-              </p>
-              <p>
-                <strong>Admin:</strong> admin@bettsfirm.com / password
-              </p>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>
