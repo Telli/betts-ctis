@@ -49,6 +49,10 @@ public class DashboardController : ControllerBase
         }
         catch (Exception ex)
         {
+            if (ex is OperationCanceledException)
+            {
+                throw;
+            }
             _logger.LogError(ex, "Failed to retrieve dashboard summary");
             return StatusCode(500, new { success = false, message = "Failed to load dashboard summary" });
         }
