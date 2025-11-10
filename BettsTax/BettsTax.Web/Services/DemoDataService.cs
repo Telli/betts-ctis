@@ -472,14 +472,14 @@ public class DemoDataService : IDemoDataService
             ClientName = "ABC Corporation",
             Title = "GST Return - Q3 2025",
             TaxType = "GST",
-            TaxPeriodOptions = new List<SelectionOptionDto>
+            TaxPeriodOptions = new List<FilterOptionDto>
             {
                 new() { Value = "q3-2025", Label = "Q3 2025 (Jul-Sep)" },
                 new() { Value = "q2-2025", Label = "Q2 2025 (Apr-Jun)" },
                 new() { Value = "q1-2025", Label = "Q1 2025 (Jan-Mar)" }
             },
             SelectedTaxPeriod = "q3-2025",
-            FilingStatusOptions = new List<SelectionOptionDto>
+            FilingStatusOptions = new List<FilterOptionDto>
             {
                 new() { Value = "draft", Label = "Draft" },
                 new() { Value = "pending", Label = "Pending Review" },
