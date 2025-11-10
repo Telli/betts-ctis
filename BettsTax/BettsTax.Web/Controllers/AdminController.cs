@@ -25,6 +25,9 @@ public class AdminController : ControllerBase
 
     [HttpGet("users")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    /// <summary>
+    /// Retrieve all system users.
+    /// </summary>
     public async Task<IActionResult> GetUsers()
     {
         try
