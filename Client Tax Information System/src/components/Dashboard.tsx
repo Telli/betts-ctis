@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "./PageHeader";
 import { MetricCard } from "./MetricCard";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -14,6 +14,7 @@ import {
   Users,
   DollarSign,
   Calendar,
+  Loader2,
 } from "lucide-react";
 import {
   LineChart,
@@ -30,6 +31,19 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import {
+  fetchDashboardMetrics,
+  fetchFilingTrends,
+  fetchComplianceDistribution,
+  fetchUpcomingDeadlines,
+  fetchRecentActivity,
+  type DashboardMetrics,
+  type FilingTrend,
+  type ComplianceDistribution,
+  type UpcomingDeadline,
+  type RecentActivity,
+} from "../lib/services/dashboard";
+import { Alert, AlertDescription } from "./ui/alert";
 
 interface DashboardProps {
   userRole?: "client" | "staff";
@@ -37,37 +51,83 @@ interface DashboardProps {
 
 export function Dashboard({ userRole = "staff" }: DashboardProps) {
   const [viewType, setViewType] = useState<"client" | "staff">(userRole);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock data for charts
-  const filingTrendsData = [
-    { month: "Jan", onTime: 85, late: 15 },
-    { month: "Feb", onTime: 88, late: 12 },
-    { month: "Mar", onTime: 92, late: 8 },
-    { month: "Apr", onTime: 87, late: 13 },
-    { month: "May", onTime: 90, late: 10 },
-    { month: "Jun", onTime: 94, late: 6 },
-  ];
+  // State for API data
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [filingTrendsData, setFilingTrendsData] = useState<FilingTrend[]>([]);
+  const [complianceDistribution, setComplianceDistribution] = useState<ComplianceDistribution[]>([]);
+  const [upcomingDeadlines, setUpcomingDeadlines] = useState<UpcomingDeadline[]>([]);
+  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
 
-  const complianceDistribution = [
-    { name: "Fully Compliant", value: 65, color: "#38a169" },
-    { name: "Pending", value: 20, color: "#d69e2e" },
-    { name: "At Risk", value: 10, color: "#e53e3e" },
-    { name: "Non-Compliant", value: 5, color: "#1a202c" },
-  ];
+  useEffect(() => {
+    loadDashboardData();
+  }, [viewType]);
 
-  const upcomingDeadlines = [
-    { client: "ABC Corp", type: "GST Return", dueDate: "2025-10-15", daysLeft: 8, status: "pending" },
-    { client: "XYZ Ltd", type: "Income Tax", dueDate: "2025-10-20", daysLeft: 13, status: "pending" },
-    { client: "Tech Solutions", type: "Payroll Tax", dueDate: "2025-10-12", daysLeft: 5, status: "at-risk" },
-    { client: "Global Trade", type: "Excise Duty", dueDate: "2025-10-10", daysLeft: 3, status: "urgent" },
-  ];
+  const loadDashboardData = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
 
-  const recentActivity = [
-    { time: "2 hours ago", action: "GST Return filed for ABC Corp", user: "Jane Smith" },
-    { time: "4 hours ago", action: "Document uploaded: Financial Statements", user: "John Doe" },
-    { time: "Yesterday", action: "Payment processed: SLE 15,000", user: "Sarah Johnson" },
-    { time: "2 days ago", action: "New client onboarded: Tech Innovations Ltd", user: "Mike Brown" },
-  ];
+      const clientId = viewType === "client" ? 1 : undefined;
+
+      const [metricsData, trendsData, complianceData, deadlinesData, activityData] =
+        await Promise.all([
+          fetchDashboardMetrics(clientId),
+          fetchFilingTrends(clientId, 6),
+          fetchComplianceDistribution(clientId),
+          fetchUpcomingDeadlines(clientId, 10),
+          fetchRecentActivity(clientId, 10),
+        ]);
+
+      setMetrics(metricsData);
+      setFilingTrendsData(trendsData);
+      setComplianceDistribution(complianceData);
+      setUpcomingDeadlines(deadlinesData);
+      setRecentActivity(activityData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load dashboard data");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div>
+        <PageHeader title="Dashboard" breadcrumbs={[{ label: "Dashboard" }]} />
+        <div className="p-6 flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+            <p className="text-muted-foreground">Loading dashboard data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div>
+        <PageHeader title="Dashboard" breadcrumbs={[{ label: "Dashboard" }]} />
+        <div className="p-6">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              {error}
+              <button
+                onClick={loadDashboardData}
+                className="ml-2 underline hover:no-underline"
+              >
+                Try again
+              </button>
+            </AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -97,7 +157,7 @@ export function Dashboard({ userRole = "staff" }: DashboardProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
               <MetricCard
                 title="Client Compliance Rate"
-                value="92%"
+                value={metrics ? `${metrics.clientComplianceRate}%` : "N/A"}
                 trend="up"
                 trendValue="+5%"
                 subtitle="vs last month"
@@ -106,7 +166,7 @@ export function Dashboard({ userRole = "staff" }: DashboardProps) {
               />
               <MetricCard
                 title="Filing Timeliness"
-                value="15 days"
+                value={metrics ? `${metrics.filingTimeliness} days` : "N/A"}
                 trend="up"
                 trendValue="+2 days"
                 subtitle="avg before deadline"
@@ -115,7 +175,7 @@ export function Dashboard({ userRole = "staff" }: DashboardProps) {
               />
               <MetricCard
                 title="Payment Completion"
-                value="87%"
+                value={metrics ? `${metrics.paymentCompletion}%` : "N/A"}
                 trend="down"
                 trendValue="-3%"
                 subtitle="on-time payments"
@@ -124,7 +184,7 @@ export function Dashboard({ userRole = "staff" }: DashboardProps) {
               />
               <MetricCard
                 title="Document Compliance"
-                value="94%"
+                value={metrics ? `${metrics.documentCompliance}%` : "N/A"}
                 trend="up"
                 trendValue="+8%"
                 subtitle="submitted on time"

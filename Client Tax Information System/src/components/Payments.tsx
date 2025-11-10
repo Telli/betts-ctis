@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "./PageHeader";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -29,70 +29,45 @@ import {
   DialogFooter,
 } from "./ui/dialog";
 import { Label } from "./ui/label";
-import { Search, Plus, Receipt, DollarSign, CheckCircle, Clock } from "lucide-react";
+import { Search, Plus, Receipt, DollarSign, CheckCircle, Clock, Loader2, AlertTriangle } from "lucide-react";
 import { Textarea } from "./ui/textarea";
-
-const mockPayments = [
-  {
-    id: 1,
-    client: "ABC Corporation",
-    taxType: "GST",
-    period: "Q3 2025",
-    amount: 22500,
-    method: "Bank Transfer",
-    status: "Paid",
-    date: "2025-10-01",
-    receiptNo: "RCP-2025-001",
-  },
-  {
-    id: 2,
-    client: "XYZ Trading",
-    taxType: "Income Tax",
-    period: "2024",
-    amount: 150000,
-    method: "Cheque",
-    status: "Pending",
-    date: "2025-09-28",
-    receiptNo: "RCP-2025-002",
-  },
-  {
-    id: 3,
-    client: "Tech Solutions",
-    taxType: "PAYE",
-    period: "Sep 2025",
-    amount: 45000,
-    method: "Cash",
-    status: "Paid",
-    date: "2025-09-25",
-    receiptNo: "RCP-2025-003",
-  },
-  {
-    id: 4,
-    client: "Global Imports",
-    taxType: "Excise Duty",
-    period: "Q3 2025",
-    amount: 78000,
-    method: "Bank Transfer",
-    status: "Overdue",
-    date: "2025-09-15",
-    receiptNo: "RCP-2025-004",
-  },
-];
+import { fetchPayments, fetchPaymentSummary, type Payment } from "../lib/services/payments";
+import { Alert, AlertDescription } from "./ui/alert";
 
 export function Payments() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [taxTypeFilter, setTaxTypeFilter] = useState("all");
   const [isRecordDialogOpen, setIsRecordDialogOpen] = useState(false);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [summary, setSummary] = useState({ totalPaid: 0, totalPending: 0, totalOverdue: 0 });
 
-  const filteredPayments = mockPayments.filter((payment) => {
-    const matchesSearch =
-      payment.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.receiptNo.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || payment.status === statusFilter;
-    const matchesTaxType = taxTypeFilter === "all" || payment.taxType === taxTypeFilter;
-    return matchesSearch && matchesStatus && matchesTaxType;
-  });
+  useEffect(() => {
+    loadPayments();
+  }, [searchTerm, statusFilter, taxTypeFilter]);
+
+  const loadPayments = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const [paymentsData, summaryData] = await Promise.all([
+        fetchPayments({ searchTerm, status: statusFilter, taxType: taxTypeFilter }),
+        fetchPaymentSummary(),
+      ]);
+
+      setPayments(paymentsData);
+      setSummary(summaryData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load payments");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filteredPayments = payments;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -107,15 +82,7 @@ export function Payments() {
     }
   };
 
-  const totalPaid = filteredPayments
-    .filter((p) => p.status === "Paid")
-    .reduce((sum, p) => sum + p.amount, 0);
-  const totalPending = filteredPayments
-    .filter((p) => p.status === "Pending")
-    .reduce((sum, p) => sum + p.amount, 0);
-  const totalOverdue = filteredPayments
-    .filter((p) => p.status === "Overdue")
-    .reduce((sum, p) => sum + p.amount, 0);
+  const { totalPaid, totalPending, totalOverdue } = summary;
 
   return (
     <div>

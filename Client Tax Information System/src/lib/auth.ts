@@ -33,7 +33,7 @@ if (typeof window !== 'undefined') {
     window.localStorage.removeItem('auth_token');
     window.localStorage.removeItem('refresh_token');
   } catch (error) {
-    console.warn('Unable to clear legacy auth tokens', error);
+    // Silently fail - legacy tokens are optional
   }
 }
 
@@ -49,7 +49,7 @@ function persistUser(user?: UserInfo) {
   try {
     safeSessionStorage.setItem(USER_KEY, JSON.stringify(user));
   } catch (error) {
-    console.warn('Unable to persist user information', error);
+    // Silently fail - persistence is optional
   }
 }
 
@@ -59,7 +59,7 @@ function clearUser() {
   try {
     safeSessionStorage.removeItem(USER_KEY);
   } catch (error) {
-    console.warn('Unable to clear persisted user information', error);
+    // Silently fail - clearing is optional
   }
 }
 
@@ -111,7 +111,6 @@ async function refreshAccessToken(): Promise<string | null> {
 
       return data.token;
     } catch (error) {
-      console.error('Refresh token error:', error);
       clearSession();
       return null;
     } finally {
@@ -154,7 +153,6 @@ export async function login(email: string, password: string): Promise<LoginRespo
 
     return data;
   } catch (error) {
-    console.error('Login error:', error);
     return {
       success: false,
       message: 'Network error. Please check your connection and try again.',
@@ -174,7 +172,6 @@ export function getUser(): UserInfo | null {
   try {
     return JSON.parse(raw) as UserInfo;
   } catch (error) {
-    console.warn('Unable to parse stored user', error);
     return null;
   }
 }
@@ -190,7 +187,7 @@ export async function logout(): Promise<void> {
       body: JSON.stringify({}),
     });
   } catch (error) {
-    console.warn('Logout request failed', error);
+    // Silently fail - logout should always clear session
   } finally {
     clearSession();
   }
@@ -235,7 +232,6 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
 
     return null;
   } catch (error) {
-    console.error('Error getting current user:', error);
     await logout();
     return null;
   }
