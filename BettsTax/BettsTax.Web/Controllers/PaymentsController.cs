@@ -35,9 +35,14 @@ public class PaymentsController : ControllerBase
             var response = await _demoDataService.GetPaymentsAsync(clientId);
             return Ok(new { success = true, data = response });
         }
-        catch (Exception ex)
+        catch (ArgumentException ex)
         {
-            _logger.LogError(ex, "Failed to retrieve payments");
+            _logger.LogWarning(ex, "Invalid argument when retrieving payments");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogError(ex, "Operation error when retrieving payments");
             return StatusCode(500, new { success = false, message = "Failed to load payments" });
         }
     }
