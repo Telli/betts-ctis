@@ -85,6 +85,22 @@ export interface DashboardData {
   metrics: DashboardMetrics;
 }
 
+export interface QuickAction {
+  title: string;
+  description: string;
+  icon: string;
+  color: string;
+  action: string;
+  enabled: boolean;
+  order: number;
+}
+
+export interface QuickActionsResponse {
+  actions: QuickAction[];
+  userRole: string;
+  counts: Record<string, number>;
+}
+
 export const DashboardService = {
   /**
    * Get all dashboard data
@@ -139,6 +155,14 @@ export const DashboardService = {
    */
   getNavigationCounts: async (): Promise<NavigationCounts> => {
     const response = await apiClient.get<{ success: boolean; data: NavigationCounts }>('/api/dashboard/navigation-counts');
+    return response.data.data;
+  },
+
+  /**
+   * Get user-specific quick actions based on role and permissions
+   */
+  getQuickActions: async (): Promise<QuickActionsResponse> => {
+    const response = await apiClient.get<{ success: boolean; data: QuickActionsResponse }>('/api/dashboard/quick-actions');
     return response.data.data;
   }
 };

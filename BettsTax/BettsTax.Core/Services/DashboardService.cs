@@ -389,6 +389,126 @@ namespace BettsTax.Core.Services
             };
         }
 
+        public async Task<QuickActionsResponseDto> GetQuickActionsAsync(string userId)
+        {
+            var user = await _db.Users.Include(u => u.ClientProfile).FirstOrDefaultAsync(u => u.Id == userId);
+            if (user == null)
+            {
+                return new QuickActionsResponseDto();
+            }
+
+            // Get user roles
+            var roles = await _db.UserRoles
+                .Where(ur => ur.UserId == userId)
+                .Join(_db.Roles, ur => ur.RoleId, r => r.Id, (ur, r) => r.Name)
+                .ToListAsync();
+
+            var userRole = roles.FirstOrDefault() ?? "Client";
+
+            var actions = new List<QuickActionDto>();
+            var counts = new Dictionary<string, int>();
+
+            // Define actions based on role
+            switch (userRole)
+            {
+                case "SystemAdmin":
+                case "Admin":
+                    actions.AddRange(new[]
+                    {
+                        new QuickActionDto { Title = "Add Client", Description = "Register new taxpayer", Icon = "Users", Color = "bg-amber-600 hover:bg-amber-700", Action = "/clients/new", Order = 1 },
+                        new QuickActionDto { Title = "Generate Report", Description = "Create compliance report", Icon = "Download", Color = "bg-indigo-600 hover:bg-indigo-700", Action = "/reports", Order = 2 },
+                        new QuickActionDto { Title = "View Analytics", Description = "System analytics dashboard", Icon = "BarChart", Color = "bg-purple-600 hover:bg-purple-700", Action = "/analytics", Order = 3 },
+                        new QuickActionDto { Title = "Manage Associates", Description = "User management", Icon = "Users", Color = "bg-green-600 hover:bg-green-700", Action = "/admin/associates", Order = 4 },
+                        new QuickActionDto { Title = "System Settings", Description = "Configure system", Icon = "Settings", Color = "bg-gray-600 hover:bg-gray-700", Action = "/admin/settings", Order = 5 },
+                        new QuickActionDto { Title = "Workflow Automation", Description = "Manage workflows", Icon = "Workflow", Color = "bg-blue-600 hover:bg-blue-700", Action = "/admin/workflow-automation", Order = 6 }
+                    });
+
+                    // Get counts for admin
+                    counts["totalClients"] = await _db.Clients.CountAsync();
+                    counts["pendingApprovals"] = await _db.Payments.CountAsync(p => p.Status == PaymentStatus.Pending);
+                    counts["activeAssociates"] = await _db.UserRoles
+                        .Join(_db.Roles, ur => ur.RoleId, r => r.Id, (ur, r) => new { ur.UserId, r.Name })
+                        .Where(x => x.Name == "Associate")
+                        .CountAsync();
+                    break;
+
+                case "Associate":
+                    actions.AddRange(new[]
+                    {
+                        new QuickActionDto { Title = "New Tax Filing", Description = "Create tax return", Icon = "FileText", Color = "bg-blue-600 hover:bg-blue-700", Action = "/tax-filings/new", Order = 1 },
+                        new QuickActionDto { Title = "Upload Documents", Description = "Add client documents", Icon = "Upload", Color = "bg-green-600 hover:bg-green-700", Action = "/documents/new", Order = 2 },
+                        new QuickActionDto { Title = "Add Client", Description = "Register new client", Icon = "Users", Color = "bg-amber-600 hover:bg-amber-700", Action = "/clients/new", Order = 3 },
+                        new QuickActionDto { Title = "Tax Calculator", Description = "Calculate tax liability", Icon = "Calculator", Color = "bg-purple-600 hover:bg-purple-700", Action = "/calculator", Order = 4 },
+                        new QuickActionDto { Title = "Generate Report", Description = "Client reports", Icon = "Download", Color = "bg-indigo-600 hover:bg-indigo-700", Action = "/reports", Order = 5 },
+                        new QuickActionDto { Title = "Process Payment", Description = "Record client payment", Icon = "DollarSign", Color = "bg-emerald-600 hover:bg-emerald-700", Action = "/payments/new", Order = 6 }
+                    });
+
+                    // Get counts for associate
+                    var assignedClientIds = await _db.Clients
+                        .Where(c => c.AssignedAssociateId == userId)
+                        .Select(c => c.ClientId)
+                        .ToListAsync();
+
+                    counts["assignedClients"] = assignedClientIds.Count;
+                    counts["pendingFilings"] = await _db.TaxFilings
+                        .Where(tf => assignedClientIds.Contains(tf.ClientId) && tf.Status == FilingStatus.Draft)
+                        .CountAsync();
+                    counts["upcomingDeadlines"] = await _db.TaxYears
+                        .Where(ty => assignedClientIds.Contains(ty.ClientId) &&
+                                    ty.FilingDeadline != null &&
+                                    ty.FilingDeadline <= DateTime.Today.AddDays(30))
+                        .CountAsync();
+                    break;
+
+                case "Client":
+                default:
+                    var clientId = user.ClientProfile?.ClientId;
+                    if (clientId.HasValue)
+                    {
+                        actions.AddRange(new[]
+                        {
+                            new QuickActionDto { Title = "Upload Documents", Description = "Add tax documents", Icon = "Upload", Color = "bg-green-600 hover:bg-green-700", Action = "/client-portal/documents", Order = 1 },
+                            new QuickActionDto { Title = "View Tax Filings", Description = "Check filing status", Icon = "FileText", Color = "bg-blue-600 hover:bg-blue-700", Action = "/client-portal/tax-filings", Order = 2 },
+                            new QuickActionDto { Title = "Payment History", Description = "View payments", Icon = "DollarSign", Color = "bg-emerald-600 hover:bg-emerald-700", Action = "/client-portal/payments", Order = 3 },
+                            new QuickActionDto { Title = "Tax Calculator", Description = "Estimate tax liability", Icon = "Calculator", Color = "bg-purple-600 hover:bg-purple-700", Action = "/calculator", Order = 4 },
+                            new QuickActionDto { Title = "Compliance Status", Description = "Check compliance", Icon = "Shield", Color = "bg-indigo-600 hover:bg-indigo-700", Action = "/client-portal/compliance", Order = 5 },
+                            new QuickActionDto { Title = "Message Associate", Description = "Contact your associate", Icon = "MessageSquare", Color = "bg-amber-600 hover:bg-amber-700", Action = "/client-portal/messages", Order = 6 }
+                        });
+
+                        // Get counts for client
+                        counts["pendingDocuments"] = await _db.Documents
+                            .Where(d => d.ClientId == clientId.Value && d.VerificationStatus == DocumentVerificationStatus.NotRequested)
+                            .CountAsync();
+                        counts["upcomingDeadlines"] = await _db.TaxYears
+                            .Where(ty => ty.ClientId == clientId.Value &&
+                                        ty.FilingDeadline != null &&
+                                        ty.FilingDeadline <= DateTime.Today.AddDays(30))
+                            .CountAsync();
+                        counts["overduePayments"] = await _db.Payments
+                            .Where(p => p.ClientId == clientId.Value && p.Status == PaymentStatus.Pending)
+                            .CountAsync();
+                    }
+                    else
+                    {
+                        // Client without profile - limited actions
+                        actions.AddRange(new[]
+                        {
+                            new QuickActionDto { Title = "Complete Profile", Description = "Finish registration", Icon = "User", Color = "bg-amber-600 hover:bg-amber-700", Action = "/client-portal/profile", Order = 1 },
+                            new QuickActionDto { Title = "Tax Calculator", Description = "Estimate tax liability", Icon = "Calculator", Color = "bg-purple-600 hover:bg-purple-700", Action = "/calculator", Order = 2 },
+                            new QuickActionDto { Title = "Help & Support", Description = "Get assistance", Icon = "HelpCircle", Color = "bg-blue-600 hover:bg-blue-700", Action = "/client-portal/help", Order = 3 }
+                        });
+                    }
+                    break;
+            }
+
+            return new QuickActionsResponseDto
+            {
+                Actions = actions.OrderBy(a => a.Order).ToList(),
+                UserRole = userRole,
+                Counts = counts
+            };
+        }
+
         // Client-specific dashboard methods
         public async Task<ClientDashboardDto> GetClientDashboardDataAsync(int clientId)
         {

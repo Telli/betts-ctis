@@ -69,5 +69,13 @@ namespace BettsTax.Web.Controllers
             var counts = await _dashboardService.GetNavigationCountsAsync(userId);
             return Ok(new { success = true, data = counts });
         }
+
+        [HttpGet("quick-actions")]
+        public async Task<IActionResult> GetQuickActions()
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+            var actions = await _dashboardService.GetQuickActionsAsync(userId);
+            return Ok(new { success = true, data = actions });
+        }
     }
 }

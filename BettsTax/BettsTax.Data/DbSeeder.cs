@@ -541,6 +541,92 @@ namespace BettsTax.Data
             }
 
             context.Payments.AddRange(payments);
+            await context.SaveChangesAsync();
+
+            // Create demo tax years
+            var taxYears = new List<TaxYear>();
+            foreach (var client in clients)
+            {
+                // Create tax years for the last 2 years and current year
+                for (int yearOffset = 2; yearOffset >= 0; yearOffset--)
+                {
+                    var year = currentYear - yearOffset;
+                    var status = yearOffset switch
+                    {
+                        2 => TaxYearStatus.Paid,      // 2 years ago - fully paid
+                        1 => TaxYearStatus.Filed,     // Last year - filed
+                        0 => TaxYearStatus.Pending,   // Current year - pending
+                        _ => TaxYearStatus.Draft
+                    };
+
+                    var filingDeadline = yearOffset == 0
+                        ? DateTime.UtcNow.AddDays(45)  // Current year - upcoming deadline
+                        : new DateTime(year + 1, 3, 31); // Past years
+
+                    var filingDate = yearOffset > 0
+                        ? filingDeadline.AddDays(-10)  // Filed before deadline
+                        : (DateTime?)null;              // Not yet filed
+
+                    taxYears.Add(new TaxYear
+                    {
+                        ClientId = client.ClientId,
+                        Year = year,
+                        Status = status,
+                        FilingDeadline = filingDeadline,
+                        FilingDate = filingDate,
+                        TaxLiability = client.AnnualTurnover * 0.25m,
+                        CreatedDate = new DateTime(year, 1, 1),
+                        UpdatedDate = filingDate ?? DateTime.UtcNow
+                    });
+                }
+            }
+
+            context.TaxYears.AddRange(taxYears);
+            await context.SaveChangesAsync();
+
+            // Create demo documents
+            var documents = new List<Document>();
+            var documentTypes = new[]
+            {
+                DocumentType.TaxReturn,
+                DocumentType.FinancialStatement,
+                DocumentType.Receipt,
+                DocumentType.SupportingDocument
+            };
+
+            foreach (var client in clients)
+            {
+                // Create 3-5 documents per client
+                var docCount = new Random().Next(3, 6);
+                for (int i = 0; i < docCount; i++)
+                {
+                    var docType = documentTypes[i % documentTypes.Length];
+                    var uploadDate = DateTime.UtcNow.AddDays(-(docCount - i) * 5);
+
+                    documents.Add(new Document
+                    {
+                        ClientId = client.ClientId,
+                        DocumentType = docType,
+                        OriginalFileName = $"{client.BusinessName.Replace(" ", "_")}_{docType}_{i + 1}.pdf",
+                        StoredFileName = $"{Guid.NewGuid()}.pdf",
+                        FilePath = $"/documents/{client.ClientId}/{Guid.NewGuid()}.pdf",
+                        ContentType = "application/pdf",
+                        FileSize = new Random().Next(100000, 5000000), // Random size between 100KB and 5MB
+                        Description = $"{docType} for {client.BusinessName}",
+                        UploadedAt = uploadDate,
+                        VerificationStatus = i < 2 ? DocumentVerificationStatus.Verified : DocumentVerificationStatus.NotRequested,
+                        VerifiedById = i < 2 ? associate!.Id : null,
+                        VerifiedAt = i < 2 ? uploadDate.AddDays(1) : null,
+                        TaxYear = currentYear - (i % 2),
+                        Tags = new List<string> { docType.ToString(), client.TaxpayerCategory.ToString() },
+                        CreatedAt = uploadDate,
+                        UpdatedAt = uploadDate
+                    });
+                }
+            }
+
+            context.Documents.AddRange(documents);
+            await context.SaveChangesAsync();
 
             // Create demo audit logs
             var auditLogs = new List<Models.Security.AuditLog>();
