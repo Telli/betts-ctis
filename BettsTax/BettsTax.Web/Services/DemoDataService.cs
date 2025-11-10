@@ -111,7 +111,7 @@ public class DemoDataService : IDemoDataService
                 ClientId = 1,
                 Name = "Financial Statements 2024.pdf",
                 Type = "Financial Statement",
-                Client = "ABC Corporation",
+                Client = "ABC Corporation Ltd",
                 Year = 2024,
                 TaxType = "Income Tax",
                 Version = 2,
@@ -156,7 +156,7 @@ public class DemoDataService : IDemoDataService
                 ClientId = 1,
                 Name = "Payroll Summary Q3.pdf",
                 Type = "Payroll Record",
-                Client = "ABC Corporation",
+                Client = "ABC Corporation Ltd",
                 Year = 2025,
                 TaxType = "PAYE",
                 Version = 1,
@@ -173,7 +173,7 @@ public class DemoDataService : IDemoDataService
             {
                 Id = 1,
                 ClientId = 1,
-                Client = "ABC Corporation",
+                Client = "ABC Corporation Ltd",
                 TaxType = "GST",
                 Period = "Q3 2025",
                 Amount = 22_500m,
@@ -371,7 +371,7 @@ public class DemoDataService : IDemoDataService
             {
                 Id = 1,
                 ClientId = 1,
-                Client = "ABC Corporation",
+                Client = "ABC Corporation Ltd",
                 Subject = "Q3 GST Filing Question",
                 LastMessagePreview = "Thanks for the clarification",
                 TimestampDisplay = "2 hours ago",
@@ -469,7 +469,7 @@ public class DemoDataService : IDemoDataService
         {
             FilingId = "gst-q3-2025",
             ClientId = 1,
-            ClientName = "ABC Corporation",
+            ClientName = "ABC Corporation Ltd",
             Title = "GST Return - Q3 2025",
             TaxType = "GST",
             TaxPeriodOptions = new List<FilterOptionDto>
