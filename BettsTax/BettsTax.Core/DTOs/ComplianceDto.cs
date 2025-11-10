@@ -1,5 +1,9 @@
 using BettsTax.Data;
+using BettsTax.Data.Models;
+using BettsTax.Core.DTOs.Compliance;
 using System.ComponentModel.DataAnnotations;
+using ComplianceRiskLevel = BettsTax.Data.ComplianceRiskLevel;
+using ComplianceStatus = BettsTax.Data.ComplianceStatus;
 
 namespace BettsTax.Core.DTOs
 {
@@ -67,36 +71,6 @@ namespace BettsTax.Core.DTOs
         public DateTime CreatedDate { get; set; }
     }
 
-    public class ComplianceAlertDto
-    {
-        public int ComplianceAlertId { get; set; }
-        public int ComplianceTrackerId { get; set; }
-        public ComplianceAlertSeverity Severity { get; set; }
-        public string SeverityDescription { get; set; } = string.Empty;
-        public string Title { get; set; } = string.Empty;
-        public string Message { get; set; } = string.Empty;
-        
-        public DateTime AlertDate { get; set; }
-        public DateTime? DueDate { get; set; }
-        public int? DaysUntilDue { get; set; }
-        public bool IsActive { get; set; }
-        public bool IsRead { get; set; }
-        public bool IsActionRequired { get; set; }
-        public bool IsOverdue { get; set; }
-        
-        public string? ActionUrl { get; set; }
-        public string? ActionButtonText { get; set; }
-        public bool IsSystemGenerated { get; set; }
-        public string? GeneratedBy { get; set; }
-        
-        public DateTime? ReadDate { get; set; }
-        public DateTime? ResolvedDate { get; set; }
-        
-        // Related client information
-        public string? ClientName { get; set; }
-        public TaxType? TaxType { get; set; }
-        public string? TaxTypeName { get; set; }
-    }
 
     public class ComplianceAlertSummaryDto
     {

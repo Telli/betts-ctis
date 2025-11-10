@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { AuthService } from "@/lib/services";
+import { isAuthenticated } from "@/lib/api-client";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import Link from "next/link";
@@ -23,8 +24,23 @@ export function LoginForm() {
     e.preventDefault();
     setIsLoading(true);
 
+    // Trim spaces from email and password
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+
     try {
-      await AuthService.login({ email, password });
+      console.log("Attempting login...");
+      console.log("Email (length):", trimmedEmail, `(${trimmedEmail.length} chars)`);
+      console.log("Password (length):", "***", `(${trimmedPassword.length} chars)`);
+      
+      await AuthService.login({ Email: trimmedEmail, Password: trimmedPassword });
+      console.log("Login successful!");
+
+      // Verify token was stored and authentication works
+      const authenticated = isAuthenticated();
+      if (!authenticated) {
+        throw new Error("Authentication failed - token not stored properly");
+      }
 
       // Update auth context state
       checkAuthStatus();
@@ -32,13 +48,32 @@ export function LoginForm() {
       toast({
         title: "Login successful",
         description: "You have been logged in successfully.",
+        duration: 5000,
       });
+
+      // Redirect to dashboard
       router.push("/dashboard");
     } catch (error: any) {
+      console.error("Login error:", error);
+      console.error("Error details:", {
+        message: error.message,
+        code: error.code,
+        status: error.status,
+        details: error.details
+      });
+      
+      let errorMessage = "Invalid credentials. Please try again.";
+      if (error.status === 401) {
+        errorMessage = "Invalid email or password. Please check your credentials.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Login failed",
-        description: error.message || "Invalid credentials. Please try again.",
+        description: errorMessage,
         variant: "destructive",
+        duration: 10000, // Longer duration to see error
       });
     } finally {
       setIsLoading(false);

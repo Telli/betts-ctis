@@ -1,0 +1,419 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using BettsTax.Data.Models;
+using BettsTax.Core.Services;
+using Microsoft.AspNetCore.Identity;
+
+namespace BettsTax.Web.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class WorkflowsController : ControllerBase
+    {
+        private readonly IWorkflowEngineService _workflowService;
+        private readonly IWorkflowRuleBuilderService _ruleBuilderService;
+
+        public WorkflowsController(
+            IWorkflowEngineService workflowService,
+            IWorkflowRuleBuilderService ruleBuilderService)
+        {
+            _workflowService = workflowService;
+            _ruleBuilderService = ruleBuilderService;
+        }
+
+        /// <summary>
+        /// Gets all workflows with optional filtering
+        /// </summary>
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<Workflow>>> GetWorkflows(
+            [FromQuery] WorkflowType? type = null,
+            [FromQuery] bool? isActive = null)
+        {
+            var workflows = await _workflowService.GetWorkflowsAsync(type, isActive);
+            return Ok(workflows);
+        }
+
+        /// <summary>
+        /// Gets a specific workflow by ID
+        /// </summary>
+        [HttpGet("{id}")]
+        public async Task<ActionResult<Workflow>> GetWorkflow(Guid id)
+        {
+            var workflow = await _workflowService.GetWorkflowAsync(id);
+            if (workflow == null)
+            {
+                return NotFound();
+            }
+            return Ok(workflow);
+        }
+
+        public async Task<ActionResult<Workflow>> CreateWorkflow([FromBody] Workflow workflow)
+        {
+            try
+            {
+                workflow.CreatedBy = User.Identity?.Name ?? "System";
+                var createdWorkflow = await _workflowService.CreateWorkflowAsync(workflow);
+                return CreatedAtAction(nameof(GetWorkflow), new { id = createdWorkflow.Id }, createdWorkflow);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        public async Task<IActionResult> UpdateWorkflow(Guid id, [FromBody] Workflow workflow)
+        {
+            try
+            {
+                workflow.UpdatedBy = User.Identity?.Name ?? "System";
+                var updatedWorkflow = await _workflowService.UpdateWorkflowAsync(id, workflow);
+                return Ok(updatedWorkflow);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Deletes a workflow
+        /// </summary>
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteWorkflow(Guid id)
+        {
+            try
+            {
+                await _workflowService.DeleteWorkflowAsync(id);
+                return NoContent();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+        }
+
+        /// <summary>
+        /// Triggers a workflow execution
+        /// </summary>
+        [HttpPost("{id}/trigger")]
+        public async Task<ActionResult<WorkflowExecution>> TriggerWorkflow(
+            Guid id,
+            [FromBody] Dictionary<string, object> contextData)
+        {
+            try
+            {
+                var execution = await _workflowService.TriggerWorkflowAsync(id, contextData);
+                return Ok(execution);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Gets workflow executions for a workflow
+        /// </summary>
+        [HttpGet("{id}/executions")]
+        public async Task<ActionResult<IEnumerable<WorkflowExecution>>> GetWorkflowExecutions(
+            Guid id,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            var executions = await _workflowService.GetWorkflowExecutionsAsync(id, page, pageSize);
+            return Ok(executions);
+        }
+
+        /// <summary>
+        /// Gets a workflow execution by ID
+        /// </summary>
+        [HttpGet("executions/{executionId}")]
+        public async Task<ActionResult<WorkflowExecution>> GetWorkflowExecution(Guid executionId)
+        {
+            var execution = await _workflowService.GetWorkflowExecutionAsync(executionId);
+            if (execution == null)
+            {
+                return NotFound();
+            }
+            return Ok(execution);
+        }
+
+        /// <summary>
+        /// Creates a workflow from a template
+        /// </summary>
+        [HttpPost("from-template/{templateId}")]
+        public async Task<ActionResult<Workflow>> CreateWorkflowFromTemplate(
+            Guid templateId,
+            [FromBody] CreateWorkflowFromTemplateRequest request)
+        {
+            try
+            {
+                var workflow = await _workflowService.CreateWorkflowFromTemplateAsync(
+                    templateId, request.Name, request.Parameters);
+                return CreatedAtAction(nameof(GetWorkflow), new { id = workflow.Id }, workflow);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Gets available workflow templates
+        /// </summary>
+        [HttpGet("templates")]
+        public async Task<ActionResult<IEnumerable<WorkflowTemplate>>> GetWorkflowTemplates(
+            [FromQuery] bool includeSystemTemplates = true)
+        {
+            var templates = await _workflowService.GetWorkflowTemplatesAsync(includeSystemTemplates);
+            return Ok(templates);
+        }
+
+        /// <summary>
+        /// Validates a workflow definition
+        /// </summary>
+        [HttpPost("validate")]
+        public async Task<ActionResult<ValidationResult>> ValidateWorkflow([FromBody] Workflow workflow)
+        {
+            var result = await _workflowService.ValidateWorkflowAsync(workflow);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Gets available condition operators for rule builder
+        /// </summary>
+        [HttpGet("rule-builder/operators")]
+        public ActionResult<IEnumerable<WorkflowConditionOperator>> GetConditionOperators()
+        {
+            var operators = _ruleBuilderService.GetConditionOperators();
+            return Ok(operators);
+        }
+
+        /// <summary>
+        /// Gets available action types for rule builder
+        /// </summary>
+        [HttpGet("rule-builder/actions")]
+        public ActionResult<IEnumerable<WorkflowActionType>> GetActionTypes()
+        {
+            var actions = _ruleBuilderService.GetActionTypes();
+            return Ok(actions);
+        }
+
+        /// <summary>
+        /// Gets available trigger types for rule builder
+        /// </summary>
+        [HttpGet("rule-builder/triggers")]
+        public ActionResult<IEnumerable<WorkflowTrigger>> GetTriggerTypes()
+        {
+            var triggers = _ruleBuilderService.GetTriggerTypes();
+            return Ok(triggers);
+        }
+
+        /// <summary>
+        /// Gets available step types for rule builder
+        /// </summary>
+        [HttpGet("rule-builder/steps")]
+        public ActionResult<IEnumerable<WorkflowStepType>> GetStepTypes()
+        {
+            var steps = _ruleBuilderService.GetStepTypes();
+            return Ok(steps);
+        }
+
+        /// <summary>
+        /// Gets available fields for an entity type
+        /// </summary>
+        [HttpGet("rule-builder/fields/{entityType}")]
+        public async Task<ActionResult<IEnumerable<string>>> GetAvailableFields(string entityType)
+        {
+            var fields = await _ruleBuilderService.GetAvailableFieldsAsync(entityType);
+            return Ok(fields);
+        }
+
+        /// <summary>
+        /// Builds a condition expression from rule definition
+        /// </summary>
+        [HttpPost("rule-builder/condition")]
+        public async Task<ActionResult<string>> BuildConditionExpression(
+            [FromBody] Dictionary<string, object> ruleDefinition)
+        {
+            try
+            {
+                var expression = await _ruleBuilderService.BuildConditionExpressionAsync(ruleDefinition);
+                return Ok(expression);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Builds an action expression from action definition
+        /// </summary>
+        [HttpPost("rule-builder/action")]
+        public async Task<ActionResult<string>> BuildActionExpression(
+            [FromBody] Dictionary<string, object> actionDefinition)
+        {
+            try
+            {
+                var expression = await _ruleBuilderService.BuildActionExpressionAsync(actionDefinition);
+                return Ok(expression);
+            }
+            catch (NotSupportedException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Validates a rule definition
+        /// </summary>
+        [HttpPost("rule-builder/validate")]
+        public async Task<ActionResult<ValidationResult>> ValidateRule(
+            [FromBody] Dictionary<string, object> ruleDefinition)
+        {
+            var result = await _ruleBuilderService.ValidateRuleAsync(ruleDefinition);
+            return Ok(result);
+        }
+
+        public async Task<ActionResult<WorkflowRule>> CreateRule([FromBody] WorkflowRule rule)
+        {
+            try
+            {
+                rule.CreatedBy = User.Identity?.Name ?? "System";
+                var createdRule = await _ruleBuilderService.CreateRuleAsync(rule);
+                return CreatedAtAction(nameof(GetRule), new { id = createdRule.Id }, createdRule);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Gets all business rules with optional filtering
+        /// </summary>
+        [HttpGet("rules")]
+        public async Task<ActionResult<IEnumerable<WorkflowRule>>> GetRules(
+            [FromQuery] string? entityType = null,
+            [FromQuery] bool? isActive = null)
+        {
+            var rules = await _ruleBuilderService.GetRulesAsync(entityType, isActive);
+            return Ok(rules);
+        }
+
+        /// <summary>
+        /// Gets a specific business rule by ID
+        /// </summary>
+        [HttpGet("rules/{id}")]
+        public async Task<ActionResult<WorkflowRule>> GetRule(Guid id)
+        {
+            var rule = await _ruleBuilderService.GetRuleAsync(id);
+            if (rule == null)
+            {
+                return NotFound();
+            }
+            return Ok(rule);
+        }
+
+        public async Task<IActionResult> UpdateRule(Guid id, [FromBody] WorkflowRule rule)
+        {
+            try
+            {
+                rule.UpdatedBy = User.Identity?.Name ?? "System";
+                var updatedRule = await _ruleBuilderService.UpdateRuleAsync(id, rule);
+                return Ok(updatedRule);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Deletes a business rule
+        /// </summary>
+        [HttpDelete("rules/{id}")]
+        public async Task<IActionResult> DeleteRule(Guid id)
+        {
+            try
+            {
+                await _ruleBuilderService.DeleteRuleAsync(id);
+                return NoContent();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+        }
+
+        /// <summary>
+        /// Activates or deactivates a business rule
+        /// </summary>
+        [HttpPatch("rules/{id}/status")]
+        public async Task<IActionResult> ToggleRuleStatus(Guid id, [FromBody] bool isActive)
+        {
+            try
+            {
+                await _ruleBuilderService.ToggleRuleStatusAsync(id, isActive);
+                return NoContent();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+        }
+
+        /// <summary>
+        /// Tests a business rule against sample data
+        /// </summary>
+        [HttpPost("rules/{id}/test")]
+        public async Task<ActionResult<RuleTestResult>> TestRule(
+            Guid id,
+            [FromBody] Dictionary<string, object> testData)
+        {
+            try
+            {
+                var result = await _ruleBuilderService.TestRuleAsync(id, testData);
+                return Ok(result);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Request model for creating workflow from template
+    /// </summary>
+    public class CreateWorkflowFromTemplateRequest
+    {
+        public string Name { get; set; } = string.Empty;
+        public Dictionary<string, object> Parameters { get; set; } = new Dictionary<string, object>();
+    }
+}

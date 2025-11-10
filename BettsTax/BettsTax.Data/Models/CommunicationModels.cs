@@ -361,6 +361,8 @@ public class ChatRoom
     
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     
+    public DateTime? UpdatedAt { get; set; }
+    
     public int MaxParticipants { get; set; } = 100;
     
     public int CurrentParticipants { get; set; } = 0;
@@ -374,10 +376,45 @@ public class ChatRoom
     [StringLength(1000)]
     public string? Settings { get; set; } // JSON for room settings
     
+    // Enhanced features for tax system
+    public int? ClientId { get; set; } // Link to specific client for client-specific rooms
+    
+    [StringLength(50)]
+    public string? TaxYear { get; set; } // For year-specific discussions
+    
+    public TaxType? TaxType { get; set; } // For tax-type specific rooms
+    
+    public bool IsArchived { get; set; } = false;
+    
+    public DateTime? ArchivedAt { get; set; }
+    
+    [StringLength(450)]
+    public string? ArchivedBy { get; set; }
+    
+    public bool RequiresApproval { get; set; } = false; // For joining the room
+    
+    public bool IsEncrypted { get; set; } = false; // For sensitive discussions
+    
+    public DateTime? LastActivityAt { get; set; }
+    
+    public int MessageCount { get; set; } = 0;
+    
+    [StringLength(200)]
+    public string? Topic { get; set; } // Current discussion topic
+    
+    [StringLength(450)]
+    public string? TopicSetBy { get; set; }
+    
+    public DateTime? TopicSetAt { get; set; }
+    
     // Navigation properties
     public ApplicationUser? CreatedByUser { get; set; }
+    public ApplicationUser? ArchivedByUser { get; set; }
+    public ApplicationUser? TopicSetByUser { get; set; }
+    public Client? Client { get; set; }
     public List<ChatRoomParticipant> Participants { get; set; } = new();
     public List<ChatMessage> Messages { get; set; } = new();
+    public List<ChatRoomInvitation> Invitations { get; set; } = new();
 }
 
 public class ChatRoomParticipant
@@ -425,7 +462,7 @@ public class ChatMessage
     public string SenderId { get; set; } = string.Empty;
     
     [Required]
-    [StringLength(1000)]
+    [StringLength(2000)] // Increased from 1000 for longer messages
     public string Content { get; set; } = string.Empty;
     
     [Required]
@@ -435,7 +472,15 @@ public class ChatMessage
     
     public DateTime? EditedAt { get; set; }
     
+    [StringLength(450)]
+    public string? EditedBy { get; set; }
+    
     public bool IsDeleted { get; set; } = false;
+    
+    public DateTime? DeletedAt { get; set; }
+    
+    [StringLength(450)]
+    public string? DeletedBy { get; set; }
     
     public int? ReplyToMessageId { get; set; }
     
@@ -445,10 +490,133 @@ public class ChatMessage
     [StringLength(500)]
     public string? Mentions { get; set; } // JSON array of mentioned user IDs
     
+    // Enhanced features for tax system
+    public bool IsPinned { get; set; } = false;
+    
+    public DateTime? PinnedAt { get; set; }
+    
+    [StringLength(450)]
+    public string? PinnedBy { get; set; }
+    
+    public bool IsImportant { get; set; } = false; // For highlighting important messages
+    
+    public bool IsPrivate { get; set; } = false; // For moderator-only visibility
+    
+    public int? ThreadId { get; set; } // For threaded conversations
+    
+    public bool StartsThread { get; set; } = false;
+    
+    public int ThreadMessageCount { get; set; } = 0;
+    
+    public DateTime? LastThreadActivity { get; set; }
+    
+    [StringLength(100)]
+    public string? MessageHash { get; set; } // For message integrity verification
+    
+    [StringLength(1000)]
+    public string? Metadata { get; set; } // JSON for additional data (reactions, etc.)
+    
+    // Tax-specific fields
+    public int? RelatedTaxFilingId { get; set; }
+    
+    public int? RelatedPaymentId { get; set; }
+    
+    public int? RelatedDocumentId { get; set; }
+    
+    [StringLength(50)]
+    public string? TaxYear { get; set; }
+    
+    public TaxType? TaxType { get; set; }
+    
     // Navigation properties
     public ChatRoom? ChatRoom { get; set; }
     public ApplicationUser? Sender { get; set; }
+    public ApplicationUser? EditedByUser { get; set; }
+    public ApplicationUser? DeletedByUser { get; set; }
+    public ApplicationUser? PinnedByUser { get; set; }
     public ChatMessage? ReplyToMessage { get; set; }
+    public ChatMessage? ThreadParent { get; set; }
+    public List<ChatMessage> ThreadReplies { get; set; } = new();
+    public List<ChatMessageReaction> Reactions { get; set; } = new();
+    public List<ChatMessageRead> ReadReceipts { get; set; } = new();
+    public TaxFiling? RelatedTaxFiling { get; set; }
+    public Payment? RelatedPayment { get; set; }
+    public Document? RelatedDocument { get; set; }
+}
+
+public class ChatRoomInvitation
+{
+    [Key]
+    public int Id { get; set; }
+    
+    [Required]
+    public int ChatRoomId { get; set; }
+    
+    [Required]
+    [StringLength(450)]
+    public string InvitedUserId { get; set; } = string.Empty;
+    
+    [Required]
+    [StringLength(450)]
+    public string InvitedBy { get; set; } = string.Empty;
+    
+    public DateTime InvitedAt { get; set; } = DateTime.UtcNow;
+    
+    public DateTime? ExpiresAt { get; set; }
+    
+    public InvitationStatus Status { get; set; } = InvitationStatus.Pending;
+    
+    public DateTime? RespondedAt { get; set; }
+    
+    [StringLength(500)]
+    public string? Message { get; set; }
+    
+    // Navigation properties
+    public ChatRoom? ChatRoom { get; set; }
+    public ApplicationUser? InvitedUser { get; set; }
+    public ApplicationUser? InvitedByUser { get; set; }
+}
+
+public class ChatMessageReaction
+{
+    [Key]
+    public int Id { get; set; }
+    
+    [Required]
+    public int ChatMessageId { get; set; }
+    
+    [Required]
+    [StringLength(450)]
+    public string UserId { get; set; } = string.Empty;
+    
+    [Required]
+    [StringLength(50)]
+    public string Reaction { get; set; } = string.Empty; // emoji or reaction type
+    
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    // Navigation properties
+    public ChatMessage? ChatMessage { get; set; }
+    public ApplicationUser? User { get; set; }
+}
+
+public class ChatMessageRead
+{
+    [Key]
+    public int Id { get; set; }
+    
+    [Required]
+    public int ChatMessageId { get; set; }
+    
+    [Required]
+    [StringLength(450)]
+    public string UserId { get; set; } = string.Empty;
+    
+    public DateTime ReadAt { get; set; } = DateTime.UtcNow;
+    
+    // Navigation properties
+    public ChatMessage? ChatMessage { get; set; }
+    public ApplicationUser? User { get; set; }
 }
 
 // Enums for Communication System
@@ -561,5 +729,19 @@ public enum ChatMessageType
     File = 2,
     System = 3,
     Join = 4,
-    Leave = 5
+    Leave = 5,
+    Document = 6,
+    TaxFiling = 7,
+    Payment = 8,
+    Reminder = 9,
+    Alert = 10
+}
+
+public enum InvitationStatus
+{
+    Pending = 0,
+    Accepted = 1,
+    Declined = 2,
+    Expired = 3,
+    Cancelled = 4
 }

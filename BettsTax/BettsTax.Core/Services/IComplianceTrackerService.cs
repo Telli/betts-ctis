@@ -1,6 +1,10 @@
 using BettsTax.Core.DTOs;
-using BettsTax.Data;
+using BettsTax.Core.DTOs.Compliance;
+using BettsTax.Data; // For TaxType
 using BettsTax.Shared;
+// Disambiguate dashboard/trend DTOs
+using ComplianceDashboardDtoAgg = BettsTax.Core.DTOs.ComplianceDashboardDto;
+using ComplianceTrendDtoAgg = BettsTax.Core.DTOs.ComplianceTrendDto;
 
 namespace BettsTax.Core.Services
 {
@@ -13,9 +17,9 @@ namespace BettsTax.Core.Services
         Task<Result<ComplianceTrackerDto>> UpdateComplianceStatusAsync(UpdateComplianceStatusDto updateDto);
         
         // Dashboard and analytics
-        Task<Result<ComplianceDashboardDto>> GetComplianceDashboardAsync();
-        Task<Result<ComplianceDashboardDto>> GetClientComplianceDashboardAsync(int clientId);
-        
+        Task<Result<ComplianceDashboardDtoAgg>> GetComplianceDashboardAsync();
+        Task<Result<ComplianceDashboardDtoAgg>> GetClientComplianceDashboardAsync(int clientId);
+
         // Alerts and actions
         Task<Result<List<ComplianceAlertDto>>> GetActiveAlertsAsync(int? clientId = null);
         Task<Result<List<ComplianceActionDto>>> GetPendingActionsAsync(int? clientId = null);
@@ -39,9 +43,10 @@ namespace BettsTax.Core.Services
         Task<Result<bool>> RunComplianceCheckAsync(int? clientId = null);
         Task<Result<bool>> ProcessOverdueComplianceAsync();
         Task<Result<bool>> GenerateComplianceAlertsAsync();
+        Task<Result<bool>> UpdateComplianceHistoryAsync();
         
         // Reporting
-        Task<Result<List<ComplianceTrendDto>>> GetComplianceTrendsAsync(DateTime fromDate, DateTime toDate);
+        Task<Result<List<ComplianceTrendDtoAgg>>> GetComplianceTrendsAsync(DateTime fromDate, DateTime toDate);
         Task<Result<List<PenaltyTrendDto>>> GetPenaltyTrendsAsync(DateTime fromDate, DateTime toDate);
         Task<Result<List<RiskAnalysisDto>>> GetRiskAnalysisAsync();
     }

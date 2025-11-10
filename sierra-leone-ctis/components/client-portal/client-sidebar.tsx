@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/context/auth-context"
 import { Button } from "@/components/ui/button"
@@ -17,9 +18,9 @@ import {
   HelpCircle,
   ChevronLeft,
   ChevronRight,
-  Building2,
   Shield,
-  LogOut
+  LogOut,
+  MessageCircle
 } from "lucide-react"
 
 export function ClientSidebar() {
@@ -41,10 +42,22 @@ export function ClientSidebar() {
       current: pathname === "/client-portal/dashboard",
     },
     {
+      name: "Reports",
+      href: "/client-portal/reports",
+      icon: FileText,
+      current: pathname === "/client-portal/reports",
+    },
+    {
       name: "My Documents",
       href: "/client-portal/documents",
       icon: Upload,
       current: pathname === "/client-portal/documents",
+    },
+    {
+      name: "Messages",
+      href: "/client-portal/messages",
+      icon: MessageCircle,
+      current: pathname === "/client-portal/messages",
     },
     {
       name: "Tax Filings",
@@ -105,9 +118,7 @@ export function ClientSidebar() {
           <div className="flex items-center justify-between">
             {!collapsed && (
               <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-sierra-blue-600 to-sierra-blue-700 rounded-lg flex items-center justify-center">
-                  <Building2 className="h-4 w-4 text-white" />
-                </div>
+                <Image src="/logo.png" alt="Betts logo" width={32} height={32} className="rounded" />
                 <div>
                   <h2 className="font-bold text-sierra-blue-800">Client Portal</h2>
                   <p className="text-xs text-sierra-blue-500 truncate">

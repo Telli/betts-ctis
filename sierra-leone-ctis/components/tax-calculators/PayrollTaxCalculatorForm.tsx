@@ -156,7 +156,7 @@ export default function PayrollTaxCalculatorForm({
 
   const calculateIndividualPAYE = (annualSalary: number) => {
     let paye = 0;
-    let taxableAmount = annualSalary;
+    const taxableAmount = annualSalary;
 
     for (const bracket of payeTaxBrackets) {
       if (taxableAmount > bracket.min) {

@@ -18,6 +18,9 @@ import {
   Eye
 } from 'lucide-react'
 import { format } from 'date-fns'
+import { ClientPortalService } from '@/lib/services/client-portal-service'
+import { useToast } from '@/hooks/use-toast'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface ComplianceItem {
   id: string
@@ -33,45 +36,33 @@ interface ComplianceItem {
 
 export default function ClientCompliancePage() {
   const [complianceItems, setComplianceItems] = useState<ComplianceItem[]>([])
+  const [complianceData, setComplianceData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const { toast } = useToast()
 
   useEffect(() => {
-    // Mock data - replace with actual API call
-    const mockComplianceItems: ComplianceItem[] = [
-      {
-        id: '1',
-        type: 'Income Tax Filing',
-        description: '2024 Annual Income Tax Return',
-        status: 'compliant',
-        dueDate: new Date(2025, 2, 31),
-        lastUpdated: new Date(2025, 0, 15),
-        priority: 'high',
-        actions: ['Filed on time', 'Payment completed']
-      },
-      {
-        id: '2',
-        type: 'GST Return',
-        description: 'Q4 2024 GST Return Filing',
-        status: 'at-risk',
-        dueDate: new Date(2025, 0, 31),
-        lastUpdated: new Date(2025, 0, 20),
-        priority: 'high',
-        actions: ['Documents pending review', 'Submit supporting documents']
-      },
-      {
-        id: '3',
-        type: 'Payroll Tax',
-        description: 'December 2024 Payroll Tax',
-        status: 'pending',
-        dueDate: new Date(2025, 1, 15),
-        lastUpdated: new Date(2024, 11, 30),
-        priority: 'medium',
-        actions: ['Prepare payroll register', 'Calculate employee deductions']
+    const fetchCompliance = async () => {
+      try {
+        setLoading(true)
+        const data = await ClientPortalService.getCompliance()
+        setComplianceData(data)
+        
+        // Transform backend data to ComplianceItem format if needed
+        // For now using empty array as backend might not have specific format
+        setComplianceItems([])
+      } catch (error: any) {
+        console.error('Error fetching compliance data:', error)
+        toast({
+          title: 'Error',
+          description: 'Failed to load compliance data. Please try again.',
+          variant: 'destructive',
+        })
+      } finally {
+        setLoading(false)
       }
-    ]
+    }
     
-    setComplianceItems(mockComplianceItems)
-    setLoading(false)
+    fetchCompliance()
   }, [])
 
   const getStatusIcon = (status: string) => {
@@ -129,8 +120,14 @@ export default function ClientCompliancePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-sierra-blue"></div>
+      <div className="p-6 space-y-6">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-48" />
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-32" />
+          ))}
+        </div>
       </div>
     )
   }

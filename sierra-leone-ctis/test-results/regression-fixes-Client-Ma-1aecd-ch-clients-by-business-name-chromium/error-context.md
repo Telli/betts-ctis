@@ -1,0 +1,261 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - img "FPL Analytica Logo" [ref=e7]
+        - button "Dashboard" [ref=e8]:
+          - img
+          - text: Dashboard
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - heading "Analytics" [level=3] [ref=e13]
+          - generic [ref=e14]:
+            - button "Team Strength" [ref=e15]:
+              - img
+              - text: Team Strength
+            - button "Fixture Difficulty Ranking" [ref=e16]:
+              - img
+              - text: Fixture Difficulty Ranking
+            - button "Player Stats" [ref=e17]:
+              - img
+              - text: Player Stats
+            - button "Team Goals Trend" [ref=e18]:
+              - img
+              - text: Team Goals Trend
+            - button "Precision Analysis" [ref=e19]:
+              - img
+              - text: Precision Analysis
+              - img
+        - generic [ref=e20]:
+          - heading "FPL Planning Experiment" [level=3] [ref=e21]
+          - generic [ref=e22]:
+            - button "Single Gameweek" [ref=e23]:
+              - img
+              - text: Single Gameweek
+              - img
+            - button "Multiple Gameweeks" [ref=e24]:
+              - img
+              - text: Multiple Gameweeks
+              - img
+        - generic [ref=e25]:
+          - heading "Predictions" [level=3] [ref=e26]
+          - generic [ref=e27]:
+            - button "Player Points" [ref=e28]:
+              - img
+              - text: Player Points
+            - button "Clean Sheet" [ref=e29]:
+              - img
+              - text: Clean Sheet
+            - button "Player Price Change" [ref=e30]:
+              - img
+              - text: Player Price Change
+        - generic [ref=e31]:
+          - heading "Tracking" [level=3] [ref=e32]
+          - generic [ref=e33]:
+            - button "Manager" [ref=e34]:
+              - img
+              - text: Manager
+              - img
+            - button "Mini League" [ref=e35]:
+              - img
+              - text: Mini League
+              - img
+            - button "Elite Managers" [ref=e36]:
+              - img
+              - text: Elite Managers
+              - img
+        - generic [ref=e37]:
+          - heading "Planning Tools" [level=3] [ref=e38]
+          - generic [ref=e39]:
+            - button "Transfer & Chip Planner" [ref=e40]:
+              - img
+              - text: Transfer & Chip Planner
+              - img
+            - button "Team of the Week" [ref=e41]:
+              - img
+              - text: Team of the Week
+            - button "New Team Planner" [ref=e42]:
+              - img
+              - text: New Team Planner
+              - img
+      - button "Sign Up / Login" [ref=e44]
+    - main [ref=e45]:
+      - generic [ref=e46]:
+        - generic [ref=e47]:
+          - generic [ref=e48]:
+            - heading "Manager Dashboard" [level=1] [ref=e49]
+            - paragraph [ref=e50]: Gameweek
+          - generic [ref=e51]:
+            - generic [ref=e52]:
+              - paragraph [ref=e53]: Next Deadline
+              - paragraph [ref=e54]: —
+            - img [ref=e55]
+        - generic [ref=e58]:
+          - generic [ref=e59]:
+            - heading "Manager" [level=4] [ref=e60]
+            - paragraph [ref=e61]: Enter your FPL manager ID to load your data
+          - generic [ref=e64]:
+            - textbox "e.g., 1234567" [ref=e65]
+            - generic [ref=e66]: Not set
+        - generic [ref=e67]:
+          - generic [ref=e68]:
+            - heading "Total Points" [level=4] [ref=e70]
+            - generic [ref=e71]:
+              - generic [ref=e72]: —
+              - generic [ref=e73]:
+                - img [ref=e74]
+                - generic [ref=e77]: —
+          - generic [ref=e78]:
+            - heading "Global Rank" [level=4] [ref=e80]
+            - generic [ref=e81]:
+              - generic [ref=e82]: —
+              - generic [ref=e83]:
+                - generic [ref=e84]: —
+                - generic [ref=e85]:
+                  - img [ref=e86]
+                  - generic [ref=e89]: —
+          - generic [ref=e90]:
+            - heading "Tracked" [level=4] [ref=e92]
+            - generic [ref=e94]:
+              - generic [ref=e95]:
+                - generic [ref=e96]: Leagues
+                - generic [ref=e97]: —
+              - generic [ref=e98]:
+                - generic [ref=e99]: Managers
+                - generic [ref=e100]: —
+          - generic [ref=e101]:
+            - heading "Current GW Points" [level=4] [ref=e103]
+            - generic [ref=e104]:
+              - generic [ref=e106]: —
+              - generic [ref=e108]: "Last GW: —"
+        - generic [ref=e109]:
+          - generic [ref=e110]:
+            - generic [ref=e111]:
+              - heading "Team Performance Indicators" [level=4] [ref=e112]
+              - paragraph [ref=e113]: Optimality and deviation metrics
+            - generic [ref=e115]:
+              - generic [ref=e116]:
+                - generic [ref=e117]:
+                  - img [ref=e118]
+                  - generic [ref=e122]: —
+                - paragraph [ref=e123]: Team Optimality Index
+              - generic [ref=e125]:
+                - paragraph [ref=e126]: —
+                - paragraph [ref=e127]: Avg Deviation (points)
+          - generic [ref=e128]:
+            - generic [ref=e129]:
+              - heading "Chip Opportunity Costs" [level=4] [ref=e130]
+              - paragraph [ref=e131]: Lower values indicate better timing to use chip
+            - generic [ref=e133]:
+              - generic [ref=e134]:
+                - generic [ref=e135]:
+                  - img [ref=e136]
+                  - generic [ref=e140]: —
+                - paragraph [ref=e141]: Wildcard
+              - generic [ref=e142]:
+                - generic [ref=e143]:
+                  - img [ref=e144]
+                  - generic [ref=e148]: —
+                - paragraph [ref=e149]: Bench Boost
+              - generic [ref=e150]:
+                - generic [ref=e151]:
+                  - img [ref=e152]
+                  - generic [ref=e156]: —
+                - paragraph [ref=e157]: Triple Captain
+              - generic [ref=e158]:
+                - generic [ref=e159]:
+                  - img [ref=e160]
+                  - generic [ref=e164]: —
+                - paragraph [ref=e165]: Free Hit
+        - generic [ref=e166]:
+          - generic [ref=e167]:
+            - generic [ref=e168]:
+              - img [ref=e169]
+              - heading "Global Rank Percentile" [level=4] [ref=e175]
+            - paragraph [ref=e176]: Current global ranking position
+          - generic [ref=e177]:
+            - generic [ref=e178]:
+              - generic [ref=e179]:
+                - generic [ref=e180]:
+                  - generic [ref=e181]:
+                    - img [ref=e182]
+                    - generic [ref=e186]: —
+                  - paragraph [ref=e187]: Percentile
+                - paragraph [ref=e188]: Percentile = % of managers you rank better than
+              - generic [ref=e189]:
+                - generic [ref=e190]:
+                  - paragraph [ref=e191]: —
+                  - paragraph [ref=e192]: Overall Rank
+                - generic [ref=e193]:
+                  - paragraph [ref=e194]: Better than —
+                  - paragraph [ref=e195]: Global Position
+            - generic [ref=e196]:
+              - heading "Rank Percentile Trend (Last 4 GWs)" [level=3] [ref=e197]
+              - img [ref=e201]:
+                - generic [ref=e206]:
+                  - generic [ref=e209]: "0"
+                  - generic [ref=e212]: "25"
+                  - generic [ref=e215]: "50"
+                  - generic [ref=e218]: "75"
+                  - generic [ref=e221]: "100"
+        - generic [ref=e222]:
+          - heading "GW Points Deviation from Global Mean (%)" [level=4] [ref=e224]
+          - generic [ref=e226]:
+            - img [ref=e229]
+            - generic [ref=e232]: "Average Deviation: —"
+        - generic [ref=e233]:
+          - heading "Gameweek Fixtures" [level=4] [ref=e236]
+          - generic [ref=e238]:
+            - generic [ref=e239]:
+              - heading "Live Player Points - Gameweek" [level=4] [ref=e240]
+              - paragraph [ref=e241]:
+                - text: Real-time points including predicted bonus
+                - generic [ref=e242]: Gameweek Complete
+              - generic [ref=e243]:
+                - textbox "Search players or teams..." [ref=e244]
+                - combobox [ref=e245]:
+                  - generic: All Pos
+                  - img
+                - combobox [ref=e246]:
+                  - generic: All Status
+                  - img
+                - combobox [ref=e247]:
+                  - generic: All Fixtures
+                  - img
+                - button "Reset" [ref=e248]:
+                  - img
+                  - text: Reset
+            - table [ref=e252]:
+              - rowgroup [ref=e253]:
+                - row "Player Team Pos Points Minutes Bonus Fixture Status" [ref=e254]:
+                  - cell "Player" [ref=e255] [cursor=pointer]:
+                    - generic [ref=e256] [cursor=pointer]:
+                      - text: Player
+                      - img [ref=e257] [cursor=pointer]
+                  - cell "Team" [ref=e260] [cursor=pointer]:
+                    - generic [ref=e261] [cursor=pointer]:
+                      - text: Team
+                      - img [ref=e262] [cursor=pointer]
+                  - cell "Pos" [ref=e265]
+                  - cell "Points" [ref=e266] [cursor=pointer]:
+                    - generic [ref=e267] [cursor=pointer]:
+                      - text: Points
+                      - img [ref=e268] [cursor=pointer]
+                  - cell "Minutes" [ref=e271] [cursor=pointer]:
+                    - generic [ref=e272] [cursor=pointer]:
+                      - text: Minutes
+                      - img [ref=e273] [cursor=pointer]
+                  - cell "Bonus" [ref=e276] [cursor=pointer]:
+                    - generic [ref=e277] [cursor=pointer]:
+                      - text: Bonus
+                      - img [ref=e278] [cursor=pointer]
+                  - cell "Fixture" [ref=e281]
+                  - cell "Status" [ref=e282]
+              - rowgroup [ref=e283]:
+                - row "No players found matching your filters" [ref=e284]:
+                  - cell "No players found matching your filters" [ref=e285]
+  - generic [ref=e286]: "0"
+```

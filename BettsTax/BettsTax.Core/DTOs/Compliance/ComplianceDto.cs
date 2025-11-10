@@ -48,6 +48,10 @@ public class UpcomingDeadlineDto
     public decimal EstimatedTaxLiability { get; set; }
     public bool DocumentsReady { get; set; }
     public bool IsOverdue { get; set; }
+    
+    // Additional properties for compatibility
+    public string Type { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
     public decimal PotentialPenalty { get; set; }
     public string Requirements { get; set; } = string.Empty;
 }
@@ -71,6 +75,10 @@ public class ComplianceAlertDto
     public DateTime? ResolvedAt { get; set; }
     public string? ResolvedBy { get; set; }
     public string? Resolution { get; set; }
+    
+    // Additional properties for compatibility
+    public int AlertId { get; set; }
+    public string ClientName { get; set; } = string.Empty;
 }
 
 public class ComplianceRiskAssessmentDto
@@ -184,4 +192,45 @@ public class ComplianceActionItemDto
     public string? CompletionNotes { get; set; }
 }
 
+public class ComplianceMetricsDto
+{
+    public int ClientId { get; set; }
+    public string ClientName { get; set; } = string.Empty;
+    public decimal OverallComplianceScore { get; set; }
+    public ComplianceLevel ComplianceLevel { get; set; }
+    public int TotalFilingsRequired { get; set; }
+    public int OnTimeFilings { get; set; }
+    public int LateFilings { get; set; }
+    public int MissedDeadlines { get; set; }
+    public decimal TotalPenalties { get; set; }
+    public decimal AveragePenaltyAmount { get; set; }
+    public int UpcomingDeadlinesCount { get; set; }
+    public int OverdueItemsCount { get; set; }
+    public DateTime LastCalculated { get; set; }
+    public Dictionary<TaxType, decimal> TaxTypeScores { get; set; } = new();
+    public List<ComplianceTrendDataPoint> ScoreHistory { get; set; } = new();
+    
+    // Additional properties for compatibility
+    public decimal OverallComplianceRate { get; set; }
+    public decimal FilingComplianceRate { get; set; }
+    public decimal PaymentComplianceRate { get; set; }
+    public decimal DocumentComplianceRate { get; set; }
+    public int TotalClients { get; set; }
+    public int CompliantClients { get; set; }
+    public int ClientsWithPenalties { get; set; }
+    public DateTime GeneratedAt { get; set; }
+}
+
 // Note: Enums are defined in BettsTax.Data namespace to avoid circular dependencies
+
+public class MonthlyAdherenceDto
+{
+    public int Month { get; set; }
+    public int Year { get; set; }
+    public string MonthName { get; set; } = string.Empty;
+    public decimal AdherenceRate { get; set; }
+    public int TotalDeadlines { get; set; }
+    public int MetDeadlines { get; set; }
+    public int MissedDeadlines { get; set; }
+    public List<TaxType> TaxTypes { get; set; } = new();
+}

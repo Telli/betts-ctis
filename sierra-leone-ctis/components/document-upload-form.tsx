@@ -16,6 +16,7 @@ import { useToast } from '@/components/ui/use-toast'
 import FileUpload, { FileUploadFile } from '@/components/ui/file-upload'
 import { DocumentService, DocumentUploadRequest } from '@/lib/services/document-service'
 import { ClientService, ClientDto } from '@/lib/services'
+import ClientSearchSelect from '@/components/client-search-select'
 import { X, Tag } from 'lucide-react'
 
 // Document categories with descriptions
@@ -258,20 +259,11 @@ export function DocumentUploadForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Client</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select client" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {clients.filter(client => client.clientId).map((client) => (
-                        <SelectItem key={client.clientId} value={client.clientId!.toString()}>
-                          {client.businessName || client.name || 'Unnamed Client'} ({client.clientNumber || 'No number'})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <ClientSearchSelect
+                    value={field.value}
+                    onChange={(val) => field.onChange(val)}
+                    placeholder="Select client"
+                  />
                   <FormMessage />
                 </FormItem>
               )}

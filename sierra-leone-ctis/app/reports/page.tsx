@@ -36,6 +36,8 @@ import ReportGenerator from '@/components/reports/ReportGenerator'
 import ReportHistory from '@/components/reports/ReportHistory'
 import ReportPreview from '@/components/reports/ReportPreview'
 import { reportService, ReportRequest, GenerateReportRequest, ReportStatistics } from '@/lib/services/report-service'
+import { PageHeader } from '@/components/page-header'
+import { MetricCard } from '@/components/metric-card'
 
 const reportTypes = [
   {
@@ -98,6 +100,13 @@ export default function ReportsPage() {
     dateTo: '',
     search: ''
   })
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [hasMore, setHasMore] = useState(false)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
+  const [sortBy, setSortBy] = useState('requestedAt')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   useEffect(() => {
     fetchReports()
@@ -110,11 +119,24 @@ export default function ReportsPage() {
   }, [])
 
   const fetchReports = async () => {
-    const result = await reportService.getReports(filters)
+    const result = await reportService.getReports({ ...filters, page, pageSize, sortBy, sortDir })
     if (result.success && result.data) {
       setReports(result.data)
+      const p = result.pagination
+      if (p) {
+        setHasMore(p.hasNext)
+        setTotalPages(p.totalPages)
+        setTotalItems(p.totalItems)
+      } else {
+        setHasMore(result.data.length >= pageSize)
+        setTotalPages(1)
+        setTotalItems(result.data.length)
+      }
     } else {
       setReports([])
+      setHasMore(false)
+      setTotalPages(1)
+      setTotalItems(0)
     }
     setLoading(false)
   }
@@ -169,38 +191,42 @@ export default function ReportsPage() {
     }
   }
 
-  const filteredReports = reports.filter(report => {
-    return (
-      (!filters.status || report.status === filters.status) &&
-      (!filters.type || report.reportType === filters.type) &&
-      (!filters.search || report.title.toLowerCase().includes(filters.search.toLowerCase())) &&
-      (!filters.dateFrom || new Date(report.createdAt) >= new Date(filters.dateFrom)) &&
-      (!filters.dateTo || new Date(report.createdAt) <= new Date(filters.dateTo))
-    )
-  })
+  const handleSortChange = (newSortBy: string, newSortDir: 'asc' | 'desc') => {
+    setSortBy(newSortBy)
+    setSortDir(newSortDir)
+    setPage(1) // Reset to first page when sorting changes
+    setLoading(true)
+    fetchReports()
+  }
+
+  const filteredReports = reports
 
   // Handle new report generator
   if (showNewGenerator) {
     return (
-      <div className="container mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-sierra-blue">Generate New Report</h1>
-            <p className="text-muted-foreground">
-              Create comprehensive reports with advanced Sierra Leone tax compliance features
-            </p>
-          </div>
-          <Button variant="outline" onClick={() => setShowNewGenerator(false)}>
-            ← Back to Reports
-          </Button>
-        </div>
-        <ReportGenerator 
-          onReportGenerated={(report) => {
-            setReports([report, ...reports]);
-            setShowNewGenerator(false);
-            fetchStatistics();
-          }}
+      <div className="flex-1 flex flex-col">
+        <PageHeader
+          title="Generate New Report"
+          breadcrumbs={[
+            { label: 'Reports', href: '/reports' },
+            { label: 'Generate New Report' }
+          ]}
+          description="Create comprehensive reports with advanced Sierra Leone tax compliance features"
+          actions={
+            <Button variant="outline" onClick={() => setShowNewGenerator(false)}>
+              ← Back to Reports
+            </Button>
+          }
         />
+        <div className="flex-1 p-6">
+          <ReportGenerator 
+            onReportGenerated={(report) => {
+              setReports([report, ...reports]);
+              setShowNewGenerator(false);
+              fetchStatistics();
+            }}
+          />
+        </div>
       </div>
     );
   }
@@ -208,47 +234,52 @@ export default function ReportsPage() {
   // Handle report preview
   if (showPreview && selectedReport) {
     return (
-      <div className="container mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-sierra-blue">Report Preview</h1>
-            <p className="text-muted-foreground">
-              {selectedReport.title}
-            </p>
-          </div>
-          <Button variant="outline" onClick={() => setShowPreview(false)}>
-            ← Back to Reports
-          </Button>
-        </div>
-        <ReportPreview 
-          report={selectedReport}
-          onClose={() => setShowPreview(false)}
-          onDownload={downloadReport}
+      <div className="flex-1 flex flex-col">
+        <PageHeader
+          title="Report Preview"
+          breadcrumbs={[
+            { label: 'Reports', href: '/reports' },
+            { label: 'Preview' }
+          ]}
+          description={selectedReport.title}
+          actions={
+            <Button variant="outline" onClick={() => setShowPreview(false)}>
+              ← Back to Reports
+            </Button>
+          }
         />
+        <div className="flex-1 p-6">
+          <ReportPreview 
+            report={selectedReport}
+            onClose={() => setShowPreview(false)}
+            onDownload={downloadReport}
+          />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-sierra-blue">Reports & Analytics</h1>
-          <p className="text-muted-foreground">
-            Generate and manage comprehensive reports for Sierra Leone tax compliance
-          </p>
-        </div>
-        <div className="flex items-center space-x-2">
-          <Button onClick={() => setShowNewGenerator(true)} size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            New Report
-          </Button>
-          <Button onClick={fetchReports} variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
-      </div>
+    <div className="flex-1 flex flex-col">
+      <PageHeader
+        title="Reports & Analytics"
+        breadcrumbs={[{ label: 'Reports' }]}
+        description="Generate and manage comprehensive reports for Sierra Leone tax compliance"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button onClick={() => setShowNewGenerator(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Report
+            </Button>
+            <Button onClick={fetchReports} variant="outline">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="flex-1 p-6 space-y-6">
 
       {/* Filters */}
       <Card>
@@ -327,11 +358,41 @@ export default function ReportsPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          {/* Statistics MetricCards */}
           {statistics && (
-            <ReportStatisticsCard 
-              statistics={statistics} 
-              loading={statisticsLoading}
-            />
+            <>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <MetricCard
+                  title="Total Reports"
+                  value={statistics.totalReports}
+                  icon={<FileText className="w-4 h-4" />}
+                  color="primary"
+                />
+                <MetricCard
+                  title="Completed"
+                  value={statistics.completedReports}
+                  subtitle={`${Math.round((statistics.completedReports / Math.max(1, statistics.totalReports)) * 100)}% success rate`}
+                  icon={<CheckCircle className="w-4 h-4" />}
+                  color="success"
+                />
+                <MetricCard
+                  title="Processing"
+                  value={statistics.processingReports}
+                  icon={<Clock className="w-4 h-4" />}
+                  color="info"
+                />
+                <MetricCard
+                  title="Avg Generation Time"
+                  value={`${Math.round(statistics.averageGenerationTime)}s`}
+                  icon={<BarChart3 className="w-4 h-4" />}
+                  color="warning"
+                />
+              </div>
+              <ReportStatisticsCard 
+                statistics={statistics} 
+                loading={statisticsLoading}
+              />
+            </>
           )}
         </TabsContent>
 
@@ -353,6 +414,15 @@ export default function ReportsPage() {
               setShowPreview(true);
             }}
             onRefresh={fetchReports}
+            page={page}
+            pageSize={pageSize}
+            hasMore={hasMore}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            onPageChange={(p) => { setPage(p); setLoading(true); fetchReports() }}
+            sortBy={sortBy}
+            sortDir={sortDir}
+            onSortChange={handleSortChange}
           />
         </TabsContent>
 
@@ -396,6 +466,7 @@ export default function ReportsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   )
 }

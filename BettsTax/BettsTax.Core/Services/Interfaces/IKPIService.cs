@@ -10,8 +10,8 @@ public interface IKPIService
     Task UpdateKPIThresholdsAsync(KPIThresholdDto thresholds);
     Task<bool> RefreshKPIDataAsync();
     Task<List<InternalKPIDto>> GetKPITrendsAsync(DateTime fromDate, DateTime toDate, string period = "Monthly");
-    Task CreateKPIAlertAsync(KPIAlertDto alert);
-    Task MarkAlertAsReadAsync(int alertId);
+    Task CreateKPIAlertAsync(KPIAlertDto alert, string? createdBy = null);
+    Task MarkAlertAsReadAsync(int alertId, string resolvedBy);
 }
 
 public class KPIThresholdDto

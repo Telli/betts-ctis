@@ -26,7 +26,12 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
     return (
       <div className="flex h-screen bg-gradient-to-br from-sierra-blue-25 to-white">
         <Sidebar />
-        <main className="flex-1 overflow-auto">
+        <main 
+          className="flex-1 overflow-auto"
+          id="main-content"
+          role="main"
+          aria-label="Main content"
+        >
           <ErrorBoundary>
             {children}
           </ErrorBoundary>
@@ -38,9 +43,15 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   // Public layout without sidebar (login, register, home page for unauthenticated users)
   return (
     <div className="min-h-screen">
-      <ErrorBoundary>
-        {children}
-      </ErrorBoundary>
+      <main 
+        id="main-content"
+        role="main"
+        aria-label="Main content"
+      >
+        <ErrorBoundary>
+          {children}
+        </ErrorBoundary>
+      </main>
     </div>
   );
 }

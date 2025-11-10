@@ -1,5 +1,13 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using BettsTax.Shared; // metrics
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace BettsTax.Data
 {
@@ -8,6 +16,7 @@ namespace BettsTax.Data
         // Mobile Money Providers
         OrangeMoney,
         AfricellMoney,
+    SalonePaymentSwitch,
         
         // Local Banks
         SierraLeoneCommercialBank,
@@ -225,6 +234,9 @@ namespace BettsTax.Data
         [MaxLength(50)]
         public string WebhookType { get; set; } = string.Empty; // payment.completed, payment.failed, etc.
         
+        [MaxLength(100)]
+        public string? IdempotencyKey { get; set; }
+        
         [MaxLength(5000)]
         public string RequestBody { get; set; } = string.Empty;
         
@@ -240,6 +252,9 @@ namespace BettsTax.Data
         public bool IsProcessed { get; set; } = false;
         public DateTime ReceivedDate { get; set; } = DateTime.UtcNow;
         public DateTime? ProcessedDate { get; set; }
+
+    [MaxLength(128)]
+    public string? WebhookHash { get; set; } // SHA256 hash for idempotency
         
         [MaxLength(39)] // IPv6 max length
         public string? IpAddress { get; set; }
@@ -321,5 +336,117 @@ namespace BettsTax.Data
         public string? Description { get; set; }
         
         public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
+    }
+    // Processor to handle webhook requests with idempotency
+    public class PaymentWebhookProcessor
+    {
+        private readonly ApplicationDbContext _db;
+        private readonly ILogger<PaymentWebhookProcessor> _logger;
+
+        public PaymentWebhookProcessor(ApplicationDbContext db, ILogger<PaymentWebhookProcessor> logger)
+        {
+            _db = db;
+            _logger = logger;
+        }
+
+        public async Task<bool> ProcessAsync(string provider, string requestBody, IDictionary<string, string?> headers, CancellationToken ct = default)
+        {
+            // Deterministic hash for idempotency: provider + body + sorted headers subset
+            var normalizedHeaders = string.Join("|", headers
+                .OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(k => $"{k.Key}:{k.Value}"));
+            var raw = provider + "\n" + requestBody + "\n" + normalizedHeaders;
+            var hash = ComputeSha256(raw);
+
+            var existing = await _db.PaymentWebhookLogs
+                .AsNoTracking()
+                .Where(w => w.WebhookHash == hash && w.Provider.ToString() == provider)
+                .Select(w => new { w.PaymentWebhookLogId, w.IsProcessed })
+                .FirstOrDefaultAsync(ct);
+
+            if (existing != null && existing.IsProcessed)
+            {
+                _logger.LogInformation("Duplicate processed webhook ignored. Provider={Provider} Hash={Hash}", provider, hash);
+                PaymentMetrics.WebhooksDuplicate.Add(1);
+                return true; // idempotent success
+            }
+
+            var log = new PaymentWebhookLog
+            {
+                Provider = Enum.TryParse<PaymentProvider>(provider, out var parsed) ? parsed : PaymentProvider.OrangeMoney,
+                RequestBody = requestBody,
+                RequestHeaders = System.Text.Json.JsonSerializer.Serialize(headers),
+                WebhookHash = hash,
+                PaymentTransactionId = 0 // will be linked after parsing if possible
+            };
+
+            _db.PaymentWebhookLogs.Add(log);
+            await _db.SaveChangesAsync(ct);
+
+            try
+            {
+                // Parse and update transaction for supported providers
+                if (Enum.TryParse<PaymentProvider>(provider, out var prov))
+                {
+                    if (prov == PaymentProvider.SalonePaymentSwitch)
+                    {
+                        // Basic pain.002 parsing for TxSts and EndToEndId
+                        try
+                        {
+                            var x = System.Xml.Linq.XDocument.Parse(requestBody);
+                            var refId = x.Descendants().FirstOrDefault(e => e.Name.LocalName == "EndToEndId")?.Value;
+                            var sts = x.Descendants().FirstOrDefault(e => e.Name.LocalName == "TxSts")?.Value ?? "PENDING";
+                            if (!string.IsNullOrEmpty(refId))
+                            {
+                                var txn = await _db.PaymentTransactions.FirstOrDefaultAsync(t => t.TransactionReference == refId, ct);
+                                if (txn != null)
+                                {
+                                    var mapped = await _db.PaymentStatusMappings.AsNoTracking()
+                                        .Where(m => m.Provider == PaymentProvider.SalonePaymentSwitch && m.ProviderStatus == sts)
+                                        .Select(m => m.MappedStatus)
+                                        .FirstOrDefaultAsync(ct);
+                                    if (mapped == default && sts == "PENDING") mapped = PaymentTransactionStatus.Pending; // fallback
+                                    if (mapped == default && sts == "PDNG") mapped = PaymentTransactionStatus.Pending;
+                                    if (mapped == default && (sts == "ACSC" || sts == "COMPLETED")) mapped = PaymentTransactionStatus.Completed;
+                                    if (mapped == default && (sts == "RJCT" || sts == "FAILED")) mapped = PaymentTransactionStatus.Failed;
+                                    if (mapped == default) mapped = PaymentTransactionStatus.Processing;
+                                    txn.Status = mapped;
+                                    txn.LastWebhookDate = DateTime.UtcNow;
+                                    await _db.SaveChangesAsync(ct);
+                                    log.PaymentTransactionId = txn.PaymentTransactionId;
+                                }
+                            }
+                        }
+                        catch (Exception parseEx)
+                        {
+                            _logger.LogWarning(parseEx, "Failed parsing Salone switch webhook");
+                        }
+                    }
+                }
+                log.IsProcessed = true;
+                log.ProcessedDate = DateTime.UtcNow;
+                log.ProcessingResult = "OK";
+                await _db.SaveChangesAsync(ct);
+                PaymentMetrics.WebhooksProcessed.Add(1);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                log.ProcessingResult = ex.Message;
+                await _db.SaveChangesAsync(ct);
+                _logger.LogError(ex, "Failed processing webhook {WebhookId}", log.PaymentWebhookLogId);
+                return false;
+            }
+        }
+
+        private static string ComputeSha256(string input)
+        {
+            using var sha = SHA256.Create();
+            var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(input));
+            var sb = new StringBuilder(bytes.Length * 2);
+            foreach (var b in bytes)
+                sb.Append(b.ToString("x2"));
+            return sb.ToString();
+        }
     }
 }

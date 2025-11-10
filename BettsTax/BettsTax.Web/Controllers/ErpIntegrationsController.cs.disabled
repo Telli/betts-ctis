@@ -1,0 +1,450 @@
+using BettsTax.Core.DTOs;
+using BettsTax.Core.Services;
+using BettsTax.Shared;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+
+namespace BettsTax.Web.Controllers
+{
+    /// <summary>
+    /// Enhanced ERP integration management controller
+    /// </summary>
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class ErpIntegrationsController : ControllerBase
+    {
+        private readonly IErpIntegrationManager _erpManager;
+        private readonly ILogger<ErpIntegrationsController> _logger;
+
+        public ErpIntegrationsController(
+            IErpIntegrationManager erpManager,
+            ILogger<ErpIntegrationsController> logger)
+        {
+            _erpManager = erpManager;
+            _logger = logger;
+        }
+
+        #region Connection Management
+
+        /// <summary>
+        /// Get all integrations for a client
+        /// </summary>
+        [HttpGet("client/{clientId}")]
+        public async Task<ActionResult<List<ErpIntegrationDto>>> GetClientIntegrations(int clientId)
+        {
+            var result = await _erpManager.GetClientIntegrationsAsync(clientId);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Configure a new ERP integration
+        /// </summary>
+        [HttpPost("configure")]
+        public async Task<ActionResult<ErpIntegrationDto>> ConfigureIntegration([FromBody] ErpIntegrationConfigDto config)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _erpManager.ConfigureIntegrationAsync(config);
+            return result.IsSuccess 
+                ? CreatedAtAction(nameof(GetIntegration), new { id = result.Data.Id }, result.Data)
+                : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Get a specific integration
+        /// </summary>
+        [HttpGet("{id}")]
+        public async Task<ActionResult<ErpIntegrationDto>> GetIntegration(int id)
+        {
+            var integrations = await _erpManager.GetClientIntegrationsAsync(0); // Get all for now
+            if (!integrations.IsSuccess)
+            {
+                return BadRequest(integrations.ErrorMessage);
+            }
+
+            var integration = integrations.Data.FirstOrDefault(i => i.Id == id);
+            return integration != null ? Ok(integration) : NotFound();
+        }
+
+        /// <summary>
+        /// Update an existing integration
+        /// </summary>
+        [HttpPut("{id}")]
+        public async Task<ActionResult<ErpIntegrationDto>> UpdateIntegration(int id, [FromBody] ErpIntegrationConfigDto config)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _erpManager.UpdateIntegrationAsync(id, config);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Delete an integration
+        /// </summary>
+        [HttpDelete("{id}")]
+        public async Task<ActionResult> DeleteIntegration(int id)
+        {
+            var result = await _erpManager.RemoveIntegrationAsync(id);
+            return result.IsSuccess ? NoContent() : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Test connections for all client integrations
+        /// </summary>
+        [HttpPost("client/{clientId}/test-connections")]
+        public async Task<ActionResult<List<ErpConnectionHealthDto>>> TestConnections(int clientId)
+        {
+            var result = await _erpManager.TestAllConnectionsAsync(clientId);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        #endregion
+
+        #region Data Synchronization
+
+        /// <summary>
+        /// Perform a full sync for a client
+        /// </summary>
+        [HttpPost("client/{clientId}/sync/full")]
+        public async Task<ActionResult<ErpFullSyncResultDto>> PerformFullSync(int clientId, [FromBody] ErpSyncOptionsDto options)
+        {
+            var result = await _erpManager.PerformFullSyncAsync(clientId, options);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Perform an incremental sync for a client
+        /// </summary>
+        [HttpPost("client/{clientId}/sync/incremental")]
+        public async Task<ActionResult<ErpIncrementalSyncResultDto>> PerformIncrementalSync(int clientId, [FromBody] ErpSyncOptionsDto options)
+        {
+            var result = await _erpManager.PerformIncrementalSyncAsync(clientId, options);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Sync a specific data type
+        /// </summary>
+        [HttpPost("client/{clientId}/sync/{dataType}")]
+        public async Task<ActionResult<ErpSyncResultDto>> SyncDataType(
+            int clientId, 
+            ErpDataType dataType,
+            [FromQuery] ErpSyncDirection direction = ErpSyncDirection.Bidirectional,
+            [FromBody] ErpSyncOptionsDto options = null)
+        {
+            options ??= new ErpSyncOptionsDto();
+            var result = await _erpManager.SyncDataTypeAsync(clientId, dataType, direction, options);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Perform bulk sync across multiple clients
+        /// </summary>
+        [HttpPost("sync/bulk")]
+        public async Task<ActionResult<ErpBulkSyncResultDto>> BulkSyncClients([FromBody] ErpBulkSyncRequestDto request)
+        {
+            if (!ModelState.IsValid || !request.ClientIds?.Any() == true)
+            {
+                return BadRequest("Client IDs are required");
+            }
+
+            var result = await _erpManager.BulkSyncClientsAsync(request.ClientIds, request.Options ?? new ErpSyncOptionsDto());
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        #endregion
+
+        #region Field Mapping
+
+        /// <summary>
+        /// Get field mapping for an integration
+        /// </summary>
+        [HttpGet("{integrationId}/field-mapping")]
+        public async Task<ActionResult<ErpFieldMappingDto>> GetFieldMapping(int integrationId)
+        {
+            var result = await _erpManager.GetFieldMappingAsync(integrationId);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Update field mapping for an integration
+        /// </summary>
+        [HttpPut("{integrationId}/field-mapping")]
+        public async Task<ActionResult<ErpFieldMappingDto>> UpdateFieldMapping(int integrationId, [FromBody] ErpFieldMappingDto mapping)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _erpManager.UpdateFieldMappingAsync(integrationId, mapping);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Get available ERP fields for mapping
+        /// </summary>
+        [HttpGet("{integrationId}/fields/{dataType}")]
+        public async Task<ActionResult<List<ErpFieldDefinitionDto>>> GetErpFields(int integrationId, ErpDataType dataType)
+        {
+            var result = await _erpManager.GetErpFieldsAsync(integrationId, dataType);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Validate field mapping
+        /// </summary>
+        [HttpPost("{integrationId}/field-mapping/validate")]
+        public async Task<ActionResult<ErpMappingValidationDto>> ValidateMapping(int integrationId, [FromBody] ErpFieldMappingDto mapping)
+        {
+            var result = await _erpManager.ValidateMappingAsync(integrationId, mapping);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        #endregion
+
+        #region Monitoring and Analytics
+
+        /// <summary>
+        /// Get health dashboard for a client
+        /// </summary>
+        [HttpGet("client/{clientId}/health")]
+        public async Task<ActionResult<ErpHealthDashboardDto>> GetHealthDashboard(int clientId)
+        {
+            var result = await _erpManager.GetHealthDashboardAsync(clientId);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Get sync history with filtering
+        /// </summary>
+        [HttpGet("client/{clientId}/sync-history")]
+        public async Task<ActionResult<PagedResult<ErpSyncHistoryDto>>> GetSyncHistory(
+            int clientId,
+            [FromQuery] ErpSyncHistoryFilterDto filter)
+        {
+            var result = await _erpManager.GetSyncHistoryAsync(clientId, filter);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Get performance metrics for an integration
+        /// </summary>
+        [HttpGet("{integrationId}/performance")]
+        public async Task<ActionResult<ErpPerformanceMetricsDto>> GetPerformanceMetrics(
+            int integrationId,
+            [FromQuery] DateTime startDate,
+            [FromQuery] DateTime endDate)
+        {
+            var result = await _erpManager.GetPerformanceMetricsAsync(integrationId, startDate, endDate);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Analyze errors for an integration
+        /// </summary>
+        [HttpGet("{integrationId}/errors/analysis")]
+        public async Task<ActionResult<ErpErrorAnalysisDto>> AnalyzeErrors(
+            int integrationId,
+            [FromQuery] DateTime startDate,
+            [FromQuery] DateTime endDate)
+        {
+            var result = await _erpManager.AnalyzeErrorsAsync(integrationId, startDate, endDate);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        #endregion
+
+        #region Conflict Resolution
+
+        /// <summary>
+        /// Get pending conflicts for a client
+        /// </summary>
+        [HttpGet("client/{clientId}/conflicts")]
+        public async Task<ActionResult<List<ErpDataConflictDto>>> GetPendingConflicts(int clientId)
+        {
+            var result = await _erpManager.GetPendingConflictsAsync(clientId);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Resolve a data conflict
+        /// </summary>
+        [HttpPost("conflicts/{conflictId}/resolve")]
+        public async Task<ActionResult> ResolveConflict(int conflictId, [FromBody] ErpConflictResolutionDto resolution)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _erpManager.ResolveConflictAsync(conflictId, resolution);
+            return result.IsSuccess ? Ok() : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Configure conflict resolution rules
+        /// </summary>
+        [HttpPut("{integrationId}/conflict-rules")]
+        public async Task<ActionResult<ErpConflictRulesDto>> ConfigureConflictRules(int integrationId, [FromBody] ErpConflictRulesDto rules)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _erpManager.ConfigureConflictRulesAsync(integrationId, rules);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        #endregion
+
+        #region Webhook Support
+
+        /// <summary>
+        /// Configure webhooks for an integration
+        /// </summary>
+        [HttpPut("{integrationId}/webhooks")]
+        public async Task<ActionResult<ErpWebhookConfigDto>> ConfigureWebhooks(int integrationId, [FromBody] ErpWebhookConfigDto config)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _erpManager.ConfigureWebhooksAsync(integrationId, config);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Process incoming webhook
+        /// </summary>
+        [HttpPost("webhooks/{integrationKey}")]
+        [AllowAnonymous] // Webhooks come from external systems
+        public async Task<ActionResult> ProcessWebhook(string integrationKey, [FromBody] object payload)
+        {
+            var headers = Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString());
+            var payloadString = payload?.ToString() ?? "";
+
+            var result = await _erpManager.ProcessWebhookAsync(integrationKey, payloadString, headers);
+            return result.IsSuccess ? Ok() : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Get webhook logs for an integration
+        /// </summary>
+        [HttpGet("{integrationId}/webhooks/logs")]
+        public async Task<ActionResult<PagedResult<ErpWebhookLogDto>>> GetWebhookLogs(
+            int integrationId,
+            [FromQuery] ErpWebhookLogFilterDto filter)
+        {
+            var result = await _erpManager.GetWebhookLogsAsync(integrationId, filter);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        #endregion
+
+        #region Export/Import
+
+        /// <summary>
+        /// Export client data
+        /// </summary>
+        [HttpPost("client/{clientId}/export")]
+        public async Task<ActionResult<ErpExportResultDto>> ExportData(int clientId, [FromBody] ErpExportOptionsDto options)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _erpManager.ExportDataAsync(clientId, options);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Import data to an integration
+        /// </summary>
+        [HttpPost("{integrationId}/import")]
+        public async Task<ActionResult<ErpImportResultDto>> ImportData(int integrationId, [FromBody] ErpImportOptionsDto options)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _erpManager.ImportDataAsync(integrationId, options);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Get export templates for an ERP system
+        /// </summary>
+        [HttpGet("templates/{erpSystem}")]
+        public async Task<ActionResult<List<ErpExportTemplateDto>>> GetExportTemplates(string erpSystem)
+        {
+            var result = await _erpManager.GetExportTemplatesAsync(erpSystem);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        #endregion
+
+        #region System Administration
+
+        /// <summary>
+        /// Get system-wide statistics (Admin only)
+        /// </summary>
+        [HttpGet("admin/stats")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<ErpSystemStatsDto>> GetSystemStats()
+        {
+            var result = await _erpManager.GetSystemStatsAsync();
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Perform system maintenance (Admin only)
+        /// </summary>
+        [HttpPost("admin/maintenance")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<ErpMaintenanceResultDto>> PerformMaintenance([FromBody] ErpMaintenanceOptionsDto options)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _erpManager.PerformMaintenanceAsync(options);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Get audit trail (Admin only)
+        /// </summary>
+        [HttpGet("admin/audit")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<PagedResult<ErpAuditLogDto>>> GetAuditTrail([FromQuery] ErpAuditFilterDto filter)
+        {
+            var result = await _erpManager.GetAuditTrailAsync(filter);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result.ErrorMessage);
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Request DTO for bulk sync operations
+    /// </summary>
+    public class ErpBulkSyncRequestDto
+    {
+        public List<int> ClientIds { get; set; } = new();
+        public ErpSyncOptionsDto? Options { get; set; }
+    }
+}

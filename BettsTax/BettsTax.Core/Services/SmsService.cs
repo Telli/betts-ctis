@@ -1356,6 +1356,13 @@ namespace BettsTax.Core.Services
         {
             try
             {
+                if (string.IsNullOrWhiteSpace(phoneNumber))
+                {
+                    return Result.Failure<string>("Phone number is required");
+                }
+
+                countryCode = string.IsNullOrWhiteSpace(countryCode) ? "232" : countryCode;
+
                 // Remove all non-digit characters
                 var digits = new string(phoneNumber.Where(char.IsDigit).ToArray());
 
@@ -1363,7 +1370,7 @@ namespace BettsTax.Core.Services
                 digits = digits.TrimStart('0');
 
                 // Add country code if not present
-                if (!digits.StartsWith(countryCode))
+                if (!digits.StartsWith(countryCode!, StringComparison.Ordinal))
                 {
                     digits = countryCode + digits;
                 }
@@ -1387,6 +1394,11 @@ namespace BettsTax.Core.Services
         {
             try
             {
+                if (string.IsNullOrWhiteSpace(phoneNumber))
+                {
+                    return Result.Success<bool>(false);
+                }
+
                 var formatResult = await FormatPhoneNumberAsync(phoneNumber);
                 if (!formatResult.IsSuccess)
                 {
@@ -1396,7 +1408,7 @@ namespace BettsTax.Core.Services
                 var formatted = formatResult.Value;
 
                 // Check if it's a valid Sierra Leone number
-                if (formatted.StartsWith("232"))
+                if (!string.IsNullOrEmpty(formatted) && formatted.StartsWith("232", StringComparison.Ordinal))
                 {
                     var prefix = formatted.Substring(3, 2);
                     var validPrefixes = new[] { "76", "77", "78", "79", "30", "31", "32", "33", "34", "88", "80" };
@@ -1506,9 +1518,14 @@ namespace BettsTax.Core.Services
                     return preferredProvider;
             }
 
+            if (string.IsNullOrWhiteSpace(phoneNumber))
+            {
+                return null;
+            }
+
             // Determine by phone number prefix
-            if (phoneNumber.StartsWith("23276") || phoneNumber.StartsWith("23277") || 
-                phoneNumber.StartsWith("23278") || phoneNumber.StartsWith("23279"))
+            if (phoneNumber.StartsWith("23276", StringComparison.Ordinal) || phoneNumber.StartsWith("23277", StringComparison.Ordinal) || 
+                phoneNumber.StartsWith("23278", StringComparison.Ordinal) || phoneNumber.StartsWith("23279", StringComparison.Ordinal))
             {
                 return await GetProviderAsync(SmsProvider.OrangeSL);
             }

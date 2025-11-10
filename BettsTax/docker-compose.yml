@@ -1,0 +1,146 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for Development
+  postgres:
+    image: postgres:16-alpine
+    container_name: betts-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: BettsTaxDb_Dev
+      POSTGRES_USER: betts_user
+      POSTGRES_PASSWORD: dev_password
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    networks:
+      - betts-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U betts_user -d BettsTaxDb_Dev"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Redis for Caching and Session Storage
+  redis:
+    image: redis:7-alpine
+    container_name: betts-redis-dev
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - betts-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # BettsTax Web API Application (Development)
+  betts-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_CONFIGURATION: Debug
+    container_name: betts-api-dev
+    restart: unless-stopped
+    environment:
+      # Database Configuration
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=BettsTaxDb_Dev;Username=betts_user;Password=dev_password
+
+      # Redis Configuration
+      - ConnectionStrings__RedisConnection=redis:6379
+
+      # JWT Configuration
+      - JWT__SecretKey=development_secret_key_that_is_at_least_32_characters_long
+      - JWT__Issuer=http://localhost:5000
+      - JWT__Audience=http://localhost:5000
+
+      # Encryption Configuration
+      - Encryption__MasterKey=development_master_key_that_is_at_least_32_characters
+      - Encryption__MasterSalt=development_master_salt
+
+      # Email Configuration (using MailHog)
+      - Email__SmtpHost=mailhog
+      - Email__SmtpPort=1025
+      - Email__FromAddress=noreply@betts.local
+      - Email__FromName=BettsTax Dev
+
+      # SMS Configuration (mock for development)
+      - SMS__OrangeApiUrl=https://api.orange.com
+      - SMS__OrangeApiKey=dev_orange_api_key
+      - SMS__AfricellApiUrl=https://api.africell.com
+      - SMS__AfricellApiKey=dev_africell_api_key
+
+      # Mobile Money Configuration
+      - MobileMoney__OrangeMoneyApiUrl=https://api.orange.com/orange-money-webpay/dev
+      - MobileMoney__OrangeMoneyApiKey=dev_orange_money_api_key
+      - MobileMoney__AfricellMoneyApiUrl=https://api.africell.com/africell-money/dev
+      - MobileMoney__AfricellMoneyApiKey=dev_africell_money_api_key
+    volumes:
+      - ./BettsTax.Web:/app
+      - /app/bin
+      - /app/obj
+    networks:
+      - betts-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Next.js Frontend Application (Development)
+  betts-frontend:
+    build:
+      context: ./sierra-leone-ctis
+      dockerfile: Dockerfile
+      args:
+        BUILD_CONFIGURATION: development
+    container_name: betts-frontend-dev
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
+      - NEXT_PUBLIC_APP_NAME=BettsTax Dev
+      - NEXT_PUBLIC_ENVIRONMENT=development
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./sierra-leone-ctis:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - betts-network
+    depends_on:
+      - betts-api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # MailHog for email testing
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: betts-mailhog-dev
+    restart: unless-stopped
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - betts-network
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+
+networks:
+  betts-network:
+    driver: bridge

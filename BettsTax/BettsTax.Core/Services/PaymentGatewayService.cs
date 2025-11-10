@@ -1116,37 +1116,37 @@ public class PaymentGatewayService : IPaymentGatewayService
 
     #region Refund Management
 
-    public async Task<PaymentRefundDto> InitiateRefundAsync(CreatePaymentRefundDto request, string initiatedBy)
+    public Task<PaymentRefundDto> InitiateRefundAsync(CreatePaymentRefundDto request, string initiatedBy)
     {
         // TODO: Implement refund initiation logic
         throw new NotImplementedException("Refund initiation is not yet implemented");
     }
 
-    public async Task<PaymentRefundDto> ProcessRefundAsync(int refundId, string processedBy)
+    public Task<PaymentRefundDto> ProcessRefundAsync(int refundId, string processedBy)
     {
         // TODO: Implement refund processing logic
         throw new NotImplementedException("Refund processing is not yet implemented");
     }
 
-    public async Task<PaymentRefundDto> GetRefundAsync(int refundId)
+    public Task<PaymentRefundDto> GetRefundAsync(int refundId)
     {
         // TODO: Implement refund retrieval logic
         throw new NotImplementedException("Refund retrieval is not yet implemented");
     }
 
-    public async Task<List<PaymentRefundDto>> GetRefundsAsync(int? transactionId = null, int page = 1, int pageSize = 20)
+    public Task<List<PaymentRefundDto>> GetRefundsAsync(int? transactionId = null, int page = 1, int pageSize = 20)
     {
         // TODO: Implement refunds list retrieval logic
         throw new NotImplementedException("Refunds list retrieval is not yet implemented");
     }
 
-    public async Task<bool> ApproveRefundAsync(int refundId, string approvedBy)
+    public Task<bool> ApproveRefundAsync(int refundId, string approvedBy)
     {
         // TODO: Implement refund approval logic
         throw new NotImplementedException("Refund approval is not yet implemented");
     }
 
-    public async Task<bool> RejectRefundAsync(int refundId, string reason, string rejectedBy)
+    public Task<bool> RejectRefundAsync(int refundId, string reason, string rejectedBy)
     {
         // TODO: Implement refund rejection logic
         throw new NotImplementedException("Refund rejection is not yet implemented");

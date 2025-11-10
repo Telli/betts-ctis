@@ -342,7 +342,7 @@ namespace BettsTax.Data
                     {
                         Title = "GST Registration Threshold",
                         Description = "Businesses approaching the GST registration threshold should prepare for compliance requirements.",
-                        Recommendation = "Monitor client revenue and prepare GST registration documentation when approaching 500M SLE annually.",
+                        Recommendation = "Monitor client revenue and prepare GST registration documentation when approaching the configured GST registration threshold.",
                         RiskLevel = ComplianceRiskLevel.Medium,
                         PotentialSavings = 25000m,
                         Category = "Registration",

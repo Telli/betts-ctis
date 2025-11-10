@@ -48,16 +48,16 @@ namespace BettsTax.Core.Services
             return client?.ClientId;
         }
 
-        public async Task<bool> IsClientUserAsync()
+        public Task<bool> IsClientUserAsync()
         {
             var role = GetCurrentUserRole();
-            return role == "Client";
+            return Task.FromResult(role == "Client");
         }
 
-        public async Task<bool> IsAdminOrAssociateAsync()
+        public Task<bool> IsAdminOrAssociateAsync()
         {
             var role = GetCurrentUserRole();
-            return role == "Admin" || role == "Associate" || role == "SystemAdmin";
+            return Task.FromResult(role == "Admin" || role == "Associate" || role == "SystemAdmin");
         }
 
         public async Task<bool> CanAccessClientDataAsync(int clientId)

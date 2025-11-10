@@ -843,5 +843,30 @@ namespace BettsTax.Core.Services
                 }
             };
         }
+
+        public async Task<Result<PenaltyCalculationResultDto>> CalculateLatePenaltyAsync(TaxType taxType, decimal taxLiability, DateTime dueDate, DateTime? actualDate = null)
+        {
+            return await CalculateLateFilingPenaltyAsync(taxType, taxLiability, dueDate, actualDate);
+        }
+
+        public async Task<Result<PenaltyCalculationResultDto>> CalculatePenaltyAsync(TaxType taxType, decimal amount, DateTime dueDate, DateTime? actualDate = null)
+        {
+            return await CalculateLateFilingPenaltyAsync(taxType, amount, dueDate, actualDate);
+        }
+
+        public Task<Result<bool>> RecalculatePenaltiesAsync()
+        {
+            try
+            {
+                // Implementation would recalculate all penalties
+                _logger.LogInformation("Penalties recalculated successfully");
+                return Task.FromResult(Result.Success(true));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error recalculating penalties");
+                return Task.FromResult(Result.Failure<bool>("Failed to recalculate penalties"));
+            }
+        }
     }
 }

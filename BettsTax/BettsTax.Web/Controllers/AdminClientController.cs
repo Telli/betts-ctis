@@ -215,12 +215,41 @@ namespace BettsTax.Web.Controllers
         /// </summary>
         [HttpGet("associates")]
         [Authorize(Roles = "Admin,SystemAdmin")]
-        public async Task<ActionResult<object>> GetAssociates()
+        public async Task<ActionResult<object>> GetAssociates(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] string? search = null)
         {
             try
             {
+                if (page < 1) page = 1;
+                if (pageSize < 1 || pageSize > 100) pageSize = 20;
+
                 var associates = await _userManager.GetUsersInRoleAsync("Associate");
-                var associateList = associates.Select(a => new AdminAssociateDto
+
+                // Filter by search (name or email)
+                IEnumerable<ApplicationUser> filtered = associates;
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    var s = search.Trim().ToLowerInvariant();
+                    filtered = filtered.Where(a =>
+                        (!string.IsNullOrEmpty(a.FirstName) && a.FirstName.ToLower().Contains(s)) ||
+                        (!string.IsNullOrEmpty(a.LastName) && a.LastName.ToLower().Contains(s)) ||
+                        (!string.IsNullOrEmpty(a.Email) && a.Email.ToLower().Contains(s))
+                    );
+                }
+
+                var totalCount = filtered.Count();
+                var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+                var skip = (page - 1) * pageSize;
+                var pageItems = filtered
+                    .OrderBy(a => a.FirstName)
+                    .ThenBy(a => a.LastName)
+                    .Skip(skip)
+                    .Take(pageSize)
+                    .ToList();
+
+                var associateList = pageItems.Select(a => new AdminAssociateDto
                 {
                     UserId = a.Id,
                     FullName = $"{a.FirstName} {a.LastName}".Trim(),
@@ -229,7 +258,18 @@ namespace BettsTax.Web.Controllers
                     AssignedClientsCount = 0 // This could be calculated if needed
                 }).ToList();
 
-                return Ok(new { success = true, data = associateList });
+                return Ok(new
+                {
+                    success = true,
+                    data = associateList,
+                    pagination = new
+                    {
+                        currentPage = page,
+                        pageSize,
+                        totalCount,
+                        totalPages
+                    }
+                });
             }
             catch (Exception ex)
             {

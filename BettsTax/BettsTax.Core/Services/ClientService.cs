@@ -31,6 +31,9 @@ namespace BettsTax.Core.Services
         public async Task<ClientDto> CreateAsync(ClientDto dto)
         {
             var entity = _mapper.Map<Client>(dto);
+            // Ensure optional FKs are not set to empty strings which violate FKs in SQLite
+            if (string.IsNullOrWhiteSpace(entity.UserId)) entity.UserId = null;
+            if (string.IsNullOrWhiteSpace(entity.AssignedAssociateId)) entity.AssignedAssociateId = null;
             entity.CreatedDate = DateTime.UtcNow;
             entity.UpdatedDate = DateTime.UtcNow;
             entity.ClientNumber = $"CT-{Guid.NewGuid().ToString()[..8].ToUpper()}";

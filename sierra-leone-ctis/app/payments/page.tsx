@@ -15,7 +15,7 @@ import { PaymentService, PaymentDto, PaymentStatus, PaymentMethod, CreatePayment
 import { Plus, Search, DollarSign, Filter, Eye, CheckCircle, XCircle, Clock, CreditCard } from 'lucide-react'
 import { formatSierraLeones } from '@/lib/utils/currency'
 import Loading from '@/app/loading'
-import { PaymentGatewayForm } from '@/components/payments'
+import Link from 'next/link'
 
 export default function PaymentsPage() {
   const { toast } = useToast()
@@ -24,7 +24,6 @@ export default function PaymentsPage() {
   const [pendingApprovals, setPendingApprovals] = useState<PaymentDto[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedStatus, setSelectedStatus] = useState<PaymentStatus | 'ALL'>('ALL')
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [selectedPayment, setSelectedPayment] = useState<PaymentDto | null>(null)
   const [showApprovalDialog, setShowApprovalDialog] = useState(false)
   const [approvalAction, setApprovalAction] = useState<'approve' | 'reject'>('approve')
@@ -197,13 +196,9 @@ export default function PaymentsPage() {
     }
   }
 
-  if (loading) {
-    return <Loading />
-  }
-
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      {/* Header */}
+      {/* Header - Always Visible */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-sierra-blue">Payments</h2>
@@ -211,33 +206,24 @@ export default function PaymentsPage() {
             Manage payment records and approvals for Sierra Leone tax compliance
           </p>
         </div>
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogTrigger asChild>
-            <Button className="bg-sierra-blue hover:bg-sierra-blue/90">
-              <Plus className="mr-2 h-4 w-4" />
-              New Payment
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Process New Payment</DialogTitle>
-            </DialogHeader>
-            <PaymentGatewayForm 
-              amount={50000} // Default amount, can be changed in the form
-              onSuccess={(paymentReference) => {
-                setShowCreateDialog(false)
-                fetchPayments()
-                fetchPendingApprovals()
-                toast({
-                  title: 'Payment Processed',
-                  description: `Payment ${paymentReference} has been successfully processed`,
-                })
-              }}
-              onCancel={() => setShowCreateDialog(false)}
-            />
-          </DialogContent>
-        </Dialog>
+        <Button asChild data-testid="new-payment-button">
+          <Link href="/payments/new">
+            <Plus className="mr-2 h-4 w-4" />
+            New Payment
+          </Link>
+        </Button>
       </div>
+
+      {/* Loading Indicator */}
+      {loading && (
+        <Card>
+          <CardContent className="py-8">
+            <div className="flex items-center justify-center text-muted-foreground">
+              Loading payments...
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Quick Stats */}
       <div className="grid gap-4 md:grid-cols-4">

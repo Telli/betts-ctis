@@ -10,7 +10,10 @@ namespace BettsTax.Data
         NonCompliant,
         PenaltyApplied,
         UnderReview,
-        Exempted
+        Exempted,
+        InProgress,
+        PartiallyCompliant,
+        Resolved
     }
 
     public enum ComplianceRiskLevel
@@ -129,6 +132,7 @@ namespace BettsTax.Data
     public class CompliancePenalty
     {
         public int CompliancePenaltyId { get; set; }
+        public int ClientId { get; set; } // Added for compatibility
         
         public int ComplianceTrackerId { get; set; }
         public PenaltyType PenaltyType { get; set; }
@@ -159,6 +163,7 @@ namespace BettsTax.Data
         
         // Dates
         public DateTime PenaltyDate { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow; // Added for compatibility
         public DateTime DueDate { get; set; }
         public DateTime? PaidDate { get; set; }
         public DateTime? WaivedDate { get; set; }
@@ -174,6 +179,7 @@ namespace BettsTax.Data
     public class ComplianceAlert
     {
         public int ComplianceAlertId { get; set; }
+        public int ClientId { get; set; } // Added for compatibility
         
         public int ComplianceTrackerId { get; set; }
         public ComplianceAlertSeverity Severity { get; set; }
@@ -195,16 +201,27 @@ namespace BettsTax.Data
         
         // Auto-generated or manual
         public bool IsSystemGenerated { get; set; } = true;
+        
+        // Navigation properties
+        public Client? Client { get; set; } // Added for compatibility
         [MaxLength(100)]
         public string? GeneratedBy { get; set; }
         
         [MaxLength(500)]
+        
+        // Additional property for compatibility
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public string? ActionUrl { get; set; } // Link to resolve the alert
         [MaxLength(2000)]
         public string? Metadata { get; set; } // JSON with additional alert data
         
         public DateTime? ReadDate { get; set; }
         public DateTime? ResolvedDate { get; set; }
+        
+        // Additional properties for compatibility
+        public string AlertType { get; set; } = string.Empty;
+        public bool IsResolved { get; set; } = false;
+        public DateTime? ResolvedAt { get; set; }
         
         // Navigation properties
         public ComplianceTracker? ComplianceTracker { get; set; }

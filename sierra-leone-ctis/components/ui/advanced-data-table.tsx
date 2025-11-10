@@ -203,6 +203,27 @@ export function AdvancedDataTable<T extends Record<string, any>>({
   const activeFilterCount = Object.values(activeFilters).filter(v => v && v !== 'all').length + 
                            (searchTerm ? 1 : 0)
 
+  const prettyLabel = (key: string): string => {
+    const map: Record<string, string> = {
+      taxpayerCategory: 'Taxpayer Category',
+      taxpayerCategoryCode: 'Taxpayer Category',
+      status: 'Status',
+      statusCode: 'Status',
+    }
+    if (map[key]) return map[key]
+    const withSpaces = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1)
+  }
+
+  const prettyPlural = (key: string): string => {
+    const singular = prettyLabel(key)
+    const irregular: Record<string, string> = {
+      Status: 'Statuses',
+      'Taxpayer Category': 'Taxpayer Categories',
+    }
+    return irregular[singular] || `${singular}s`
+  }
+
   if (loading) {
     return (
       <Card className={className}>
@@ -289,22 +310,24 @@ export function AdvancedDataTable<T extends Record<string, any>>({
                   onValueChange={(value) => handleFilterChange(filterKey, value)}
                 >
                   <SelectTrigger className="w-full sm:w-48">
-                    <SelectValue placeholder={`Filter by ${filterKey}`} />
+                    <SelectValue placeholder={`Filter by ${prettyLabel(filterKey)}`} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All {filterKey}s</SelectItem>
-                    {options.map(option => (
-                      <SelectItem key={option.value} value={option.value}>
-                        <div className="flex items-center justify-between w-full">
-                          <span>{option.label}</span>
-                          {option.count !== undefined && (
-                            <Badge variant="secondary" className="ml-2">
-                              {option.count}
-                            </Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="all">All {prettyPlural(filterKey)}</SelectItem>
+                    {options
+                      .filter(option => option.value && option.value !== '') // Filter out empty values
+                      .map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          <div className="flex items-center justify-between w-full">
+                            <span>{option.label}</span>
+                            {option.count !== undefined && (
+                              <Badge variant="secondary" className="ml-2">
+                                {option.count}
+                              </Badge>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               ))}
@@ -336,7 +359,7 @@ export function AdvancedDataTable<T extends Record<string, any>>({
                   const option = filters[key]?.find(opt => opt.value === value)
                   return (
                     <Badge key={key} variant="secondary">
-                      {key}: {option?.label || value}
+                      {prettyLabel(key)}: {option?.label || value}
                       <button
                         onClick={() => handleFilterChange(key, 'all')}
                         className="ml-1 hover:text-red-600"

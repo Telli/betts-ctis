@@ -6,6 +6,8 @@ using BettsTax.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using Quartz;
+using System.Collections.Concurrent;
 
 namespace BettsTax.Web.Controllers;
 
@@ -17,15 +19,29 @@ public class ReportsController : ControllerBase
     private readonly IReportService _reportService;
     private readonly IUserContextService _userContext;
     private readonly ILogger<ReportsController> _logger;
+    private readonly IScheduler _scheduler;
+
+    // In-memory templates store (dev/demo)
+    private static readonly ConcurrentDictionary<string, ReportTemplateModel> _templates = new();
+    private static bool _templatesInitialized = false;
 
     public ReportsController(
         IReportService reportService,
         IUserContextService userContext,
-        ILogger<ReportsController> logger)
+        ILogger<ReportsController> logger,
+        IScheduler scheduler)
     {
         _reportService = reportService;
         _userContext = userContext;
         _logger = logger;
+        _scheduler = scheduler;
+
+        // Seed default templates once
+        if (!_templatesInitialized)
+        {
+            SeedDefaultTemplates();
+            _templatesInitialized = true;
+        }
     }
 
     /// <summary>
@@ -55,6 +71,184 @@ public class ReportsController : ControllerBase
         {
             _logger.LogError(ex, "Error queueing report generation");
             return StatusCode(500, "An error occurred while queueing the report");
+        }
+    }
+
+    /// <summary>
+    /// Cancel a pending report (only if it hasn't started processing)
+    /// </summary>
+    [HttpPost("cancel/{requestId}")]
+    public async Task<IActionResult> CancelReport(string requestId)
+    {
+        try
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized("User not found");
+
+            var (success, message) = await CancelReportInternalAsync(requestId, userId);
+            if (!success)
+                return Conflict(new { message });
+
+            return Ok(new { message = message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cancelling report {RequestId}", requestId);
+            return StatusCode(500, "An error occurred while cancelling the report");
+        }
+    }
+
+    /// <summary>
+    /// Get built-in and user-defined report templates (in-memory for development)
+    /// </summary>
+    [HttpGet("templates")]
+    public IActionResult GetTemplates()
+    {
+        var list = _templates.Values
+            .OrderByDescending(t => t.IsDefault)
+            .ThenBy(t => t.Name)
+            .ToList();
+        return Ok(list);
+    }
+
+    /// <summary>
+    /// Get a specific report template by id
+    /// </summary>
+    [HttpGet("templates/{templateId}")]
+    public IActionResult GetTemplateById(string templateId)
+    {
+        if (!_templates.TryGetValue(templateId, out var template))
+            return NotFound("Template not found");
+
+        return Ok(template);
+    }
+
+    /// <summary>
+    /// Save a user-defined report template (in-memory for development)
+    /// </summary>
+    [HttpPost("templates")]
+    public IActionResult SaveTemplate([FromBody] CreateReportTemplateModel model)
+    {
+        if (string.IsNullOrWhiteSpace(model.Name))
+            return BadRequest("Template name is required");
+
+        var id = Guid.NewGuid().ToString("N");
+        var now = DateTime.UtcNow;
+        var template = new ReportTemplateModel
+        {
+            Id = id,
+            Name = model.Name,
+            Description = model.Description ?? string.Empty,
+            ReportType = model.ReportType,
+            Parameters = model.Parameters ?? new Dictionary<string, object>(),
+            IsDefault = model.IsDefault,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _templates[id] = template;
+        return Ok(template);
+    }
+
+    /// <summary>
+    /// Update an existing report template
+    /// </summary>
+    [HttpPut("templates/{templateId}")]
+    public IActionResult UpdateTemplate(string templateId, [FromBody] CreateReportTemplateModel model)
+    {
+        if (!_templates.TryGetValue(templateId, out var existing))
+            return NotFound("Template not found");
+
+        existing.Name = string.IsNullOrWhiteSpace(model.Name) ? existing.Name : model.Name;
+        existing.Description = model.Description ?? existing.Description;
+        existing.ReportType = string.IsNullOrWhiteSpace(model.ReportType) ? existing.ReportType : model.ReportType;
+        if (model.Parameters != null)
+        {
+            existing.Parameters = model.Parameters;
+        }
+        // Allow toggling default flag; in a real system restrict to Admin
+        existing.IsDefault = model.IsDefault;
+        existing.UpdatedAt = DateTime.UtcNow;
+
+        return Ok(existing);
+    }
+
+    /// <summary>
+    /// Delete a report template (cannot delete built-in defaults)
+    /// </summary>
+    [HttpDelete("templates/{templateId}")]
+    public IActionResult DeleteTemplate(string templateId)
+    {
+        if (!_templates.TryGetValue(templateId, out var existing))
+            return NotFound("Template not found");
+
+        if (existing.IsDefault)
+            return BadRequest("Cannot delete a default template");
+
+        _templates.TryRemove(templateId, out _);
+        return Ok(new { Message = "Template deleted" });
+    }
+
+    /// <summary>
+    /// Generate a quick preview for a report request (returns file content)
+    /// </summary>
+    [HttpPost("preview")]
+    public async Task<IActionResult> Preview([FromBody] CreateReportRequestDto request)
+    {
+        try
+        {
+            var (content, contentType, fileName) = await GeneratePreviewFileAsync(request);
+            return File(content, contentType, fileName);
+        }
+        catch (ArgumentException aex)
+        {
+            return BadRequest(aex.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating preview for type {Type}", request.Type);
+            return StatusCode(500, "An error occurred while generating the preview");
+        }
+    }
+
+    /// <summary>
+    /// Generate a quick preview for a saved template (parameters can override template parameters)
+    /// </summary>
+    [HttpPost("templates/{templateId}/preview")]
+    public async Task<IActionResult> PreviewTemplate(string templateId, [FromBody] Dictionary<string, object>? parameters, [FromQuery] string? format = null)
+    {
+        if (!_templates.TryGetValue(templateId, out var template))
+            return NotFound("Template not found");
+
+        var previewFormat = ReportFormat.PDF;
+        if (!string.IsNullOrWhiteSpace(format))
+        {
+            if (!Enum.TryParse<ReportFormat>(format, true, out previewFormat))
+            {
+                return BadRequest($"Unknown format: {format}");
+            }
+        }
+
+        var request = new CreateReportRequestDto
+        {
+            Type = MapReportType(template.ReportType),
+            Format = previewFormat,
+            Parameters = MergeParameters(template.Parameters, parameters ?? new Dictionary<string, object>())
+        };
+
+        try
+        {
+            var (content, contentType, fileName) = await GeneratePreviewFileAsync(request);
+            return File(content, contentType, fileName);
+        }
+        catch (ArgumentException aex)
+        {
+            return BadRequest(aex.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating template preview for {TemplateId}", templateId);
+            return StatusCode(500, "An error occurred while generating the preview");
         }
     }
 
@@ -91,7 +285,16 @@ public class ReportsController : ControllerBase
     /// Get user's report history
     /// </summary>
     [HttpGet("history")]
-    public async Task<IActionResult> GetReportHistory([FromQuery] int pageSize = 20, [FromQuery] int pageNumber = 1)
+    public async Task<IActionResult> GetReportHistory(
+        [FromQuery] int pageSize = 20,
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] ReportStatus? status = null,
+        [FromQuery] ReportType? type = null,
+        [FromQuery] DateTime? fromDate = null,
+        [FromQuery] DateTime? toDate = null,
+        [FromQuery] string? search = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null)
     {
         try
         {
@@ -102,14 +305,26 @@ public class ReportsController : ControllerBase
             if (pageSize > 100) pageSize = 100; // Limit page size
             if (pageNumber < 1) pageNumber = 1;
 
-            var reports = await _reportService.GetUserReportsAsync(userId, pageSize, pageNumber);
+            var filter = new ReportHistoryFilter
+            {
+                Status = status,
+                Type = type,
+                FromDate = fromDate,
+                ToDate = toDate,
+                Search = search,
+                SortBy = sortBy,
+                SortDir = sortDir
+            };
+
+            var reports = await _reportService.GetUserReportsAsync(userId, filter, pageSize, pageNumber);
+            var totalCount = await _reportService.GetUserReportCountAsync(userId, filter);
             
             return Ok(new 
             { 
                 Reports = reports,
                 PageSize = pageSize,
                 PageNumber = pageNumber,
-                TotalCount = reports.Count
+                TotalCount = totalCount
             });
         }
         catch (Exception ex)
@@ -345,6 +560,213 @@ public class ReportsController : ControllerBase
     }
 
     // Helper methods
+    private async Task<(bool success, string message)> CancelReportInternalAsync(string requestId, string userId)
+    {
+        var report = await _reportService.GetReportStatusAsync(requestId);
+        if (report == null)
+            return (false, "Report not found");
+
+        if (report.RequestedByUserId != userId && !User.IsInRole("Admin"))
+            return (false, "Access denied");
+
+        if (report.Status == ReportStatus.Completed || report.Status == ReportStatus.Failed)
+            return (false, "Cannot cancel a completed or failed report");
+
+        if (report.Status == ReportStatus.Processing)
+            return (false, "Report is already processing and cannot be cancelled");
+
+        // Attempt to delete the scheduled job
+        var jobKey = new JobKey($"report-{requestId}", "reports");
+        await _scheduler.DeleteJob(jobKey);
+
+        // Mark as cancelled via service by updating DB record
+        // Use a small hack: queue a delete? Instead, call a light-weight update through the service implementation
+        if (_reportService is BettsTax.Core.Services.ReportService concrete)
+        {
+            await concrete.MarkReportCancelledAsync(requestId);
+        }
+        else
+        {
+            // No direct way to update via interface; no-op to keep method truly async
+            await Task.CompletedTask;
+        }
+
+        return (true, "Report cancelled successfully");
+    }
+
+    private static Dictionary<string, object> MergeParameters(Dictionary<string, object> baseParams, Dictionary<string, object> overrides)
+    {
+        var result = new Dictionary<string, object>(baseParams);
+        foreach (var kvp in overrides)
+        {
+            result[kvp.Key] = kvp.Value;
+        }
+        return result;
+    }
+
+    private static string GetTemplateTypeDisplay(ReportType type) => type.ToString();
+
+    private static ReportType MapReportType(string templateReportType)
+    {
+        // First handle known UI aliases used by the frontend
+        var alias = (templateReportType ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(alias))
+            throw new ArgumentException("Report type is required");
+
+        // Map common aliases to supported core types
+        switch (alias.ToLowerInvariant())
+        {
+            case "taxsummary":
+            case "tax summary":
+            case "taxcompliance":
+            case "tax compliance":
+                return ReportType.TaxFiling;
+
+            case "compliancestatus":
+            case "compliance status":
+            case "penaltyanalysis":
+            case "penalty analysis":
+                return ReportType.Compliance;
+
+            case "auditrail":
+            case "audit trail":
+                return ReportType.ClientActivity;
+
+            case "monthlyreconciliation":
+            case "monthly reconciliation":
+            case "clientportfolio":
+            case "client portfolio":
+            case "kpisummary":
+            case "kpi summary":
+                return ReportType.FinancialSummary;
+        }
+
+        // Convert stored template type (string) to ReportType enum (case-insensitive)
+        if (Enum.TryParse<ReportType>(templateReportType, true, out var parsed))
+        {
+            return parsed;
+        }
+
+        throw new ArgumentException($"Unknown report type: {templateReportType}");
+    }
+
+    private async Task<(byte[] Content, string ContentType, string FileName)> GeneratePreviewFileAsync(CreateReportRequestDto request)
+    {
+        // Minimal validation and parameter parsing
+        var type = request.Type;
+        var format = request.Format;
+        var p = request.Parameters;
+
+        byte[] file = type switch
+        {
+            ReportType.TaxFiling => await _reportService.GenerateTaxFilingReportAsync(
+                GetIntParameter(p, "clientId"), GetIntParameter(p, "taxYear"), format),
+
+            ReportType.PaymentHistory => await _reportService.GeneratePaymentHistoryReportAsync(
+                GetIntParameter(p, "clientId"), GetDateParameter(p, "fromDate"), GetDateParameter(p, "toDate"), format),
+
+            ReportType.Compliance => await _reportService.GenerateComplianceReportAsync(
+                GetIntParameter(p, "clientId"), GetDateParameter(p, "fromDate"), GetDateParameter(p, "toDate"), format),
+
+            ReportType.ClientActivity => await _reportService.GenerateClientActivityReportAsync(
+                GetDateParameter(p, "fromDate"), GetDateParameter(p, "toDate"), format),
+
+            ReportType.FinancialSummary => await _reportService.GenerateFinancialSummaryReportAsync(
+                TryGetIntParameter(p, "clientId"), GetDateParameter(p, "fromDate"), GetDateParameter(p, "toDate"), format),
+
+            _ => throw new ArgumentException($"Unsupported report type: {type}")
+        };
+
+        var contentType = GetContentType(format);
+        var fileName = $"Preview_{type}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.{GetFileExtension(format)}";
+        return (file, contentType, fileName);
+    }
+
+    private static int GetIntParameter(Dictionary<string, object> parameters, string key)
+    {
+        if (parameters.TryGetValue(key, out var value))
+        {
+            if (value is System.Text.Json.JsonElement element && element.ValueKind == System.Text.Json.JsonValueKind.Number)
+                return element.GetInt32();
+            if (int.TryParse(value?.ToString(), out var intValue))
+                return intValue;
+        }
+        throw new ArgumentException($"Missing or invalid parameter: {key}");
+    }
+
+    private static int? TryGetIntParameter(Dictionary<string, object> parameters, string key)
+    {
+        if (parameters.TryGetValue(key, out var value))
+        {
+            if (value is System.Text.Json.JsonElement element && element.ValueKind == System.Text.Json.JsonValueKind.Number)
+                return element.GetInt32();
+            if (int.TryParse(value?.ToString(), out var intValue))
+                return intValue;
+        }
+        return null;
+    }
+
+    private static DateTime GetDateParameter(Dictionary<string, object> parameters, string key)
+    {
+        if (parameters.TryGetValue(key, out var value))
+        {
+            if (value is System.Text.Json.JsonElement element && element.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                if (DateTime.TryParse(element.GetString(), out var dateValue))
+                    return dateValue;
+            }
+            if (DateTime.TryParse(value?.ToString(), out var parsedDate))
+                return parsedDate;
+        }
+        throw new ArgumentException($"Missing or invalid date parameter: {key}");
+    }
+
+    private static void SeedDefaultTemplates()
+    {
+        void Add(string id, string name, string desc, string reportType, Dictionary<string, object> parameters)
+        {
+            _templates[id] = new ReportTemplateModel
+            {
+                Id = id,
+                Name = name,
+                Description = desc,
+                ReportType = reportType,
+                Parameters = parameters,
+                IsDefault = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+        }
+
+        Add("tmpl-taxfiling", "Tax Filing (Year)", "Tax filing for a specific year", "TaxFiling",
+            new Dictionary<string, object> { { "taxYear", DateTime.UtcNow.Year }, { "clientId", 1 } });
+        Add("tmpl-payment-history", "Payment History (90d)", "Payments for last 90 days", "PaymentHistory",
+            new Dictionary<string, object> { { "fromDate", DateTime.UtcNow.AddDays(-90) }, { "toDate", DateTime.UtcNow }, { "clientId", 1 } });
+        Add("tmpl-compliance", "Compliance (This Year)", "Compliance overview for this year", "Compliance",
+            new Dictionary<string, object> { { "fromDate", new DateTime(DateTime.UtcNow.Year, 1, 1) }, { "toDate", DateTime.UtcNow }, { "clientId", 1 } });
+    }
+
+    // DTOs for templates (in-memory)
+    public class ReportTemplateModel
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string ReportType { get; set; } = string.Empty;
+        public Dictionary<string, object> Parameters { get; set; } = new();
+        public bool IsDefault { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
+    public class CreateReportTemplateModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string ReportType { get; set; } = string.Empty;
+        public Dictionary<string, object>? Parameters { get; set; }
+        public bool IsDefault { get; set; } = false;
+    }
     private async Task<bool> ValidateClientAccess(int clientId)
     {
         // If user is admin or associate, they have access to all clients

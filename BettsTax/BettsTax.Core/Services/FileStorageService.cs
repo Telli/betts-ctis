@@ -48,11 +48,13 @@ namespace BettsTax.Core.Services
             var secureFileName = GenerateSecureFileName(fileName);
             var filePath = Path.Combine(targetDirectory, secureFileName);
 
-            // Save file
-            using var stream = new FileStream(filePath, FileMode.Create);
-            await file.CopyToAsync(stream);
+            // Save file (ensure stream is closed before scanning)
+            using (var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                await file.CopyToAsync(stream);
+            }
 
-            // Scan for virus (placeholder implementation)
+            // Scan for virus (placeholder implementation) - after stream is disposed
             await ScanFileForVirusAsync(filePath);
 
             _logger.LogInformation("Saved file {FileName} to {FilePath}", fileName, filePath);
@@ -144,10 +146,21 @@ namespace BettsTax.Core.Services
                 // Check for suspicious file signatures
                 using var stream = File.OpenRead(filePath);
                 var buffer = new byte[1024];
-                await stream.ReadAsync(buffer, 0, buffer.Length);
+                var totalRead = 0;
+
+                while (totalRead < buffer.Length)
+                {
+                    var bytesRead = await stream.ReadAsync(buffer.AsMemory(totalRead, buffer.Length - totalRead));
+                    if (bytesRead == 0)
+                    {
+                        break;
+                    }
+
+                    totalRead += bytesRead;
+                }
 
                 // Basic checks for known malicious patterns (very basic implementation)
-                var content = Encoding.UTF8.GetString(buffer);
+                var content = Encoding.UTF8.GetString(buffer, 0, totalRead);
                 if (content.Contains("eval(") || content.Contains("exec(") || content.Contains("<script"))
                 {
                     _logger.LogWarning("File {FilePath} contains suspicious content", filePath);

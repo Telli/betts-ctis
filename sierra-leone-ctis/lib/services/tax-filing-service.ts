@@ -33,6 +33,15 @@ export interface CreateTaxFilingDto {
   dueDate: string;
   taxLiability: number;
   filingReference?: string;
+  // Extended fields (optional)
+  filingPeriod?: string;
+  penaltyAmount?: number;
+  interestAmount?: number;
+  taxableAmount?: number;
+  additionalData?: string;
+  // Withholding-specific (optional)
+  withholdingTaxSubtype?: string;
+  isResident?: boolean;
 }
 
 export interface UpdateTaxFilingDto {
@@ -42,6 +51,9 @@ export interface UpdateTaxFilingDto {
   taxLiability?: number;
   filingReference?: string;
   reviewComments?: string;
+  // Withholding-specific (optional)
+  withholdingTaxSubtype?: string;
+  isResident?: boolean;
 }
 
 export interface ReviewTaxFilingDto {
@@ -53,7 +65,11 @@ export enum TaxType {
   IncomeTax = 'IncomeTax',
   GST = 'GST',
   PayrollTax = 'PayrollTax',
-  ExciseDuty = 'ExciseDuty'
+  ExciseDuty = 'ExciseDuty',
+  PAYE = 'PAYE',
+  WithholdingTax = 'WithholdingTax',
+  PersonalIncomeTax = 'PersonalIncomeTax',
+  CorporateIncomeTax = 'CorporateIncomeTax'
 }
 
 export enum FilingStatus {
@@ -121,7 +137,7 @@ export const TaxFilingService = {
       pageSize: pageSize.toString(),
     });
 
-    if (searchTerm) params.append('searchTerm', searchTerm);
+    if (searchTerm) params.append('search', searchTerm);
     if (taxType) params.append('taxType', taxType);
     if (status) params.append('status', status);
     if (clientId) params.append('clientId', clientId.toString());

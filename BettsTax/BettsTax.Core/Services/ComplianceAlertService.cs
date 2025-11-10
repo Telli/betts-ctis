@@ -13,15 +13,18 @@ public class ComplianceAlertService : IComplianceAlertService
     private readonly ApplicationDbContext _context;
     private readonly INotificationService _notificationService;
     private readonly ILogger<ComplianceAlertService> _logger;
+    private readonly ISystemSettingService _settingService;
 
     public ComplianceAlertService(
         ApplicationDbContext context,
         INotificationService notificationService,
-        ILogger<ComplianceAlertService> logger)
+        ILogger<ComplianceAlertService> logger,
+        ISystemSettingService settingService)
     {
         _context = context;
         _notificationService = notificationService;
         _logger = logger;
+        _settingService = settingService;
     }
 
     public async Task<List<ComplianceAlertDto>> GetActiveAlertsAsync(int? clientId = null)
@@ -269,6 +272,7 @@ public class ComplianceAlertService : IComplianceAlertService
             await ProcessOverdueAlerts();
             await ProcessPenaltyAlerts();
             await ProcessComplianceScoreAlerts();
+            await ProcessGstThresholdAlerts();
 
             _logger.LogInformation("Completed automatic alert processing");
         }
@@ -415,6 +419,52 @@ public class ComplianceAlertService : IComplianceAlertService
             };
 
             await CreateAlertAsync(alert);
+        }
+    }
+    private async Task ProcessGstThresholdAlerts()
+    {
+        decimal threshold = 0m;
+
+        try
+        {
+            var thresholdSetting = await _settingService.GetSettingAsync<decimal?>("Tax.GST.RegistrationThreshold");
+            if (thresholdSetting.HasValue && thresholdSetting.Value > 0)
+            {
+                threshold = thresholdSetting.Value;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read GST registration threshold setting. Falling back to 0.");
+        }
+
+        if (threshold <= 0)
+        {
+            _logger.LogDebug("GST threshold alerts skipped because threshold is not configured (> 0).");
+            return;
+        }
+
+        var clients = await _context.Clients
+            .Where(c => c.Status == ClientStatus.Active)
+            .Select(c => new { c.Id, c.BusinessName, c.AnnualTurnover })
+            .ToListAsync();
+
+        foreach (var client in clients)
+        {
+            if (client.AnnualTurnover >= threshold)
+            {
+                var alert = new ComplianceAlertDto
+                {
+                    ClientId = client.Id,
+                    AlertType = ComplianceAlertType.GstRegistration.ToString(),
+                    Severity = ComplianceAlertSeverity.Warning,
+                    Title = "GST Registration Threshold Exceeded",
+                    Message = $"{client.BusinessName} reported annual turnover of SLE {client.AnnualTurnover:N2}, exceeding the GST registration threshold of SLE {threshold:N2}.",
+                    DueDate = DateTime.UtcNow.AddDays(30)
+                };
+
+                await CreateAlertAsync(alert);
+            }
         }
     }
 

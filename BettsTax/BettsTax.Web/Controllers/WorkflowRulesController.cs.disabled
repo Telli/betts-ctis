@@ -1,0 +1,206 @@
+using Microsoft.AspNetCore.Mvc;
+using BettsTax.Core.Services;
+using BettsTax.Data.Models;
+using Microsoft.AspNetCore.Authorization;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace BettsTax.Web.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class WorkflowRulesController : ControllerBase
+    {
+        private readonly IWorkflowRuleBuilderService _ruleBuilderService;
+
+        public WorkflowRulesController(IWorkflowRuleBuilderService ruleBuilderService)
+        {
+            _ruleBuilderService = ruleBuilderService;
+        }
+
+        /// <summary>
+        /// Gets all workflow rules with optional filtering
+        /// </summary>
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<WorkflowRule>>> GetRules(
+            [FromQuery] string? entityType = null,
+            [FromQuery] bool? isActive = null)
+        {
+            var rules = await _ruleBuilderService.GetRulesAsync(entityType, isActive);
+            return Ok(rules);
+        }
+
+        /// <summary>
+        /// Gets a specific workflow rule by ID
+        /// </summary>
+        [HttpGet("{id}")]
+        public async Task<ActionResult<WorkflowRule>> GetRule(Guid id)
+        {
+            try
+            {
+                var rule = await _ruleBuilderService.GetRuleAsync(id);
+                return Ok(rule);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+        }
+
+        /// <summary>
+        /// Creates a new workflow rule
+        /// </summary>
+        [HttpPost]
+        public async Task<ActionResult<WorkflowRule>> CreateRule(WorkflowRule rule)
+        {
+            rule.CreatedBy = User.Identity?.Name ?? "System";
+            var createdRule = await _ruleBuilderService.CreateRuleAsync(rule);
+            return CreatedAtAction(nameof(GetRule), new { id = createdRule.Id }, createdRule);
+        }
+
+        /// <summary>
+        /// Updates an existing workflow rule
+        /// </summary>
+        [HttpPut("{id}")]
+        public async Task<ActionResult<WorkflowRule>> UpdateRule(Guid id, WorkflowRule rule)
+        {
+            try
+            {
+                rule.UpdatedBy = User.Identity?.Name ?? "System";
+                var updatedRule = await _ruleBuilderService.UpdateRuleAsync(id, rule);
+                return Ok(updatedRule);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+        }
+
+        /// <summary>
+        /// Deletes a workflow rule
+        /// </summary>
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteRule(Guid id)
+        {
+            try
+            {
+                await _ruleBuilderService.DeleteRuleAsync(id);
+                return NoContent();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+        }
+
+        /// <summary>
+        /// Toggles a workflow rule's active status
+        /// </summary>
+        [HttpPost("{id}/toggle")]
+        public async Task<IActionResult> ToggleRuleStatus(Guid id, [FromBody] bool isActive)
+        {
+            try
+            {
+                await _ruleBuilderService.ToggleRuleStatusAsync(id, isActive);
+                return Ok();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+        }
+
+        /// <summary>
+        /// Tests a workflow rule against sample data
+        /// </summary>
+        [HttpPost("{id}/test")]
+        public async Task<ActionResult<RuleTestResult>> TestRule(Guid id, [FromBody] Dictionary<string, object> testData)
+        {
+            try
+            {
+                var result = await _ruleBuilderService.TestRuleAsync(id, testData);
+                return Ok(result);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+        }
+
+        /// <summary>
+        /// Gets available condition operators
+        /// </summary>
+        [HttpGet("operators")]
+        public ActionResult<IEnumerable<WorkflowConditionOperator>> GetOperators()
+        {
+            var operators = _ruleBuilderService.GetConditionOperators();
+            return Ok(operators);
+        }
+
+        /// <summary>
+        /// Gets available action types
+        /// </summary>
+        [HttpGet("action-types")]
+        public ActionResult<IEnumerable<WorkflowActionType>> GetActionTypes()
+        {
+            var actionTypes = _ruleBuilderService.GetActionTypes();
+            return Ok(actionTypes);
+        }
+
+        /// <summary>
+        /// Gets available fields for an entity type
+        /// </summary>
+        [HttpGet("fields/{entityType}")]
+        public async Task<ActionResult<IEnumerable<string>>> GetAvailableFields(string entityType)
+        {
+            var fields = await _ruleBuilderService.GetAvailableFieldsAsync(entityType);
+            return Ok(fields);
+        }
+
+        /// <summary>
+        /// Validates a rule definition
+        /// </summary>
+        [HttpPost("validate")]
+        public async Task<ActionResult<ValidationResult>> ValidateRule([FromBody] Dictionary<string, object> ruleDefinition)
+        {
+            var result = await _ruleBuilderService.ValidateRuleAsync(ruleDefinition);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Builds a condition expression from rule definition
+        /// </summary>
+        [HttpPost("build-condition")]
+        public async Task<ActionResult<string>> BuildCondition([FromBody] Dictionary<string, object> ruleDefinition)
+        {
+            try
+            {
+                var expression = await _ruleBuilderService.BuildConditionExpressionAsync(ruleDefinition);
+                return Ok(expression);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Builds an action expression from action definition
+        /// </summary>
+        [HttpPost("build-action")]
+        public async Task<ActionResult<string>> BuildAction([FromBody] Dictionary<string, object> actionDefinition)
+        {
+            try
+            {
+                var expression = await _ruleBuilderService.BuildActionExpressionAsync(actionDefinition);
+                return Ok(expression);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+    }
+}

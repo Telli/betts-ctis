@@ -124,10 +124,50 @@ export const ComplianceService = {
         params.append('toDate', filters.dateRange.to);
       }
 
-      const response = await apiClient.get<{ success: boolean; data: ComplianceItem[] }>(
+      const response = await apiClient.get<any>(
         `/api/compliance/items?${params.toString()}`
       );
-      return response.data.data;
+
+      const raw = response.data as any[];
+      if (!Array.isArray(raw)) return createEmptyComplianceData();
+
+      const mapped: ComplianceItem[] = raw.map((r: any) => {
+        const id = String(r.id ?? r.Id ?? Math.random().toString(36).slice(2, 10));
+        const title = r.title ?? r.Title ?? r.name ?? r.Name ?? '';
+        const category = r.category ?? r.Category ?? r.type ?? r.Type ?? 'general';
+        const due = r.dueDate ?? r.DueDate ?? r.deadline ?? r.Deadline;
+        const statusRaw = (r.status ?? r.Status ?? 'pending').toString().toLowerCase();
+        const status: ComplianceItem['status'] =
+          statusRaw.includes('risk') ? 'at-risk' :
+          statusRaw.includes('overdue') ? 'overdue' :
+          statusRaw.includes('compliant') ? 'compliant' : 'pending';
+        const priorityRaw = (r.priority ?? r.Priority ?? 'medium').toString().toLowerCase();
+        const priority: ComplianceItem['priority'] =
+          priorityRaw.startsWith('h') ? 'high' : priorityRaw.startsWith('l') ? 'low' : 'medium';
+        const dueDateStr = due ? new Date(due).toISOString() : new Date().toISOString();
+        const daysOverdue = due ? Math.max(0, Math.ceil((Date.now() - new Date(due).getTime()) / 86400000)) : 0;
+
+        return {
+          id,
+          type: category,
+          description: title,
+          status,
+          dueDate: dueDateStr,
+          lastUpdated: new Date().toISOString(),
+          priority,
+          actions: [],
+          clientId: r.clientId?.toString() ?? r.ClientId?.toString(),
+          clientName: r.clientName ?? r.ClientName,
+          taxYear: r.taxYear ?? r.TaxYear,
+          category,
+          complianceScore: r.complianceScore ?? r.ComplianceScore,
+          daysOverdue,
+          alerts: r.alerts ?? r.Alerts ?? 0,
+          taxType: r.taxType ?? r.TaxType
+        } as ComplianceItem;
+      });
+
+      return mapped;
     } catch (error) {
       console.warn('Compliance items API unavailable, returning empty data for new user experience:', error);
       return createEmptyComplianceData();
@@ -274,9 +314,11 @@ export const ComplianceService = {
       params.append('fromDate', filters.dateRange.from);
       params.append('toDate', filters.dateRange.to);
     }
-
-    const response = await apiClient.get(`/api/compliance/export?${params.toString()}`);
-    return response.data as Blob;
+    const response = await apiClient.get<Blob>(
+      `/api/compliance/export?${params.toString()}`,
+      { responseType: 'blob' }
+    );
+    return response.data;
   },
 
   /**
@@ -315,14 +357,43 @@ export const ComplianceService = {
   },
 
   /**
-   * Get compliance overview/summary data
+   * Get compliance overview/summary data with backend shape tolerance
    */
   getComplianceOverview: async (): Promise<ComplianceOverviewData> => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: ComplianceOverviewData }>(
-        '/api/compliance/overview'
-      );
-      return response.data.data;
+      // ComplianceController returns a plain object (not wrapped)
+      const resp = await apiClient.get<any>('/api/compliance/overview');
+      const src = resp.data as any;
+
+      const overview: ComplianceOverviewData = {
+        totalClients: src?.totalClients ?? 0,
+        compliant: src?.compliant ?? 0,
+        atRisk: src?.atRisk ?? 0,
+        overdue: src?.overdue ?? 0,
+        averageScore: Number(src?.ComplianceScore ?? src?.averageScore ?? 0) || 0,
+        totalOutstanding: Number(src?.totalOutstanding ?? 0) || 0,
+        totalAlerts: Number(src?.PendingTasks ?? src?.totalAlerts ?? 0) || 0,
+      };
+
+      // Fallback to ComplianceTracker dashboard for richer stats if empty
+      if (
+        overview.totalClients === 0 &&
+        overview.compliant === 0 &&
+        overview.atRisk === 0 &&
+        overview.overdue === 0 &&
+        overview.averageScore === 0
+      ) {
+        const dashResp = await apiClient.get<any>('/api/ComplianceTracker/dashboard');
+        const d = dashResp.data as any;
+        if (d) {
+          const recentAlerts = d.RecentAlerts ?? d.recentAlerts;
+          if (Array.isArray(recentAlerts)) {
+            overview.totalAlerts = recentAlerts.length;
+          }
+        }
+      }
+
+      return overview;
     } catch (error) {
       console.warn('Compliance overview API unavailable, returning empty data for new user experience:', error);
       return createEmptyComplianceOverview();

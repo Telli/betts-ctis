@@ -1,0 +1,502 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using BettsTax.Data;
+using BettsTax.Data.Models;
+using BettsTax.Core.Services;
+using BettsTax.Shared;
+using Microsoft.EntityFrameworkCore;
+
+// Alias to resolve ambiguity
+using DataWorkflowRule = BettsTax.Data.WorkflowRule;
+using DataWorkflowTemplate = BettsTax.Data.WorkflowTemplate;
+
+namespace BettsTax.Core.Services
+{
+    /// <summary>
+    /// Implementation of no-code workflow rule builder
+    /// </summary>
+    public class WorkflowRuleBuilderService : IWorkflowRuleBuilderService
+    {
+        private readonly ApplicationDbContext _context;
+
+        public WorkflowRuleBuilderService(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+        public IEnumerable<WorkflowConditionOperator> GetConditionOperators()
+        {
+            return Enum.GetValues(typeof(WorkflowConditionOperator))
+                .Cast<WorkflowConditionOperator>();
+        }
+
+        public IEnumerable<WorkflowActionType> GetActionTypes()
+        {
+            return Enum.GetValues(typeof(WorkflowActionType))
+                .Cast<WorkflowActionType>();
+        }
+
+        public IEnumerable<WorkflowTrigger> GetTriggerTypes()
+        {
+            return Enum.GetValues(typeof(WorkflowTrigger))
+                .Cast<WorkflowTrigger>();
+        }
+
+        public IEnumerable<WorkflowStepType> GetStepTypes()
+        {
+            return Enum.GetValues(typeof(WorkflowStepType))
+                .Cast<WorkflowStepType>();
+        }
+
+        public async Task<IEnumerable<string>> GetAvailableFieldsAsync(string entityType)
+        {
+            // Return available fields based on entity type
+            // This would typically query the database schema or use reflection
+            switch (entityType.ToLower())
+            {
+                case "payment":
+                    return new[]
+                    {
+                        "Id", "Amount", "Currency", "Status", "PaymentMethod",
+                        "ClientId", "TaxType", "DueDate", "ApprovalWorkflow",
+                        "CreatedAt", "UpdatedAt"
+                    };
+
+                case "client":
+                    return new[]
+                    {
+                        "Id", "UserId", "CompanyName", "TaxId", "Email",
+                        "Phone", "Address", "BusinessType", "AssignedAssociateId",
+                        "CreatedAt", "UpdatedAt"
+                    };
+
+                case "document":
+                    return new[]
+                    {
+                        "Id", "ClientId", "FileName", "DocumentType", "Status",
+                        "UploadedAt", "VerifiedAt", "ExpiryDate", "FileSize"
+                    };
+
+                case "taxfiling":
+                    return new[]
+                    {
+                        "Id", "ClientId", "TaxYear", "TaxType", "Status",
+                        "FilingDate", "DueDate", "Amount", "Period"
+                    };
+
+                default:
+                    return new[] { "Id", "Status", "CreatedAt", "UpdatedAt" };
+            }
+        }
+
+        public async Task<string> BuildConditionExpressionAsync(Dictionary<string, object> ruleDefinition)
+        {
+            // Build a condition expression from the rule definition
+            var field = ruleDefinition.GetValueOrDefault("field")?.ToString();
+            var operatorType = (WorkflowConditionOperator)Convert.ToInt32(ruleDefinition.GetValueOrDefault("operator"));
+            var value = ruleDefinition.GetValueOrDefault("value");
+
+            if (string.IsNullOrEmpty(field))
+            {
+                throw new ArgumentException("Field is required for condition");
+            }
+
+            var expression = $"{field} {GetOperatorSymbol(operatorType)} ";
+
+            if (value is string strValue)
+            {
+                expression += $"'{strValue}'";
+            }
+            else if (value is bool boolValue)
+            {
+                expression += boolValue.ToString().ToLower();
+            }
+            else if (value is DateTime dateValue)
+            {
+                expression += $"'{dateValue:yyyy-MM-ddTHH:mm:ssZ}'";
+            }
+            else
+            {
+                expression += value?.ToString() ?? "null";
+            }
+
+            return expression;
+        }
+
+        public async Task<string> BuildActionExpressionAsync(Dictionary<string, object> actionDefinition)
+        {
+            // Build an action expression from the action definition
+            var actionType = (WorkflowActionType)Convert.ToInt32(actionDefinition.GetValueOrDefault("actionType"));
+            var parameters = actionDefinition.GetValueOrDefault("parameters") as Dictionary<string, object>;
+
+            switch (actionType)
+            {
+                case WorkflowActionType.UpdateRecord:
+                    return BuildUpdateRecordAction(parameters);
+
+                case WorkflowActionType.SendNotification:
+                    return BuildSendNotificationAction(parameters);
+
+                case WorkflowActionType.CreateTask:
+                    return BuildCreateTaskAction(parameters);
+
+                case WorkflowActionType.CallWebhook:
+                    return BuildCallWebhookAction(parameters);
+
+                case WorkflowActionType.GenerateReport:
+                    return BuildGenerateReportAction(parameters);
+
+                case WorkflowActionType.SendEmail:
+                    return BuildSendEmailAction(parameters);
+
+                case WorkflowActionType.SendSms:
+                    return BuildSendSmsAction(parameters);
+
+                case WorkflowActionType.UpdateStatus:
+                    return BuildUpdateStatusAction(parameters);
+
+                case WorkflowActionType.AssignToUser:
+                    return BuildAssignToUserAction(parameters);
+
+                case WorkflowActionType.Escalate:
+                    return BuildEscalateAction(parameters);
+
+                default:
+                    throw new NotSupportedException($"Action type {actionType} is not supported");
+            }
+        }
+
+        public async Task<ValidationResult> ValidateRuleAsync(Dictionary<string, object> ruleDefinition)
+        {
+            var result = new ValidationResult { IsValid = true };
+
+            // Validate required fields
+            if (!ruleDefinition.ContainsKey("field") || string.IsNullOrEmpty(ruleDefinition["field"]?.ToString()))
+            {
+                result.Errors.Add("Field is required");
+                result.IsValid = false;
+            }
+
+            if (!ruleDefinition.ContainsKey("operator"))
+            {
+                result.Errors.Add("Operator is required");
+                result.IsValid = false;
+            }
+
+            // Validate operator is valid enum value
+            try
+            {
+                var operatorValue = Convert.ToInt32(ruleDefinition["operator"]);
+                if (!Enum.IsDefined(typeof(WorkflowConditionOperator), operatorValue))
+                {
+                    result.Errors.Add("Invalid operator value");
+                    result.IsValid = false;
+                }
+            }
+            catch
+            {
+                result.Errors.Add("Operator must be a valid integer");
+                result.IsValid = false;
+            }
+
+            // Validate value is present for most operators
+            var operatorType = (WorkflowConditionOperator)Convert.ToInt32(ruleDefinition.GetValueOrDefault("operator"));
+            if (operatorType != WorkflowConditionOperator.IsEmpty &&
+                operatorType != WorkflowConditionOperator.IsNotEmpty &&
+                !ruleDefinition.ContainsKey("value"))
+            {
+                result.Errors.Add("Value is required for this operator");
+                result.IsValid = false;
+            }
+
+            return result;
+        }
+
+        // Implementation of new WorkflowRule management methods
+        public async Task<DataWorkflowRule> CreateRuleAsync(DataWorkflowRule rule)
+        {
+            rule.CreatedAt = DateTime.UtcNow;
+            _context.WorkflowRules.Add(rule);
+            await _context.SaveChangesAsync();
+            return rule;
+        }
+
+        public async Task<IEnumerable<DataWorkflowRule>> GetRulesAsync(string? entityType = null, bool? isActive = null)
+        {
+            var query = _context.WorkflowRules.AsQueryable();
+
+            if (!string.IsNullOrEmpty(entityType))
+            {
+                query = query.Where(r => r.EntityType == entityType);
+            }
+
+            if (isActive.HasValue)
+            {
+                query = query.Where(r => r.IsActive == isActive.Value);
+            }
+
+            return await query.OrderBy(r => r.Priority).ThenBy(r => r.CreatedAt).ToListAsync();
+        }
+
+        public async Task<DataWorkflowRule> GetRuleAsync(Guid id)
+        {
+            var rule = await _context.WorkflowRules.FindAsync(id);
+            if (rule == null)
+            {
+                throw new KeyNotFoundException($"Workflow rule with ID {id} not found");
+            }
+            return rule;
+        }
+
+        public async Task<DataWorkflowRule> UpdateRuleAsync(Guid id, DataWorkflowRule rule)
+        {
+            var existingRule = await GetRuleAsync(id);
+
+            existingRule.Name = rule.Name;
+            existingRule.Description = rule.Description;
+            existingRule.EntityType = rule.EntityType;
+            existingRule.Conditions = rule.Conditions;
+            existingRule.Actions = rule.Actions;
+            existingRule.IsActive = rule.IsActive;
+            existingRule.Priority = rule.Priority;
+            existingRule.UpdatedAt = DateTime.UtcNow;
+            existingRule.UpdatedBy = rule.UpdatedBy;
+
+            await _context.SaveChangesAsync();
+            return existingRule;
+        }
+
+        public async Task DeleteRuleAsync(Guid id)
+        {
+            var rule = await GetRuleAsync(id);
+            _context.WorkflowRules.Remove(rule);
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task ToggleRuleStatusAsync(Guid id, bool isActive)
+        {
+            var rule = await GetRuleAsync(id);
+            rule.IsActive = isActive;
+            rule.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task<RuleTestResult> TestRuleAsync(Guid id, Dictionary<string, object> testData)
+        {
+            var rule = await GetRuleAsync(id);
+            var result = new RuleTestResult
+            {
+                Success = true,
+                TestData = testData,
+                Message = "Rule test completed successfully"
+            };
+
+            try
+            {
+                // Parse conditions and actions from JSON
+                var conditions = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, object>>>(rule.Conditions);
+                var actions = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, object>>>(rule.Actions);
+
+                // Simple evaluation logic (in production, this would be more sophisticated)
+                var conditionResults = new List<bool>();
+
+                if (conditions != null)
+                {
+                    foreach (var condition in conditions)
+                    {
+                        var field = condition.GetValueOrDefault("field")?.ToString();
+                        var operatorType = (WorkflowConditionOperator)Convert.ToInt32(condition.GetValueOrDefault("operator"));
+                        var expectedValue = condition.GetValueOrDefault("value");
+
+                        if (testData.TryGetValue(field ?? "", out var actualValue))
+                        {
+                            var conditionMet = EvaluateCondition(actualValue, operatorType, expectedValue);
+                            conditionResults.Add(conditionMet);
+                        }
+                        else
+                        {
+                            conditionResults.Add(false);
+                        }
+                    }
+                }
+
+                // For this simple test, all conditions must be met
+                var allConditionsMet = conditionResults.All(c => c);
+
+                result.Results["conditionsMet"] = allConditionsMet;
+                result.Results["conditionResults"] = conditionResults;
+
+                if (actions != null)
+                {
+                    result.Results["actionCount"] = actions.Count;
+                    result.Results["actions"] = actions.Select(a => a.GetValueOrDefault("actionType")?.ToString() ?? "Unknown").ToList();
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Success = false;
+                result.Errors.Add($"Test execution failed: {ex.Message}");
+            }
+
+            return result;
+        }
+
+        private bool EvaluateCondition(object? actualValue, WorkflowConditionOperator op, object? expectedValue)
+        {
+            if (actualValue == null && expectedValue == null)
+            {
+                return op == WorkflowConditionOperator.Equals;
+            }
+
+            if (actualValue == null || expectedValue == null)
+            {
+                return op == WorkflowConditionOperator.NotEquals;
+            }
+
+            // Simple string comparison for now (in production, this would handle different data types)
+            var actualStr = actualValue.ToString() ?? "";
+            var expectedStr = expectedValue.ToString() ?? "";
+
+            return op switch
+            {
+                WorkflowConditionOperator.Equals => actualStr == expectedStr,
+                WorkflowConditionOperator.NotEquals => actualStr != expectedStr,
+                WorkflowConditionOperator.Contains => actualStr.Contains(expectedStr),
+                WorkflowConditionOperator.NotContains => !actualStr.Contains(expectedStr),
+                WorkflowConditionOperator.IsEmpty => string.IsNullOrEmpty(actualStr),
+                WorkflowConditionOperator.IsNotEmpty => !string.IsNullOrEmpty(actualStr),
+                _ => false
+            };
+        }
+
+        private string GetOperatorSymbol(WorkflowConditionOperator op)
+        {
+            return op switch
+            {
+                WorkflowConditionOperator.Equals => "==",
+                WorkflowConditionOperator.NotEquals => "!=",
+                WorkflowConditionOperator.GreaterThan => ">",
+                WorkflowConditionOperator.LessThan => "<",
+                WorkflowConditionOperator.GreaterThanOrEqual => ">=",
+                WorkflowConditionOperator.LessThanOrEqual => "<=",
+                WorkflowConditionOperator.Contains => "contains",
+                WorkflowConditionOperator.NotContains => "not contains",
+                WorkflowConditionOperator.IsEmpty => "is empty",
+                WorkflowConditionOperator.IsNotEmpty => "is not empty",
+                WorkflowConditionOperator.In => "in",
+                WorkflowConditionOperator.NotIn => "not in",
+                _ => "=="
+            };
+        }
+
+        private string BuildUpdateRecordAction(Dictionary<string, object>? parameters)
+        {
+            if (parameters == null) return "UpdateRecord()";
+
+            var entityType = parameters.GetValueOrDefault("entityType")?.ToString() ?? "Unknown";
+            var fieldUpdates = parameters.GetValueOrDefault("fieldUpdates") as Dictionary<string, object>;
+
+            if (fieldUpdates == null || !fieldUpdates.Any())
+            {
+                return $"UpdateRecord({entityType})";
+            }
+
+            var updates = string.Join(", ", fieldUpdates.Select(kv => $"{kv.Key}={kv.Value}"));
+            return $"UpdateRecord({entityType}, {updates})";
+        }
+
+        private string BuildSendNotificationAction(Dictionary<string, object>? parameters)
+        {
+            if (parameters == null) return "SendNotification()";
+
+            var type = parameters.GetValueOrDefault("type")?.ToString() ?? "email";
+            var recipients = parameters.GetValueOrDefault("recipients")?.ToString() ?? "";
+            var template = parameters.GetValueOrDefault("template")?.ToString() ?? "";
+
+            return $"SendNotification({type}, '{recipients}', '{template}')";
+        }
+
+        private string BuildCreateTaskAction(Dictionary<string, object>? parameters)
+        {
+            if (parameters == null) return "CreateTask()";
+
+            var title = parameters.GetValueOrDefault("title")?.ToString() ?? "";
+            var assignee = parameters.GetValueOrDefault("assignee")?.ToString() ?? "";
+            var priority = parameters.GetValueOrDefault("priority")?.ToString() ?? "normal";
+
+            return $"CreateTask('{title}', '{assignee}', {priority})";
+        }
+
+        private string BuildCallWebhookAction(Dictionary<string, object>? parameters)
+        {
+            if (parameters == null) return "CallWebhook()";
+
+            var url = parameters.GetValueOrDefault("url")?.ToString() ?? "";
+            var method = parameters.GetValueOrDefault("method")?.ToString() ?? "POST";
+
+            return $"CallWebhook({method}, '{url}')";
+        }
+
+        private string BuildGenerateReportAction(Dictionary<string, object>? parameters)
+        {
+            if (parameters == null) return "GenerateReport()";
+
+            var reportType = parameters.GetValueOrDefault("reportType")?.ToString() ?? "";
+            var format = parameters.GetValueOrDefault("format")?.ToString() ?? "PDF";
+
+            return $"GenerateReport({reportType}, {format})";
+        }
+
+        private string BuildSendEmailAction(Dictionary<string, object>? parameters)
+        {
+            if (parameters == null) return "SendEmail()";
+
+            var to = parameters.GetValueOrDefault("to")?.ToString() ?? "";
+            var subject = parameters.GetValueOrDefault("subject")?.ToString() ?? "";
+            var template = parameters.GetValueOrDefault("template")?.ToString() ?? "";
+
+            return $"SendEmail('{to}', '{subject}', '{template}')";
+        }
+
+        private string BuildSendSmsAction(Dictionary<string, object>? parameters)
+        {
+            if (parameters == null) return "SendSms()";
+
+            var to = parameters.GetValueOrDefault("to")?.ToString() ?? "";
+            var message = parameters.GetValueOrDefault("message")?.ToString() ?? "";
+
+            return $"SendSms('{to}', '{message}')";
+        }
+
+        private string BuildUpdateStatusAction(Dictionary<string, object>? parameters)
+        {
+            if (parameters == null) return "UpdateStatus()";
+
+            var entityType = parameters.GetValueOrDefault("entityType")?.ToString() ?? "";
+            var newStatus = parameters.GetValueOrDefault("newStatus")?.ToString() ?? "";
+
+            return $"UpdateStatus({entityType}, {newStatus})";
+        }
+
+        private string BuildAssignToUserAction(Dictionary<string, object>? parameters)
+        {
+            if (parameters == null) return "AssignToUser()";
+
+            var userId = parameters.GetValueOrDefault("userId")?.ToString() ?? "";
+            var entityType = parameters.GetValueOrDefault("entityType")?.ToString() ?? "";
+
+            return $"AssignToUser('{userId}', {entityType})";
+        }
+
+        private string BuildEscalateAction(Dictionary<string, object>? parameters)
+        {
+            if (parameters == null) return "Escalate()";
+
+            var escalationLevel = parameters.GetValueOrDefault("level")?.ToString() ?? "manager";
+            var reason = parameters.GetValueOrDefault("reason")?.ToString() ?? "";
+
+            return $"Escalate({escalationLevel}, '{reason}')";
+        }
+    }
+}

@@ -57,5 +57,10 @@ namespace BettsTax.Core.Services
         // Penalty validation and verification
         Task<Result<bool>> ValidatePenaltyCalculationAsync(PenaltyCalculationResultDto calculation);
         Task<Result<string>> GetLegalReferenceAsync(TaxType taxType, PenaltyType penaltyType);
+
+        // Additional methods used by other services
+        Task<Result<PenaltyCalculationResultDto>> CalculateLatePenaltyAsync(TaxType taxType, decimal taxLiability, DateTime dueDate, DateTime? actualDate = null);
+        Task<Result<PenaltyCalculationResultDto>> CalculatePenaltyAsync(TaxType taxType, decimal amount, DateTime dueDate, DateTime? actualDate = null);
+        Task<Result<bool>> RecalculatePenaltiesAsync();
     }
 }

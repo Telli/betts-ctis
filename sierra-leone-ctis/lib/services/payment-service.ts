@@ -165,6 +165,36 @@ export const PaymentService = {
   rejectPayment: async (id: number, rejection: RejectPaymentDto): Promise<PaymentResponse> => {
     const response = await apiClient.post<PaymentResponse>(`/api/payments/${id}/reject`, rejection);
     return response.data;
+  },
+
+  /**
+   * Upload payment evidence (e.g., receipt). Requires a file and minimal metadata.
+   */
+  uploadPaymentEvidence: async (
+    id: number,
+    params: {
+      clientId: number;
+      taxYearId?: number;
+      taxFilingId?: number;
+      description?: string;
+      category?: 'PaymentEvidence' | 'Receipt' | 'Other';
+    },
+    file: File
+  ): Promise<{ success: boolean; data: any; message: string }> => {
+    const form = new FormData();
+    form.append('clientId', params.clientId.toString());
+    if (params.taxYearId) form.append('taxYearId', params.taxYearId.toString());
+    if (params.taxFilingId) form.append('taxFilingId', params.taxFilingId.toString());
+    form.append('category', params.category ?? 'PaymentEvidence');
+    form.append('description', params.description ?? 'Payment evidence');
+    form.append('file', file);
+
+    const response = await apiClient.post<{ success: boolean; data: any; message: string }>(
+      `/api/payments/${id}/evidence`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return response.data;
   }
 };
 

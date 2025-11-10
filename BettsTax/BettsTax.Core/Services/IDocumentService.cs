@@ -17,6 +17,11 @@ namespace BettsTax.Core.Services
         Task<(string Path, string ContentType, string FileName)?> GetFileInfoAsync(int documentId);
         Task<bool> ValidateFileAsync(IFormFile file);
         Task<long> GetTotalStorageUsedAsync(int? clientId = null);
+
+        // Versioning
+        Task<DocumentVersionDto> AddVersionAsync(int documentId, IFormFile file, string userId);
+        Task<List<DocumentVersionDto>> GetDocumentVersionsAsync(int documentId);
+        Task<(string Path, string ContentType, string FileName)?> GetVersionFileInfoAsync(int documentId, int versionNumber);
     }
 
     public class UploadDocumentDto

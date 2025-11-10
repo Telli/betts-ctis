@@ -5,8 +5,12 @@ namespace BettsTax.Data
     public class TaxYear
     {
         public int TaxYearId { get; set; }
+        public int Id { get; set; } // Added for compatibility
         public int ClientId { get; set; }
         public int Year { get; set; }
+        public DateTime StartDate { get; set; } // Added for compatibility
+        public DateTime EndDate { get; set; } // Added for compatibility
+        public DateTime DueDate { get; set; } // Added for compatibility
         public decimal? IncomeTaxOwed { get; set; }
         public TaxYearStatus Status { get; set; } = TaxYearStatus.Draft;
         public DateTime? FilingDeadline { get; set; }

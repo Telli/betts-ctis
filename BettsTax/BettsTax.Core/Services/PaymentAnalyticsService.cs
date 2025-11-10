@@ -656,36 +656,38 @@ public class PaymentAnalyticsService : IPaymentAnalyticsService
         return freetownPrefixes.Any(prefix => phoneNumber?.StartsWith(prefix) == true);
     }
 
-    private async Task<double> CalculateAverageComplianceScoreAsync(List<PaymentTransaction> transactions)
+    private Task<double> CalculateAverageComplianceScoreAsync(List<PaymentTransaction> transactions)
     {
         // This would integrate with your compliance scoring system
         // For now, return a placeholder calculation
         var onTimePayments = transactions.Count(t => t.Status == PaymentTransactionStatus.Completed);
-        return transactions.Count > 0 ? (double)onTimePayments / transactions.Count * 100 : 0;
+        return Task.FromResult(transactions.Count > 0 ? (double)onTimePayments / transactions.Count * 100 : 0);
     }
 
-    private async Task<Dictionary<string, int>> GetComplianceDistributionAsync(List<PaymentTransaction> transactions)
+    private Task<Dictionary<string, int>> GetComplianceDistributionAsync(List<PaymentTransaction> transactions)
     {
         // Simplified compliance distribution
-        return new Dictionary<string, int>
+        var distribution = new Dictionary<string, int>
         {
             ["Excellent (90-100%)"] = (int)(transactions.Count * 0.4),
             ["Good (80-89%)"] = (int)(transactions.Count * 0.3),
             ["Fair (70-79%)"] = (int)(transactions.Count * 0.2),
             ["Poor (<70%)"] = (int)(transactions.Count * 0.1)
         };
+
+        return Task.FromResult(distribution);
     }
 
-    private async Task<decimal> GetFinanceAct2025PenaltiesAsync(DateTime fromDate, DateTime toDate)
+    private Task<decimal> GetFinanceAct2025PenaltiesAsync(DateTime fromDate, DateTime toDate)
     {
         // This would query penalty calculations from the compliance system
-        return await Task.FromResult(0m); // Placeholder
+        return Task.FromResult(0m); // Placeholder
     }
 
-    private async Task<double> CalculateDeadlineComplianceRateAsync(DateTime fromDate, DateTime toDate)
+    private Task<double> CalculateDeadlineComplianceRateAsync(DateTime fromDate, DateTime toDate)
     {
         // This would calculate based on payment due dates vs actual payment dates
-        return await Task.FromResult(85.5); // Placeholder
+        return Task.FromResult(85.5); // Placeholder
     }
 
     private double CalculateDigitalPaymentAdoptionRate(List<PaymentTransaction> transactions)
@@ -694,10 +696,10 @@ public class PaymentAnalyticsService : IPaymentAnalyticsService
         return 100.0;
     }
 
-    private async Task<double> CalculateMobileMoneyGrowthRateAsync(DateTime fromDate, DateTime toDate)
+    private Task<double> CalculateMobileMoneyGrowthRateAsync(DateTime fromDate, DateTime toDate)
     {
         // Compare mobile money usage with previous period
-        return await Task.FromResult(15.3); // Placeholder growth rate
+        return Task.FromResult(15.3); // Placeholder growth rate
     }
 
     private double CalculateGdpContributionEstimate(decimal totalRevenue)
@@ -707,10 +709,10 @@ public class PaymentAnalyticsService : IPaymentAnalyticsService
         return (double)(totalRevenue * 0.0001m); // Placeholder calculation
     }
 
-    private async Task<double> CalculateTaxEfficiencyRatioAsync(DateTime fromDate, DateTime toDate)
+    private Task<double> CalculateTaxEfficiencyRatioAsync(DateTime fromDate, DateTime toDate)
     {
         // Tax collection efficiency ratio
-        return await Task.FromResult(78.2); // Placeholder
+        return Task.FromResult(78.2); // Placeholder
     }
 
     private async Task<List<decimal>> GetTaxTypeMonthlyTrendAsync(string taxType, DateTime fromDate, DateTime toDate)
@@ -726,10 +728,10 @@ public class PaymentAnalyticsService : IPaymentAnalyticsService
         return monthlyAmounts;
     }
 
-    private async Task<double> CalculateCategoryComplianceScoreAsync(string category, DateTime fromDate, DateTime toDate)
+    private Task<double> CalculateCategoryComplianceScoreAsync(string category, DateTime fromDate, DateTime toDate)
     {
         // Category-specific compliance calculation
-        return await Task.FromResult(category switch
+        return Task.FromResult(category switch
         {
             "Large" => 92.1,
             "Medium" => 87.3,
@@ -747,10 +749,10 @@ public class PaymentAnalyticsService : IPaymentAnalyticsService
             .FirstOrDefault()?.Key.ToString() ?? "Unknown";
     }
 
-    private async Task<double> CalculateCategoryGrowthRateAsync(string category, DateTime fromDate, DateTime toDate)
+    private Task<double> CalculateCategoryGrowthRateAsync(string category, DateTime fromDate, DateTime toDate)
     {
         // Calculate growth rate compared to previous period
-        return await Task.FromResult(category switch
+        return Task.FromResult(category switch
         {
             "Large" => 8.2,
             "Medium" => 12.5,
@@ -777,28 +779,28 @@ public class PaymentAnalyticsService : IPaymentAnalyticsService
         };
     }
 
-    private async Task<double> CalculateClientComplianceScoreAsync(int clientId, DateTime fromDate, DateTime toDate)
+    private Task<double> CalculateClientComplianceScoreAsync(int clientId, DateTime fromDate, DateTime toDate)
     {
         // Client-specific compliance score calculation
-        return await Task.FromResult(88.5); // Placeholder
+        return Task.FromResult(88.5); // Placeholder
     }
 
-    private async Task<double> CalculateOnTimePaymentRateAsync(int clientId, DateTime fromDate, DateTime toDate)
+    private Task<double> CalculateOnTimePaymentRateAsync(int clientId, DateTime fromDate, DateTime toDate)
     {
         // Calculate percentage of payments made on or before due date
-        return await Task.FromResult(82.3); // Placeholder
+        return Task.FromResult(82.3); // Placeholder
     }
 
-    private async Task<SecurityRiskLevel> CalculateClientRiskLevelAsync(int clientId)
+    private Task<SecurityRiskLevel> CalculateClientRiskLevelAsync(int clientId)
     {
         // Calculate client risk level based on payment patterns
-        return await Task.FromResult(SecurityRiskLevel.Low);
+        return Task.FromResult(SecurityRiskLevel.Low);
     }
 
-    private async Task<List<string>> GetClientRiskFactorsAsync(int clientId)
+    private Task<List<string>> GetClientRiskFactorsAsync(int clientId)
     {
         // Get risk factors specific to this client
-        return await Task.FromResult(new List<string> { "No significant risk factors identified" });
+        return Task.FromResult(new List<string> { "No significant risk factors identified" });
     }
 
     private async Task<List<MonthlyTrendDto>> GetClientMonthlyTrendsAsync(int clientId, DateTime fromDate, DateTime toDate)

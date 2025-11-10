@@ -1,0 +1,288 @@
+using BettsTax.Core.DTOs;
+using BettsTax.Core.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace BettsTax.Web.Controllers
+{
+    /// <summary>
+    /// Controller for managing workflow executions
+    /// </summary>
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class WorkflowExecutionController : ControllerBase
+    {
+        private readonly IWorkflowExecutionService _workflowExecutionService;
+        private readonly ILogger<WorkflowExecutionController> _logger;
+
+        public WorkflowExecutionController(
+            IWorkflowExecutionService workflowExecutionService,
+            ILogger<WorkflowExecutionController> logger)
+        {
+            _workflowExecutionService = workflowExecutionService;
+            _logger = logger;
+        }
+
+        /// <summary>
+        /// Execute workflows based on a trigger event
+        /// </summary>
+        [HttpPost("execute")]
+        public async Task<ActionResult<WorkflowExecutionResultDto>> ExecuteWorkflow([FromBody] WorkflowTriggerEventDto triggerEvent)
+        {
+            try
+            {
+                var result = await _workflowExecutionService.ExecuteWorkflowAsync(triggerEvent);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error executing workflow for trigger {TriggerType}", triggerEvent.TriggerType);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get execution status
+        /// </summary>
+        [HttpGet("{executionId}/status")]
+        public async Task<ActionResult<WorkflowExecutionStatusDto>> GetExecutionStatus(string executionId)
+        {
+            try
+            {
+                var result = await _workflowExecutionService.GetExecutionStatusAsync(executionId);
+                
+                if (!result.IsSuccess)
+                {
+                    return NotFound(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting execution status for {ExecutionId}", executionId);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Cancel a running execution
+        /// </summary>
+        [HttpPost("{executionId}/cancel")]
+        public async Task<ActionResult> CancelExecution(string executionId)
+        {
+            try
+            {
+                var result = await _workflowExecutionService.CancelExecutionAsync(executionId);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(new { Message = "Execution cancelled successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error cancelling execution {ExecutionId}", executionId);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Retry a failed execution
+        /// </summary>
+        [HttpPost("{executionId}/retry")]
+        public async Task<ActionResult<WorkflowExecutionResultDto>> RetryExecution(string executionId)
+        {
+            try
+            {
+                var result = await _workflowExecutionService.RetryExecutionAsync(executionId);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrying execution {ExecutionId}", executionId);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get workflow execution metrics
+        /// </summary>
+        [HttpGet("metrics")]
+        public async Task<ActionResult<WorkflowMetricsDto>> GetWorkflowMetrics(
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null,
+            [FromQuery] string[]? triggerTypes = null,
+            [FromQuery] int[]? ruleIds = null)
+        {
+            try
+            {
+                var filter = new WorkflowMetricsFilterDto
+                {
+                    StartDate = startDate,
+                    EndDate = endDate,
+                    TriggerTypes = triggerTypes?.ToList(),
+                    RuleIds = ruleIds?.ToList()
+                };
+
+                var result = await _workflowExecutionService.GetWorkflowMetricsAsync(filter);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting workflow metrics");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Trigger a specific workflow event (for testing)
+        /// </summary>
+        [HttpPost("trigger")]
+        public async Task<ActionResult<WorkflowExecutionResultDto>> TriggerWorkflow([FromBody] WorkflowManualTriggerDto trigger)
+        {
+            try
+            {
+                var triggerEvent = new WorkflowTriggerEventDto
+                {
+                    TriggerType = trigger.TriggerType,
+                    Data = trigger.Data,
+                    TriggeredBy = User.Identity?.Name ?? "system"
+                };
+
+                var result = await _workflowExecutionService.ExecuteWorkflowAsync(triggerEvent);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error triggering workflow manually");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get execution logs (if supported)
+        /// </summary>
+        [HttpGet("{executionId}/logs")]
+        public async Task<ActionResult<IEnumerable<string>>> GetExecutionLogs(string executionId)
+        {
+            try
+            {
+                var statusResult = await _workflowExecutionService.GetExecutionStatusAsync(executionId);
+                
+                if (!statusResult.IsSuccess)
+                {
+                    return NotFound(statusResult.ErrorMessage);
+                }
+
+                return Ok(statusResult.Data.ExecutionLog ?? new List<string>());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting execution logs for {ExecutionId}", executionId);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Simulate a workflow trigger event (for testing)
+        /// </summary>
+        [HttpPost("simulate")]
+        public async Task<ActionResult<WorkflowSimulationResultDto>> SimulateWorkflow([FromBody] WorkflowSimulationRequestDto request)
+        {
+            try
+            {
+                // This is a simulation - don't actually execute actions
+                var triggerEvent = new WorkflowTriggerEventDto
+                {
+                    TriggerType = request.TriggerType,
+                    Data = request.TestData,
+                    TriggeredBy = "simulation"
+                };
+
+                var result = new WorkflowSimulationResultDto
+                {
+                    TriggerType = request.TriggerType,
+                    TestData = request.TestData,
+                    SimulationResults = new List<WorkflowRuleSimulationDto>()
+                };
+
+                // TODO: Implement simulation logic that evaluates rules without executing actions
+                
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error simulating workflow");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+    }
+
+    /// <summary>
+    /// DTO for manual workflow triggers
+    /// </summary>
+    public class WorkflowManualTriggerDto
+    {
+        public string TriggerType { get; set; } = string.Empty;
+        public object Data { get; set; } = new object();
+    }
+
+    /// <summary>
+    /// DTO for workflow simulation requests
+    /// </summary>
+    public class WorkflowSimulationRequestDto
+    {
+        public string TriggerType { get; set; } = string.Empty;
+        public object TestData { get; set; } = new object();
+    }
+
+    /// <summary>
+    /// DTO for workflow simulation results
+    /// </summary>
+    public class WorkflowSimulationResultDto
+    {
+        public string TriggerType { get; set; } = string.Empty;
+        public object TestData { get; set; } = new object();
+        public List<WorkflowRuleSimulationDto> SimulationResults { get; set; } = new();
+    }
+
+    /// <summary>
+    /// DTO for individual rule simulation results
+    /// </summary>
+    public class WorkflowRuleSimulationDto
+    {
+        public int RuleId { get; set; }
+        public string RuleName { get; set; } = string.Empty;
+        public bool ConditionsWouldMatch { get; set; }
+        public List<string> ActionsWouldExecute { get; set; } = new();
+        public string SimulationNotes { get; set; } = string.Empty;
+    }
+}

@@ -7,6 +7,7 @@ namespace BettsTax.Data
     {
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
+        public string Role { get; set; } = string.Empty; // Added for compatibility
         public bool IsActive { get; set; } = true;
         public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
         public DateTime? LastLoginDate { get; set; }
@@ -45,5 +46,9 @@ namespace BettsTax.Data
         public ICollection<Payment> ProcessedPayments { get; set; } = new List<Payment>();
         public ICollection<Payment> AssociateApprovedPayments { get; set; } = new List<Payment>();
         public ICollection<Document> AssociateUploadedDocuments { get; set; } = new List<Document>();
+
+        // SAML authentication properties
+        public bool IsSamlUser { get; set; } = false;
+        public string? SamlNameId { get; set; }
     }
 }

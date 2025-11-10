@@ -2,8 +2,10 @@ using BettsTax.Core.DTOs.KPI;
 using BettsTax.Core.Services.Interfaces;
 using BettsTax.Data;
 using BettsTax.Data.Models;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
 using System.Text.Json;
 
 namespace BettsTax.Core.Services;
@@ -14,10 +16,11 @@ public class KPIService : IKPIService
     private readonly ITaxFilingService _taxFilingService;
     private readonly IPaymentService _paymentService;
     private readonly IDocumentService _documentService;
-    private readonly INotificationService _notificationService;
+    private readonly ApplicationDbContext _context;
     private readonly IDistributedCache _cache;
     private readonly ILogger<KPIService> _logger;
-    private readonly ApplicationDbContext _context;
+    private readonly INotificationService _notificationService;
+    private readonly IKpiAlertService _kpiAlertService;
 
     private const string INTERNAL_KPI_CACHE_KEY = "internal_kpi_data";
     private const string CLIENT_KPI_CACHE_KEY = "client_kpi_data_{0}";
@@ -31,7 +34,8 @@ public class KPIService : IKPIService
         INotificationService notificationService,
         IDistributedCache cache,
         ILogger<KPIService> logger,
-        ApplicationDbContext context)
+        ApplicationDbContext context,
+        IKpiAlertService kpiAlertService)
     {
         _clientService = clientService;
         _taxFilingService = taxFilingService;
@@ -41,6 +45,7 @@ public class KPIService : IKPIService
         _cache = cache;
         _logger = logger;
         _context = context;
+        _kpiAlertService = kpiAlertService;
     }
 
     public async Task<InternalKPIDto> GetInternalKPIsAsync(DateTime? fromDate = null, DateTime? toDate = null)
@@ -49,7 +54,7 @@ public class KPIService : IKPIService
         {
             var cacheKey = $"{INTERNAL_KPI_CACHE_KEY}_{fromDate:yyyyMMdd}_{toDate:yyyyMMdd}";
             var cachedData = await _cache.GetStringAsync(cacheKey);
-            
+
             if (!string.IsNullOrEmpty(cachedData))
             {
                 var cached = JsonSerializer.Deserialize<InternalKPIDto>(cachedData);
@@ -61,15 +66,15 @@ public class KPIService : IKPIService
             }
 
             var kpiData = await CalculateInternalKPIsAsync(fromDate, toDate);
-            
+
             // Cache for 15 minutes
             var cacheOptions = new DistributedCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(CACHE_EXPIRY_MINUTES)
             };
-            
+
             await _cache.SetStringAsync(cacheKey, JsonSerializer.Serialize(kpiData), cacheOptions);
-            
+
             _logger.LogInformation("Calculated and cached internal KPIs");
             return kpiData;
         }
@@ -121,33 +126,34 @@ public class KPIService : IKPIService
         try
         {
             var alerts = new List<KPIAlertDto>();
-            
-            // Get compliance alerts
-            var complianceScores = _context.ComplianceScores.AsQueryable();
-            
+
+            // Get compliance alerts from KpiAlerts table
+            var query = _context.KpiAlerts
+                .Include(a => a.Client)
+                .Where(a => !a.IsResolved);
+
             if (clientId.HasValue)
             {
-                complianceScores = complianceScores.Where(cs => cs.ClientId == clientId.Value);
+                query = query.Where(a => a.ClientId == clientId.Value);
             }
-            var complianceScoresList = complianceScores.ToList();
 
-            foreach (var score in complianceScoresList.Where(s => s.OverallScore < 70))
+            var kpiAlerts = await query
+                .OrderByDescending(a => a.Severity)
+                .ThenByDescending(a => a.CreatedAt)
+                .ToListAsync();
+
+            alerts.AddRange(kpiAlerts.Select(a => new KPIAlertDto
             {
-                alerts.Add(new KPIAlertDto
-                {
-                    AlertType = KPIAlertType.ComplianceThreshold,
-                    Title = "Low Compliance Score",
-                    Message = $"Client compliance score has dropped to {score.OverallScore:F1}%",
-                    Severity = score.OverallScore < 50 ? KPIAlertSeverity.Critical : KPIAlertSeverity.Warning,
-                    ClientId = score.ClientId,
-                    ClientName = score.Client?.BusinessName,
-                    CreatedAt = score.CalculatedAt
-                });
-            }
-
-            // Get filing overdue alerts
-            var overdueFilings = await GetOverdueFilingsAsync(clientId);
-            alerts.AddRange(overdueFilings);
+                Id = a.Id,
+                AlertType = (KPIAlertType)Enum.Parse(typeof(KPIAlertType), a.AlertType),
+                Title = a.Message.Split(':')[0], // Extract title from message
+                Message = a.Message,
+                Severity = (KPIAlertSeverity)a.Severity,
+                ClientId = a.ClientId,
+                ClientName = a.Client?.BusinessName ?? a.Client?.FirstName + " " + a.Client?.LastName,
+                CreatedAt = a.CreatedAt,
+                IsRead = false // KpiAlert doesn't track read status
+            }));
 
             return alerts.OrderByDescending(a => a.CreatedAt).ToList();
         }
@@ -253,15 +259,24 @@ public class KPIService : IKPIService
         }
     }
 
-    public async Task CreateKPIAlertAsync(KPIAlertDto alert)
+    public async Task CreateKPIAlertAsync(KPIAlertDto alert, string? createdBy = null)
     {
         try
         {
-            // Store alert as notification
-            if (alert.ClientId.HasValue)
+            var kpiAlert = new KpiAlert
             {
-                await _notificationService.CreateAsync(alert.ClientId.Value.ToString(), alert.Message);
-            }
+                AlertType = alert.AlertType.ToString(),
+                Message = alert.Message,
+                Severity = (AlertSeverity)alert.Severity,
+                ClientId = alert.ClientId,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.KpiAlerts.Add(kpiAlert);
+            await _context.SaveChangesAsync();
+
+            // Process the alert through the alert service
+            await _kpiAlertService.ProcessAlertsAsync(new List<KpiAlert> { kpiAlert });
 
             _logger.LogInformation("Created KPI alert: {Title}", alert.Title);
         }
@@ -272,12 +287,12 @@ public class KPIService : IKPIService
         }
     }
 
-    public async Task MarkAlertAsReadAsync(int alertId)
+    public async Task MarkAlertAsReadAsync(int alertId, string resolvedBy)
     {
         try
         {
-            await _notificationService.MarkReadAsync(alertId, "system");
-            _logger.LogInformation("Marked KPI alert {AlertId} as read", alertId);
+            await _kpiAlertService.ResolveAlertAsync(alertId, resolvedBy, "Marked as read");
+            _logger.LogInformation("Marked KPI alert {AlertId} as read by {ResolvedBy}", alertId, resolvedBy);
         }
         catch (Exception ex)
         {

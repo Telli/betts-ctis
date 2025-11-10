@@ -2,7 +2,27 @@
  * API Client for communicating with the BettsTax backend
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+const RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+
+// Build a robust absolute URL from base + endpoint, avoiding double paths like /api/api/...
+const buildUrl = (endpoint: string): string => {
+  try {
+    const base = RAW_API_BASE_URL;
+    // If base is absolute (http/https), rely on WHATWG URL resolution
+    if (base.startsWith('http://') || base.startsWith('https://')) {
+      return new URL(endpoint, base.endsWith('/') ? base : base + '/').toString();
+    }
+    // If base is relative (e.g., '/api'), resolve against window origin in the browser
+    if (typeof window !== 'undefined') {
+      const originBase = new URL(base, window.location.origin);
+      return new URL(endpoint, originBase.toString().endsWith('/') ? originBase.toString() : originBase.toString() + '/').toString();
+    }
+    // Fallback: simple concat (SSR without window)
+    return `${base}${endpoint}`;
+  } catch {
+    return `${RAW_API_BASE_URL}${endpoint}`;
+  }
+};
 
 /**
  * Get the authentication token from local storage or cookies
@@ -62,6 +82,7 @@ type RequestOptions = {
   onBehalfOf?: number; // Client ID for on-behalf actions
   reason?: string; // Reason for on-behalf actions
   skipPermissionCheck?: boolean; // Skip permission validation
+  responseType?: 'json' | 'blob' | 'text'; // How to parse the response body
 };
 
 /**
@@ -78,7 +99,8 @@ export const apiRequest = async <T>(
     isFormData = false,
     onBehalfOf,
     reason,
-    skipPermissionCheck
+    skipPermissionCheck,
+    responseType = 'json'
   } = options;
 
   const token = getToken();
@@ -117,7 +139,8 @@ export const apiRequest = async <T>(
     config.body = isFormData ? body : JSON.stringify(body);
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+  const url = buildUrl(endpoint);
+  const response = await fetch(url, config);
   
   // Handle unauthorized responses
   if (response.status === 401) {
@@ -144,7 +167,13 @@ export const apiRequest = async <T>(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    const error = new Error(errorData.message || `API error: ${response.status}`) as any;
+    console.error(`API Error ${response.status} at ${endpoint}:`, errorData);
+    console.error('Request URL:', url);
+    console.error('Request body was:', body);
+    if (errorData.errors) {
+      console.error('Validation errors:', errorData.errors);
+    }
+    const error = new Error(errorData.message || errorData.title || `API error: ${response.status}`) as any;
     error.code = errorData.code || 'API_ERROR';
     error.status = response.status;
     error.details = errorData;
@@ -157,8 +186,22 @@ export const apiRequest = async <T>(
   }
 
   try {
-    const data = await response.json();
-    return data as T;
+    if (responseType === 'blob') {
+      const data = await response.blob();
+      return data as unknown as T;
+    }
+    if (responseType === 'text') {
+      const data = await response.text();
+      return data as unknown as T;
+    }
+    const ct = response.headers.get('content-type') || '';
+    if (ct.includes('application/json') || responseType === 'json') {
+      const data = await response.json();
+      return data as T;
+    }
+    // Fallback: try text if not JSON
+    const data = await response.text();
+    return data as unknown as T;
   } catch (error) {
     return {} as T;
   }

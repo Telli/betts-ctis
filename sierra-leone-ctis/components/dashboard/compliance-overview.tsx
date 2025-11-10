@@ -10,23 +10,31 @@ interface ComplianceOverviewProps {
 }
 
 export default function ComplianceOverview({ complianceOverview, className = '' }: ComplianceOverviewProps) {
+  const co: ComplianceOverviewType = complianceOverview ?? {
+    totalFilings: 0,
+    completedFilings: 0,
+    pendingFilings: 0,
+    lateFilings: 0,
+    taxTypeBreakdown: {},
+    monthlyRevenue: {},
+  }
   // Format data for the filing status pie chart with Sierra Leone colors
   const filingStatusData = [
-    { name: 'Filed', value: complianceOverview.completedFilings, color: '#22c55e' }, // sierra-green
-    { name: 'Pending', value: complianceOverview.pendingFilings, color: '#eab308' }, // sierra-gold
-    { name: 'Overdue', value: complianceOverview.lateFilings, color: '#ef4444' }, // red
+    { name: 'Filed', value: co.completedFilings, color: '#22c55e' }, // sierra-green
+    { name: 'Pending', value: co.pendingFilings, color: '#eab308' }, // sierra-gold
+    { name: 'Overdue', value: co.lateFilings, color: '#ef4444' }, // red
   ]
 
   // Format data for the tax type breakdown chart with Sierra Leone tax colors
   const sierraLeoneColors = ['#1e40af', '#eab308', '#22c55e', '#7c3aed'] // sierra-blue, sierra-gold, sierra-green, purple
-  const taxTypeData = Object.entries(complianceOverview.taxTypeBreakdown).map(([name, value], index) => ({
+  const taxTypeData = Object.entries(co.taxTypeBreakdown).map(([name, value], index) => ({
     name: name.replace(/([A-Z])/g, ' $1').trim(), // Format tax type names
     value,
     color: sierraLeoneColors[index % sierraLeoneColors.length]
   }))
 
   // Format data for the monthly revenue chart
-  const monthlyRevenueData = Object.entries(complianceOverview.monthlyRevenue)
+  const monthlyRevenueData = Object.entries(co.monthlyRevenue)
     .map(([month, amount]) => ({
       month,
       amount

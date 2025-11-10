@@ -141,9 +141,9 @@ namespace BettsTax.Core.Services
                     TaxLiability = t.TaxLiability,
                     TaxPaid = t.Payments?.Sum(p => p.Amount) ?? 0,
                     OutstandingBalance = t.TaxLiability - (t.Payments?.Sum(p => p.Amount) ?? 0),
-                    FilingDueDate = t.DueDate,
+                    FilingDueDate = t.DueDate ?? DateTime.UtcNow,
                     FiledDate = t.SubmittedDate,
-                    PaymentDueDate = t.DueDate,
+                    PaymentDueDate = t.DueDate ?? DateTime.UtcNow,
                     PaidDate = t.Payments?.OrderByDescending(p => p.PaymentDate).FirstOrDefault()?.PaymentDate,
                     Notes = t.ReviewComments ?? "",
                     CreatedDate = t.CreatedDate,
@@ -153,7 +153,7 @@ namespace BettsTax.Core.Services
                     ClientPhone = t.Client?.PhoneNumber ?? "",
                     HasPenalties = false, // TODO: Add penalty check
                     TotalPenalties = 0, // TODO: Calculate penalties
-                    DaysOverdue = t.SubmittedDate.HasValue ? 0 : Math.Max(0, (DateTime.UtcNow - t.DueDate).Days),
+                    DaysOverdue = t.SubmittedDate.HasValue ? 0 : Math.Max(0, (DateTime.UtcNow - (t.DueDate ?? DateTime.UtcNow)).Days),
                     ComplianceStatus = "Compliant" // TODO: Add compliance status
                 }).ToList();
 

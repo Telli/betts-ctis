@@ -1,5 +1,8 @@
 using BettsTax.Core.DTOs;
+using BettsTax.Core.DTOs.Compliance;
+using BettsTax.Data.Models;
 using System.Threading.Tasks;
+using ComplianceOverviewDto = BettsTax.Core.DTOs.ComplianceOverviewDto;
 
 namespace BettsTax.Core.Services
 {

@@ -37,6 +37,9 @@ namespace BettsTax.Data
         public bool IsActive { get; set; } = true;
         public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedDate { get; set; }
+        
+        // Document type
+        public string DocumentType { get; set; } = string.Empty; // Type of document, e.g., "Identity", "Financial"
     }
 
     // Links a document requirement to a specific client's tax filing
@@ -52,6 +55,7 @@ namespace BettsTax.Data
         public DateTime? RequestedDate { get; set; }
         public string? RequestedById { get; set; }
         public DateTime? FulfilledDate { get; set; }
+        public DateTime? DueDate { get; set; } // Deadline for fulfilling the document requirement
         
         // Documents submitted for this requirement
         public string DocumentIds { get; set; } = string.Empty; // Comma-separated list of DocumentIds

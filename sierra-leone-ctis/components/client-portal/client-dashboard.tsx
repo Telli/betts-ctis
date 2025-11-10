@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useNotifications } from '@/hooks/useSignalR';
+import { useToast } from '@/hooks/use-toast';
 import { 
   Building2, 
   FileText, 
@@ -76,6 +78,10 @@ export function ClientDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const { toast } = useToast();
+  
+  // Real-time notifications via SignalR
+  const { isConnected: notifConnected, notifications, unreadCount } = useNotifications();
 
   const fetchDashboardData = async () => {
     try {
@@ -94,6 +100,20 @@ export function ClientDashboard() {
   useEffect(() => {
     fetchDashboardData();
   }, []);
+  
+  // Show real-time notification connection status
+  useEffect(() => {
+    if (notifConnected) {
+      console.log('✅ Real-time notifications connected');
+    }
+  }, [notifConnected]);
+  
+  // Display notification count badge
+  useEffect(() => {
+    if (unreadCount > 0) {
+      console.log(`📬 ${unreadCount} unread notifications`);
+    }
+  }, [unreadCount]);
 
   if (loading) {
     return <DashboardSkeleton />;
@@ -138,6 +158,24 @@ export function ClientDashboard() {
             <Shield className="h-3 w-3 mr-1" />
             {data.complianceOverview.complianceStatus}
           </Badge>
+          {unreadCount > 0 && (
+            <Badge variant="destructive" className="relative">
+              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+              </span>
+              {unreadCount} New
+            </Badge>
+          )}
+          {notifConnected && (
+            <Badge variant="outline" className="text-green-600 border-green-600">
+              <span className="flex h-2 w-2 mr-1">
+                <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+              </span>
+              Live
+            </Badge>
+          )}
         </div>
       </div>
 

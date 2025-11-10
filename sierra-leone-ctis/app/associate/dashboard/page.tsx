@@ -316,7 +316,7 @@ export default function AssociateDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {dashboardData.delegatedClients.map((client) => (
+                {(dashboardData.delegatedClients ?? []).map((client) => (
                   <div key={client.clientId} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="flex items-center space-x-4">
                       <div>
@@ -349,7 +349,7 @@ export default function AssociateDashboardPage() {
                   </div>
                 ))}
                 
-                {dashboardData.delegatedClients.length === 0 && (
+                {(dashboardData.delegatedClients ?? []).length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     No delegated clients found
                   </div>
@@ -367,7 +367,7 @@ export default function AssociateDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {dashboardData.recentActions.map((action) => (
+                {(dashboardData.recentActions ?? []).map((action) => (
                   <div key={action.id} className="flex items-center justify-between p-3 border rounded">
                     <div className="flex items-center space-x-3">
                       <Activity className="h-4 w-4 text-muted-foreground" />
@@ -387,7 +387,7 @@ export default function AssociateDashboardPage() {
                   </div>
                 ))}
                 
-                {dashboardData.recentActions.length === 0 && (
+                {(dashboardData.recentActions ?? []).length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     No recent actions found
                   </div>
@@ -405,7 +405,7 @@ export default function AssociateDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {dashboardData.upcomingDeadlines.map((deadline) => (
+                {(dashboardData.upcomingDeadlines ?? []).map((deadline) => (
                   <div key={deadline.taxFilingId} className="flex items-center justify-between p-3 border rounded">
                     <div className="flex items-center space-x-3">
                       <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -433,7 +433,7 @@ export default function AssociateDashboardPage() {
                   </div>
                 ))}
                 
-                {dashboardData.upcomingDeadlines.length === 0 && (
+                {(dashboardData.upcomingDeadlines ?? []).length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     No upcoming deadlines
                   </div>
@@ -451,7 +451,7 @@ export default function AssociateDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {dashboardData.permissionAlerts.expiringPermissions.map((permission) => (
+                {(dashboardData.permissionAlerts?.expiringPermissions ?? []).map((permission) => (
                   <div key={permission.id} className="flex items-center justify-between p-3 border rounded border-orange-200 bg-orange-50">
                     <div className="flex items-center space-x-3">
                       <AlertTriangle className="h-4 w-4 text-orange-600" />
@@ -471,7 +471,7 @@ export default function AssociateDashboardPage() {
                   </div>
                 ))}
                 
-                {dashboardData.permissionAlerts.expiringPermissions.length === 0 && (
+                {(dashboardData.permissionAlerts?.expiringPermissions ?? []).length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     No permission alerts
                   </div>

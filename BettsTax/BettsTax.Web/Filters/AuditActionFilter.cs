@@ -17,13 +17,14 @@ namespace BettsTax.Web.Filters
         {
             var resultContext = await next();
 
-            var userId = context.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous";
+            // Use null when no authenticated user is present to avoid FK violations on AuditLog.UserId
+            var userId = context.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
             var action = context.ActionDescriptor.DisplayName ?? "unknown";
             var routeData = context.RouteData.Values;
             var entity = routeData.ContainsKey("controller") ? routeData["controller"]!.ToString()! : "unknown";
             var entityId = routeData.ContainsKey("id") ? routeData["id"]!.ToString()! : "";
 
-            await _audit.LogAsync(userId, action, entity, entityId);
+            await _audit.LogAsync(userId ?? string.Empty, action, entity, entityId);
         }
     }
 }

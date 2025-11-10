@@ -20,114 +20,64 @@ import {
 import { format } from 'date-fns'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { PaymentGatewayForm } from '@/components/payments'
+import { ClientPortalService, ClientPayment } from '@/lib/services/client-portal-service'
+import { useToast } from '@/hooks/use-toast'
+import { Skeleton } from '@/components/ui/skeleton'
+import { usePaymentStatus } from '@/hooks/useSignalR'
 
-interface Payment {
-  id: string
-  paymentReference: string
-  taxType: string
-  taxYear: number
-  amount: number
-  method: 'bank-transfer' | 'orange-money' | 'africell-money' | 'paypal' | 'stripe'
-  status: 'pending' | 'processing' | 'confirmed' | 'failed' | 'refunded'
-  paymentDate: Date
-  processedDate?: Date
-  transactionId?: string
-  receiptNumber?: string
-  notes?: string
-  feeAmount?: number
-  currency: string
-  exchangeRate?: number
-  originalAmount?: number
-  originalCurrency?: string
-}
+// Using ClientPayment from service
 
 export default function ClientPaymentsPage() {
-  const [payments, setPayments] = useState<Payment[]>([])
+  const [payments, setPayments] = useState<ClientPayment[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('recent')
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const { toast } = useToast()
+  
+  // Real-time payment status updates via SignalR
+  const { isConnected: paymentConnected, paymentStatus, lastUpdate } = usePaymentStatus()
+
+  const fetchPayments = async (page: number = 1) => {
+    try {
+      setLoading(true)
+      const response = await ClientPortalService.getPayments(page, 50) // Get more for filtering
+      setPayments(response.items)
+    } catch (error: any) {
+      console.error('Error fetching payments:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to load payments. Please try again.',
+        variant: 'destructive',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    // Mock data - replace with actual API call
-    const mockPayments: Payment[] = [
-      {
-        id: '1',
-        paymentReference: 'PAY-2025-001',
-        taxType: 'Income Tax',
-        taxYear: 2024,
-        amount: 150000,
-        method: 'bank-transfer',
-        status: 'confirmed',
-        paymentDate: new Date(2025, 0, 15),
-        processedDate: new Date(2025, 0, 15),
-        transactionId: 'TXN-BT-001234',
-        receiptNumber: 'RCP-2025-001',
-        notes: 'Annual Income Tax payment for 2024',
-        currency: 'SLE'
-      },
-      {
-        id: '2',
-        paymentReference: 'PAY-2025-002',
-        taxType: 'GST',
-        taxYear: 2024,
-        amount: 50000,
-        method: 'orange-money',
-        status: 'confirmed',
-        paymentDate: new Date(2025, 0, 25),
-        processedDate: new Date(2025, 0, 25),
-        transactionId: 'OM-789456',
-        receiptNumber: 'RCP-2025-002',
-        feeAmount: 500,
-        currency: 'SLE'
-      },
-      {
-        id: '3',
-        paymentReference: 'PAY-2025-003',
-        taxType: 'Payroll Tax',
-        taxYear: 2024,
-        amount: 25000,
-        method: 'paypal',
-        status: 'processing',
-        paymentDate: new Date(2025, 0, 28),
-        transactionId: 'PP-ABC123XYZ',
-        originalAmount: 125.50,
-        originalCurrency: 'USD',
-        exchangeRate: 199.20,
-        currency: 'SLE'
-      },
-      {
-        id: '4',
-        paymentReference: 'PAY-2024-015',
-        taxType: 'Income Tax',
-        taxYear: 2023,
-        amount: 125000,
-        method: 'bank-transfer',
-        status: 'confirmed',
-        paymentDate: new Date(2024, 2, 20),
-        processedDate: new Date(2024, 2, 20),
-        transactionId: 'TXN-BT-005678',
-        receiptNumber: 'RCP-2024-015',
-        currency: 'SLE'
-      },
-      {
-        id: '5',
-        paymentReference: 'PAY-2025-004',
-        taxType: 'Excise Duty',
-        taxYear: 2024,
-        amount: 75000,
-        method: 'africell-money',
-        status: 'failed',
-        paymentDate: new Date(2025, 0, 30),
-        transactionId: 'AM-DEF456',
-        notes: 'Payment failed due to insufficient balance',
-        currency: 'SLE'
-      }
-    ]
-    
-    setPayments(mockPayments)
-    setLoading(false)
-  }, [])
+    fetchPayments(currentPage)
+  }, [currentPage])
+  
+  // Handle real-time payment status updates
+  useEffect(() => {
+    if (paymentStatus && lastUpdate) {
+      toast({
+        title: 'Payment Status Updated',
+        description: `Payment ${paymentStatus.paymentId} is now ${paymentStatus.status}`,
+      })
+      // Refresh payments to show latest status
+      fetchPayments(currentPage)
+    }
+  }, [paymentStatus, lastUpdate])
+  
+  // Show connection status
+  useEffect(() => {
+    if (paymentConnected) {
+      console.log('✅ Real-time payment updates connected')
+    }
+  }, [paymentConnected])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -163,7 +113,7 @@ export default function ClientPaymentsPage() {
     }
   }
 
-  const getMethodIcon = (method: string) => {
+  const getMethodIcon = (method: string | undefined) => {
     switch (method) {
       case 'bank-transfer':
         return <CreditCard className="h-4 w-4" />
@@ -180,7 +130,7 @@ export default function ClientPaymentsPage() {
     }
   }
 
-  const getMethodName = (method: string) => {
+  const getMethodName = (method: string | undefined) => {
     switch (method) {
       case 'bank-transfer':
         return 'Bank Transfer'
@@ -193,7 +143,7 @@ export default function ClientPaymentsPage() {
       case 'stripe':
         return 'Credit Card'
       default:
-        return method
+        return method || 'Unknown Method'
     }
   }
 
@@ -218,8 +168,14 @@ export default function ClientPaymentsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-sierra-blue"></div>
+      <div className="p-6 space-y-6">
+        <Skeleton className="h-10 w-64" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-32" />
+          ))}
+        </div>
+        <Skeleton className="h-96" />
       </div>
     )
   }
@@ -251,19 +207,12 @@ export default function ClientPaymentsPage() {
                 taxYear={2024}
                 onSuccess={(paymentReference) => {
                   setShowCreateDialog(false)
-                  // Add the new payment to the mock data
-                  const newPayment = {
-                    id: Date.now().toString(),
-                    paymentReference,
-                    taxType: 'Income Tax',
-                    taxYear: 2024,
-                    amount: 50000,
-                    method: 'orange-money' as const,
-                    status: 'processing' as const,
-                    paymentDate: new Date(),
-                    currency: 'SLE'
-                  }
-                  setPayments(prev => [newPayment, ...prev])
+                  toast({
+                    title: 'Payment Submitted',
+                    description: `Payment ${paymentReference} has been submitted for processing.`,
+                  })
+                  // Refresh the payments list
+                  fetchPayments(currentPage)
                 }}
                 onCancel={() => setShowCreateDialog(false)}
               />
@@ -379,7 +328,7 @@ export default function ClientPaymentsPage() {
                             {getMethodName(payment.method)}
                           </span>
                           <span>
-                            {format(payment.paymentDate, 'MMM d, yyyy')}
+                            {payment.paymentDate ? format(new Date(payment.paymentDate), 'MMM d, yyyy') : 'No date'}
                           </span>
                         </div>
                         
@@ -454,7 +403,7 @@ export default function ClientPaymentsPage() {
                           </div>
                           
                           <div className="text-sm text-muted-foreground">
-                            {payment.taxType} • {format(payment.paymentDate, 'MMMM d, yyyy')}
+                            {payment.taxType} • {payment.paymentDate ? format(new Date(payment.paymentDate), 'MMMM d, yyyy') : 'No date'}
                           </div>
                           
                           <div className="flex items-center gap-4 text-sm">
@@ -525,7 +474,11 @@ export default function ClientPaymentsPage() {
             <CardContent>
               <div className="space-y-4">
                 {filteredPayments
-                  .sort((a, b) => b.paymentDate.getTime() - a.paymentDate.getTime())
+                  .sort((a, b) => {
+                    const dateA = a.paymentDate ? new Date(a.paymentDate).getTime() : 0;
+                    const dateB = b.paymentDate ? new Date(b.paymentDate).getTime() : 0;
+                    return dateB - dateA;
+                  })
                   .map((payment) => (
                     <div key={payment.id} className="p-4 border rounded-lg">
                       <div className="flex justify-between items-start">
@@ -551,7 +504,7 @@ export default function ClientPaymentsPage() {
                               {getMethodName(payment.method)}
                             </span>
                             <span>
-                              {format(payment.paymentDate, 'MMM d, yyyy')}
+                              {payment.paymentDate ? format(new Date(payment.paymentDate), 'MMM d, yyyy') : 'No date'}
                             </span>
                           </div>
                           

@@ -1,6 +1,8 @@
+using BettsTax.Web.Services;
 using BettsTax.Core.DTOs;
-using BettsTax.Core.Services;
+using Microsoft.EntityFrameworkCore;
 using BettsTax.Data;
+using BettsTax.Core.Services;
 using BettsTax.Web.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,16 +18,22 @@ namespace BettsTax.Web.Controllers
         private readonly ITaxFilingService _taxFilingService;
         private readonly IAssociatePermissionService _permissionService;
         private readonly IOnBehalfActionService _onBehalfActionService;
+        private readonly ITaxAuthorityService _taxAuthorityService;
+        private readonly ApplicationDbContext _dbContext;
         private readonly ILogger<TaxFilingsController> _logger;
 
         public TaxFilingsController(ITaxFilingService taxFilingService, 
             IAssociatePermissionService permissionService, 
             IOnBehalfActionService onBehalfActionService,
+            ITaxAuthorityService taxAuthorityService,
+            ApplicationDbContext dbContext,
             ILogger<TaxFilingsController> logger)
         {
             _taxFilingService = taxFilingService;
             _permissionService = permissionService;
             _onBehalfActionService = onBehalfActionService;
+            _taxAuthorityService = taxAuthorityService;
+            _dbContext = dbContext;
             _logger = logger;
         }
 
@@ -621,6 +629,117 @@ namespace BettsTax.Web.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error calculating tax liability");
+                return StatusCode(500, new { success = false, message = "Internal server error" });
+            }
+        }
+
+        /// <summary>
+        /// Submit tax filing to tax authority
+        /// </summary>
+        [HttpPost("{id}/submit-to-authority")]
+        [Authorize(Roles = "Admin,Associate,SystemAdmin")]
+        [AssociatePermission("TaxFilings", AssociatePermissionLevel.Submit)]
+        public async Task<ActionResult<object>> SubmitToTaxAuthority(int id)
+        {
+            try
+            {
+                var result = await _taxAuthorityService.SubmitTaxFilingAsync(id);
+
+                if (result.Success)
+                {
+                    _logger.LogInformation("Tax filing {TaxFilingId} submitted to authority with reference {Reference}",
+                        id, result.Reference);
+                    return Ok(new { success = true, data = result });
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to submit tax filing {TaxFilingId} to authority: {Message}",
+                        id, result.Message);
+                    return BadRequest(new { success = false, message = result.Message });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error submitting tax filing {TaxFilingId} to authority", id);
+                return StatusCode(500, new { success = false, message = "Internal server error" });
+            }
+        }
+
+        /// <summary>
+        /// Check tax filing status with tax authority
+        /// </summary>
+        [HttpGet("{id}/authority-status")]
+        [Authorize(Roles = "Admin,Associate,SystemAdmin")]
+        [AssociatePermission("TaxFilings", AssociatePermissionLevel.Read)]
+        public async Task<ActionResult<object>> GetTaxAuthorityStatus(int id)
+        {
+            try
+            {
+                // Get the tax filing entity with submissions
+                var taxFiling = await _dbContext.TaxFilings
+                    .Include(t => t.TaxAuthoritySubmissions)
+                    .FirstOrDefaultAsync(t => t.TaxFilingId == id);
+
+                if (taxFiling == null)
+                {
+                    return NotFound(new { success = false, message = "Tax filing not found" });
+                }
+
+                // Find the latest submission for this tax filing
+                var submission = taxFiling.TaxAuthoritySubmissions?
+                    .OrderByDescending(s => s.SubmittedAt)
+                    .FirstOrDefault();
+
+                if (submission == null || string.IsNullOrEmpty(submission.AuthorityReference))
+                {
+                    return BadRequest(new { success = false, message = "No authority submission found for this tax filing" });
+                }
+
+                var result = await _taxAuthorityService.CheckFilingStatusAsync(submission.AuthorityReference);
+
+                if (result.Success)
+                {
+                    _logger.LogInformation("Status check completed for tax filing {TaxFilingId}, reference {Reference}: {Status}",
+                        id, submission.AuthorityReference, result.Status);
+                    return Ok(new { success = true, data = result });
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to check status for tax filing {TaxFilingId}, reference {Reference}: {Message}",
+                        id, submission.AuthorityReference, result.Message);
+                    return BadRequest(new { success = false, message = result.Message });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking tax authority status for tax filing {TaxFilingId}", id);
+                return StatusCode(500, new { success = false, message = "Internal server error" });
+            }
+        }
+
+        /// <summary>
+        /// Validate tax authority configuration
+        /// </summary>
+        [HttpGet("authority-config/validate")]
+        [Authorize(Roles = "Admin,SystemAdmin")]
+        public async Task<ActionResult<object>> ValidateTaxAuthorityConfig()
+        {
+            try
+            {
+                var isValid = await _taxAuthorityService.ValidateConfigurationAsync();
+
+                if (isValid)
+                {
+                    return Ok(new { success = true, message = "Tax authority configuration is valid" });
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Tax authority configuration is invalid or unreachable" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating tax authority configuration");
                 return StatusCode(500, new { success = false, message = "Internal server error" });
             }
         }

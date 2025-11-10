@@ -147,10 +147,28 @@ namespace BettsTax.Core.Services
                 Description = dto.Description,
                 StoragePath = storagePath,
                 UploadedById = userId,
-                UploadedAt = DateTime.UtcNow
+                UploadedAt = DateTime.UtcNow,
+                CurrentVersionNumber = 1
             };
 
             _context.Documents.Add(document);
+            await _context.SaveChangesAsync();
+
+            // Create initial document version
+            var version = new DocumentVersion
+            {
+                DocumentId = document.DocumentId,
+                VersionNumber = 1,
+                OriginalFileName = file.FileName,
+                StoredFileName = Path.GetFileName(storagePath),
+                ContentType = file.ContentType,
+                Size = file.Length,
+                StoragePath = storagePath,
+                UploadedById = userId,
+                UploadedAt = DateTime.UtcNow,
+                IsDeleted = false
+            };
+            _context.DocumentVersions.Add(version);
             await _context.SaveChangesAsync();
 
             // Create document verification entry
@@ -190,6 +208,115 @@ namespace BettsTax.Core.Services
 
             return await GetDocumentByIdAsync(document.DocumentId) ??
                 throw new InvalidOperationException("Failed to retrieve uploaded document");
+        }
+
+        public async Task<DocumentVersionDto> AddVersionAsync(int documentId, IFormFile file, string userId)
+        {
+            var document = await _context.Documents
+                .Include(d => d.DocumentVerification)
+                .FirstOrDefaultAsync(d => d.DocumentId == documentId);
+
+            if (document == null || document.IsDeleted)
+                throw new InvalidOperationException("Document not found or deleted");
+
+            // Validate file
+            if (!await ValidateFileAsync(file))
+                throw new InvalidOperationException("File validation failed");
+
+            // Save file using storage service
+            var subfolder = $"clients/{document.ClientId}";
+            var storagePath = await _fileStorageService.SaveFileAsync(file, file.FileName, subfolder);
+
+            var newVersionNumber = (document.CurrentVersionNumber <= 0 ? 0 : document.CurrentVersionNumber) + 1;
+
+            var version = new DocumentVersion
+            {
+                DocumentId = document.DocumentId,
+                VersionNumber = newVersionNumber,
+                OriginalFileName = file.FileName,
+                StoredFileName = Path.GetFileName(storagePath),
+                ContentType = file.ContentType,
+                Size = file.Length,
+                StoragePath = storagePath,
+                UploadedById = userId,
+                UploadedAt = DateTime.UtcNow,
+                IsDeleted = false
+            };
+
+            _context.DocumentVersions.Add(version);
+
+            // Mirror latest version onto Document for backward compatibility
+            document.OriginalFileName = version.OriginalFileName;
+            document.StoredFileName = version.StoredFileName;
+            document.ContentType = version.ContentType;
+            document.Size = version.Size;
+            document.StoragePath = version.StoragePath;
+            document.UploadedAt = version.UploadedAt;
+            document.CurrentVersionNumber = newVersionNumber;
+
+            await _context.SaveChangesAsync();
+
+            // Reset verification status to Submitted and record history
+            var verification = await _context.DocumentVerifications
+                .FirstOrDefaultAsync(v => v.DocumentId == document.DocumentId);
+            if (verification != null)
+            {
+                var oldStatus = verification.Status;
+                verification.Status = DocumentVerificationStatus.Submitted;
+                verification.StatusChangedById = userId;
+                verification.StatusChangedDate = DateTime.UtcNow;
+                verification.ReviewedById = null;
+                verification.ReviewedDate = null;
+                verification.ReviewNotes = null;
+                verification.RejectionReason = null;
+
+                _context.DocumentVerificationHistories.Add(new DocumentVerificationHistory
+                {
+                    DocumentId = document.DocumentId,
+                    OldStatus = oldStatus,
+                    NewStatus = DocumentVerificationStatus.Submitted,
+                    ChangedById = userId,
+                    ChangedDate = DateTime.UtcNow,
+                    Notes = $"New version v{newVersionNumber} uploaded"
+                });
+                await _context.SaveChangesAsync();
+            }
+
+            // Audit log
+            await _auditService.LogAsync(userId, "UPLOAD_VERSION", "Document", document.DocumentId.ToString(),
+                $"Uploaded new version v{newVersionNumber} for document {document.OriginalFileName}");
+
+            // Log activity
+            await _activityService.LogDocumentActivityAsync(document.DocumentId, ActivityType.DocumentUploaded);
+
+            _logger.LogInformation("Uploaded new document version v{Version} for document {DocumentId}", newVersionNumber, documentId);
+
+            return _mapper.Map<DocumentVersionDto>(version);
+        }
+
+        public async Task<List<DocumentVersionDto>> GetDocumentVersionsAsync(int documentId)
+        {
+            var versions = await _context.DocumentVersions
+                .Where(v => v.DocumentId == documentId && !v.IsDeleted)
+                .OrderByDescending(v => v.VersionNumber)
+                .ToListAsync();
+            return _mapper.Map<List<DocumentVersionDto>>(versions);
+        }
+
+        public async Task<(string Path, string ContentType, string FileName)?> GetVersionFileInfoAsync(int documentId, int versionNumber)
+        {
+            var version = await _context.DocumentVersions
+                .FirstOrDefaultAsync(v => v.DocumentId == documentId && v.VersionNumber == versionNumber && !v.IsDeleted);
+            if (version == null)
+                return null;
+
+            if (!await _fileStorageService.FileExistsAsync(version.StoragePath))
+                return null;
+
+            var fileBytes = await _fileStorageService.GetFileAsync(version.StoragePath);
+            var tempPath = Path.GetTempFileName();
+            await File.WriteAllBytesAsync(tempPath, fileBytes);
+            return (tempPath, version.ContentType, version.OriginalFileName);
         }
 
         public async Task<DocumentDto> UpdateAsync(int id, UpdateDocumentDto dto, string userId)
@@ -232,6 +359,16 @@ namespace BettsTax.Core.Services
 
             // Soft delete
             document.IsDeleted = true;
+            // Soft delete all versions
+            var versions = await _context.DocumentVersions
+                .Where(v => v.DocumentId == documentId && !v.IsDeleted)
+                .ToListAsync();
+            foreach (var v in versions)
+            {
+                v.IsDeleted = true;
+                v.DeletedAt = DateTime.UtcNow;
+                v.DeletedById = userId;
+            }
 
             await _context.SaveChangesAsync();
 
@@ -241,16 +378,29 @@ namespace BettsTax.Core.Services
 
             _logger.LogInformation("Deleted document {DocumentId}", documentId);
 
-            // Delete physical file (async operation)
+            // Delete physical files for all versions and current document (async operation)
             _ = Task.Run(async () =>
             {
                 try
                 {
+                    // Delete the current document file
                     await _fileStorageService.DeleteFileAsync(document.StoragePath);
+                    // Delete all version files
+                    foreach (var v in versions)
+                    {
+                        try
+                        {
+                            await _fileStorageService.DeleteFileAsync(v.StoragePath);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to delete physical file for document version {DocumentId} v{Version}", documentId, v.VersionNumber);
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to delete physical file for document {DocumentId}", documentId);
+                    _logger.LogError(ex, "Failed to delete physical files for document {DocumentId}", documentId);
                 }
             });
 
@@ -295,11 +445,10 @@ namespace BettsTax.Core.Services
         {
             if (clientId.HasValue)
             {
-                var clientDocuments = await _context.Documents
-                    .Where(d => d.ClientId == clientId.Value && !d.IsDeleted)
-                    .ToListAsync();
-
-                return clientDocuments.Sum(d => d.Size);
+                var total = await _context.DocumentVersions
+                    .Where(v => !v.IsDeleted && _context.Documents.Any(d => d.DocumentId == v.DocumentId && d.ClientId == clientId.Value && !d.IsDeleted))
+                    .SumAsync(v => (long?)v.Size) ?? 0L;
+                return total;
             }
 
             return await _fileStorageService.GetTotalStorageUsedAsync();

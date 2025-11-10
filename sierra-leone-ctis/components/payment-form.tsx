@@ -12,18 +12,29 @@ import { useToast } from '@/components/ui/use-toast'
 import { PaymentService, ClientService, TaxFilingService, PaymentMethod, CreatePaymentDto, TaxFilingDto } from '@/lib/services'
 import { CalendarIcon } from 'lucide-react'
 import { Calendar } from '@/components/ui/calendar'
+import ClientSearchSelect from '@/components/client-search-select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 
-const paymentSchema = z.object({
-  clientId: z.string().min(1, 'Client is required'),
-  taxFilingId: z.string().optional(),
-  amount: z.number().min(0.01, 'Amount must be greater than 0'),
-  method: z.nativeEnum(PaymentMethod, { required_error: 'Payment method is required' }),
-  paymentReference: z.string().min(1, 'Payment reference is required'),
-  paymentDate: z.date({ required_error: 'Payment date is required' }),
-})
+const paymentSchema = z
+  .object({
+    clientId: z.string().min(1, 'Client is required'),
+    applyTo: z.enum(['taxFiling', 'general']).default('taxFiling'),
+    taxFilingId: z.string().optional(),
+    reason: z.string().optional(),
+    amount: z.number().min(0.01, 'Amount must be greater than 0'),
+    method: z.nativeEnum(PaymentMethod, { required_error: 'Payment method is required' }),
+    paymentReference: z.string().min(1, 'Payment reference is required'),
+    paymentDate: z.date({ required_error: 'Payment date is required' }),
+  })
+  .superRefine((val, ctx) => {
+    if (val.applyTo === 'general') {
+      if (!val.reason || val.reason.trim().length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['reason'], message: 'Description is required for General' })
+      }
+    }
+  })
 
 type PaymentFormData = z.infer<typeof paymentSchema>
 
@@ -46,18 +57,23 @@ export default function PaymentForm({ onSuccess, initialData }: PaymentFormProps
   const [clients, setClients] = useState<Client[]>([])
   const [taxFilings, setTaxFilings] = useState<TaxFilingDto[]>([])
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null)
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
 
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
       clientId: initialData?.clientId?.toString() || '',
+      applyTo: 'taxFiling',
       taxFilingId: initialData?.taxFilingId?.toString() || '',
+      reason: '',
       amount: initialData?.amount || 0,
       method: initialData?.method || PaymentMethod.BankTransfer,
       paymentReference: initialData?.paymentReference || '',
       paymentDate: initialData?.paymentDate ? new Date(initialData.paymentDate) : new Date(),
     },
   })
+
+  const applyTo = form.watch('applyTo')
 
   // Load clients
   useEffect(() => {
@@ -103,7 +119,7 @@ export default function PaymentForm({ onSuccess, initialData }: PaymentFormProps
     const id = parseInt(clientId)
     setSelectedClientId(id)
     form.setValue('clientId', clientId)
-    form.setValue('taxFilingId', '') // Reset tax filing selection
+    form.setValue('taxFilingId', 'none') // Reset tax filing selection
   }
 
   // Generate payment reference
@@ -122,7 +138,10 @@ export default function PaymentForm({ onSuccess, initialData }: PaymentFormProps
       
       const createData: CreatePaymentDto = {
         clientId: parseInt(data.clientId),
-        taxFilingId: data.taxFilingId ? parseInt(data.taxFilingId) : undefined,
+        taxFilingId:
+          data.applyTo === 'taxFiling' && data.taxFilingId && data.taxFilingId !== 'none'
+            ? parseInt(data.taxFilingId)
+            : undefined,
         amount: data.amount,
         method: data.method,
         paymentReference: data.paymentReference,
@@ -132,6 +151,28 @@ export default function PaymentForm({ onSuccess, initialData }: PaymentFormProps
       const result = await PaymentService.createPayment(createData)
       
       if (result.success) {
+        // Optionally upload receipt/evidence
+        if (receiptFile) {
+          try {
+            await PaymentService.uploadPaymentEvidence(
+              result.data.paymentId,
+              {
+                clientId: parseInt(data.clientId),
+                taxFilingId:
+                  data.applyTo === 'taxFiling' && data.taxFilingId && data.taxFilingId !== 'none'
+                    ? parseInt(data.taxFilingId)
+                    : undefined,
+                description: data.applyTo === 'general' && data.reason ? data.reason : 'Payment receipt',
+                category: 'Receipt',
+              },
+              receiptFile
+            )
+            toast({ title: 'Receipt uploaded', description: 'Your payment receipt was uploaded.' })
+          } catch (e: any) {
+            console.error('Error uploading receipt:', e)
+            toast({ variant: 'destructive', title: 'Receipt upload failed', description: e?.message || 'Could not upload receipt' })
+          }
+        }
         toast({
           title: 'Success',
           description: `Payment ${result.data.paymentReference} recorded successfully`,
@@ -160,20 +201,11 @@ export default function PaymentForm({ onSuccess, initialData }: PaymentFormProps
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Client</FormLabel>
-                <Select onValueChange={handleClientChange} defaultValue={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select client" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {clients.filter(client => client.clientId).map((client) => (
-                      <SelectItem key={client.clientId} value={client.clientId!.toString()}>
-                        {client.businessName || `${client.firstName} ${client.lastName}`} ({client.clientNumber || 'No number'})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ClientSearchSelect
+                  value={field.value}
+                  onChange={(val) => handleClientChange(val)}
+                  placeholder="Select client"
+                />
                 <FormMessage />
               </FormItem>
             )}
@@ -192,7 +224,7 @@ export default function PaymentForm({ onSuccess, initialData }: PaymentFormProps
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="">No specific filing</SelectItem>
+                    <SelectItem value="none">No specific filing</SelectItem>
                     {taxFilings.map((filing) => (
                       <SelectItem key={filing.taxFilingId} value={filing.taxFilingId.toString()}>
                         {filing.filingReference} - {filing.taxType} {filing.taxYear}
@@ -322,7 +354,16 @@ export default function PaymentForm({ onSuccess, initialData }: PaymentFormProps
           />
         </div>
 
-        <div className="bg-sierra-blue/5 p-4 rounded-lg border">
+        {/* Receipt upload */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <FormLabel>Receipt (Optional)</FormLabel>
+            <Input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)} />
+            <p className="text-xs text-muted-foreground mt-1">Accepted: PDF, JPG, PNG, WEBP. Max ~10MB recommended.</p>
+          </div>
+        </div>
+
+        <div className="bg-sierra-blue/5 p-4 rounded-lg border mt-4">
           <h4 className="font-semibold text-sierra-blue mb-2">Payment Information</h4>
           <p className="text-sm text-muted-foreground">
             This payment will be recorded with "Pending" status and will require approval from an administrator 
@@ -331,10 +372,17 @@ export default function PaymentForm({ onSuccess, initialData }: PaymentFormProps
         </div>
 
         <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" onClick={() => form.reset()}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              form.reset()
+              setReceiptFile(null)
+            }}
+          >
             Reset
           </Button>
-          <Button type="submit" disabled={loading} className="bg-sierra-blue hover:bg-sierra-blue/90">
+          <Button type="submit" disabled={loading} variant="default">
             {loading ? 'Recording...' : 'Record Payment'}
           </Button>
         </div>

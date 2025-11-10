@@ -91,6 +91,27 @@ export default function ClientDocumentsPage() {
     }
   };
 
+  const getVerificationStatusBadge = (status?: string) => {
+    if (!status) return null;
+    
+    const statusConfig = {
+      'NotRequested': { variant: 'secondary' as const, label: 'Not Requested' },
+      'Requested': { variant: 'outline' as const, label: 'Requested' },
+      'Submitted': { variant: 'default' as const, label: 'Submitted' },
+      'UnderReview': { variant: 'secondary' as const, label: 'Under Review' },
+      'Rejected': { variant: 'destructive' as const, label: 'Rejected' },
+      'Verified': { variant: 'default' as const, label: 'Verified', className: 'bg-green-600' },
+      'Filed': { variant: 'default' as const, label: 'Filed', className: 'bg-blue-600' }
+    };
+    
+    const config = statusConfig[status as keyof typeof statusConfig];
+    return config ? (
+      <Badge variant={config.variant} className={'className' in config ? config.className : undefined}>
+        {config.label}
+      </Badge>
+    ) : null;
+  };
+
   const getDocumentTypeLabel = (type: string) => {
     switch (type) {
       case 'tax_return': return 'Tax Return';
@@ -223,6 +244,7 @@ export default function ClientDocumentsPage() {
                       <h3 className="font-medium text-gray-900 truncate">
                         {document.originalFileName}
                       </h3>
+                      {getVerificationStatusBadge(document.verificationStatus)}
                       <Badge variant="outline" className="text-xs">
                         {getDocumentTypeLabel(document.documentType)}
                       </Badge>
@@ -235,12 +257,28 @@ export default function ClientDocumentsPage() {
                     <p className="text-sm text-gray-600 truncate mb-1">
                       {document.description}
                     </p>
+                    {document.verificationStatus === 'Rejected' && document.rejectionReason && (
+                      <p className="text-sm text-red-600 mb-1">
+                        <strong>Rejection Reason:</strong> {document.rejectionReason}
+                      </p>
+                    )}
+                    {document.verificationNotes && (
+                      <p className="text-sm text-blue-600 mb-1">
+                        <strong>Review Notes:</strong> {document.verificationNotes}
+                      </p>
+                    )}
                     <div className="flex items-center space-x-4 text-xs text-gray-500">
                       <span className="flex items-center">
                         <Calendar className="h-3 w-3 mr-1" />
                         {new Date(document.uploadedAt).toLocaleDateString()}
                       </span>
                       <span>{formatFileSize(document.fileSize)}</span>
+                      {document.reviewedAt && (
+                        <span className="flex items-center">
+                          <Eye className="h-3 w-3 mr-1" />
+                          Reviewed {new Date(document.reviewedAt).toLocaleDateString()}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">

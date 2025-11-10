@@ -3,6 +3,7 @@ using BettsTax.Core.Services;
 using BettsTax.Data;
 using BettsTax.Web.Authorization;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
@@ -373,6 +374,74 @@ namespace BettsTax.Web.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error rejecting payment {PaymentId}", id);
+                return StatusCode(500, new { success = false, message = "Internal server error" });
+            }
+        }
+
+        /// <summary>
+        /// Upload payment evidence (e.g., bank transfer slip)
+        /// </summary>
+        [HttpPost("{id}/evidence")]
+        [AssociatePermission("Payments", AssociatePermissionLevel.Update)]
+        [DisableRequestSizeLimit]
+        public async Task<ActionResult<object>> UploadPaymentEvidence(int id, [FromForm] UploadPaymentEvidenceDto dto, [FromForm] IFormFile file)
+        {
+            try
+            {
+                if (file == null || file.Length == 0)
+                {
+                    return BadRequest(new { success = false, message = "No file provided" });
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(new { success = false, message = "Invalid data", errors = ModelState });
+                }
+
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value!;
+                var document = await _paymentService.UploadEvidenceAsync(id, dto, file, userId);
+
+                return Ok(new { success = true, data = document, message = "Payment evidence uploaded" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Invalid operation uploading payment evidence for payment {PaymentId}", id);
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error uploading payment evidence for payment {PaymentId}", id);
+                return StatusCode(500, new { success = false, message = "Internal server error" });
+            }
+        }
+
+        /// <summary>
+        /// Reconcile a payment (mark as reconciled and optionally complete)
+        /// </summary>
+        [HttpPost("{id}/reconcile")]
+        [AssociatePermission("Payments", AssociatePermissionLevel.Approve)]
+        public async Task<ActionResult<object>> ReconcilePayment(int id, [FromBody] ReconcilePaymentDto dto)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(new { success = false, message = "Invalid data", errors = ModelState });
+                }
+
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value!;
+                var payment = await _paymentService.ReconcileAsync(id, dto, userId);
+
+                return Ok(new { success = true, data = payment, message = "Payment reconciled" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Invalid operation reconciling payment {PaymentId}", id);
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error reconciling payment {PaymentId}", id);
                 return StatusCode(500, new { success = false, message = "Internal server error" });
             }
         }

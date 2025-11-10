@@ -363,6 +363,40 @@ public class PaymentErrorStatsDto
     public string? GatewayName { get; set; }
 }
 
+// Payment Gateway Request/Response DTOs
+public class PaymentGatewayRequest
+{
+    public string TransactionReference { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string Currency { get; set; } = "SLE";
+    public string PayerPhone { get; set; } = string.Empty;
+    public string PayerName { get; set; } = string.Empty;
+    public string PayerEmail { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string? CallbackUrl { get; set; }
+    public string? SuccessUrl { get; set; }
+    public string? FailureUrl { get; set; }
+    public Dictionary<string, object> AdditionalData { get; set; } = new();
+}
+
+public class PaymentGatewayResponse
+{
+    public bool IsSuccess { get; set; }
+    public string TransactionReference { get; set; } = string.Empty;
+    public string ExternalReference { get; set; } = string.Empty;
+    public string ProviderTransactionId { get; set; } = string.Empty;
+    public PaymentTransactionStatus Status { get; set; }
+    public string StatusMessage { get; set; } = string.Empty;
+    public string? ErrorCode { get; set; }
+    public string? ErrorMessage { get; set; }
+    public decimal Amount { get; set; }
+    public decimal Fee { get; set; }
+    public string Currency { get; set; } = "SLE";
+    public DateTime ProcessedAt { get; set; }
+    public string? PaymentUrl { get; set; }
+    public Dictionary<string, object> AdditionalData { get; set; } = new();
+}
+
 // Search and filter DTOs
 public class PaymentTransactionSearchDto
 {

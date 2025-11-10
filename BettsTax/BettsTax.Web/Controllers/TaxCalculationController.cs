@@ -13,15 +13,18 @@ namespace BettsTax.Web.Controllers
         private readonly ISierraLeoneTaxCalculationService _taxCalculationService;
         private readonly ITaxFilingService _taxFilingService;
         private readonly ILogger<TaxCalculationController> _logger;
+        private readonly ISystemSettingService _settingService;
 
         public TaxCalculationController(
             ISierraLeoneTaxCalculationService taxCalculationService,
             ITaxFilingService taxFilingService,
-            ILogger<TaxCalculationController> logger)
+            ILogger<TaxCalculationController> logger,
+            ISystemSettingService settingService)
         {
             _taxCalculationService = taxCalculationService;
             _taxFilingService = taxFilingService;
             _logger = logger;
+            _settingService = settingService;
         }
 
         /// <summary>
@@ -50,7 +53,7 @@ namespace BettsTax.Web.Controllers
         /// Calculate GST (Goods and Services Tax)
         /// </summary>
         [HttpPost("gst")]
-        public IActionResult CalculateGST([FromBody] GSTCalculationRequest request)
+        public async Task<IActionResult> CalculateGST([FromBody] GSTCalculationRequest request)
         {
             try
             {
@@ -58,7 +61,8 @@ namespace BettsTax.Web.Controllers
                     request.TaxableAmount, 
                     request.ItemCategory);
 
-                return Ok(new { GSTAmount = gst, Rate = "15%", Currency = "SLE" });
+                var gstRate = ((decimal?)await _settingService.GetSettingAsync<decimal>("Tax.GST.RatePercent")) ?? 15m;
+                return Ok(new { GSTAmount = gst, Rate = $"{gstRate}%", Currency = "SLE" });
             }
             catch (Exception ex)
             {
@@ -188,6 +192,11 @@ namespace BettsTax.Web.Controllers
         [HttpGet("rates")]
         public IActionResult GetTaxRates()
         {
+            var gstRate = ((decimal?)_settingService.GetSettingAsync<decimal>("Tax.GST.RatePercent").GetAwaiter().GetResult()) ?? 15m;
+            var annualInterest = ((decimal?)_settingService.GetSettingAsync<decimal>("Tax.AnnualInterestRatePercent").GetAwaiter().GetResult()) ?? 15m;
+            var minTaxRate = ((decimal?)_settingService.GetSettingAsync<decimal>("Tax.Income.MinimumTaxRatePercent").GetAwaiter().GetResult()) ?? 0.5m;
+            var matRate = ((decimal?)_settingService.GetSettingAsync<decimal>("Tax.Income.MATRatePercent").GetAwaiter().GetResult()) ?? 3m;
+
             var rates = new
             {
                 IncomeTax = new
@@ -202,7 +211,7 @@ namespace BettsTax.Web.Controllers
                     },
                     Corporate = "25%"
                 },
-                GST = "15%",
+                GST = $"{gstRate}%",
                 WithholdingTax = new
                 {
                     Dividends = "15%",
@@ -211,7 +220,8 @@ namespace BettsTax.Web.Controllers
                     Rent = "10%",
                     Commissions = "5%"
                 },
-                MinimumTax = "0.5% of annual turnover",
+                MinimumTax = $"{minTaxRate}% of annual turnover",
+                MAT = $"{matRate}% of turnover",
                 PenaltyRates = new
                 {
                     LateFilingPenalty = "5% of tax due or minimum 50,000 SLE",
@@ -222,7 +232,7 @@ namespace BettsTax.Web.Controllers
                         new { Period = "Over 60 days", Rate = "15%" }
                     }
                 },
-                InterestRate = "15% per annum",
+                InterestRate = $"{annualInterest}% per annum",
                 FinanceActVersion = "Finance Act 2024",
                 LastUpdated = DateTime.UtcNow.ToString("yyyy-MM-dd")
             };

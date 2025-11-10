@@ -1,0 +1,809 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using BettsTax.Core.DTOs;
+using BettsTax.Core.Services.WorkflowEngine;
+using BettsTax.Data;
+using BettsTax.Shared;
+
+namespace BettsTax.Core.Services.WorkflowEngine
+{
+    /// <summary>
+    /// Comprehensive workflow template management service
+    /// Handles template creation, categorization, versioning, and analytics
+    /// </summary>
+    public class WorkflowTemplateManager : IWorkflowTemplateManager
+    {
+        private readonly ApplicationDbContext _context;
+        private readonly ILogger<WorkflowTemplateManager> _logger;
+        private readonly IVisualRuleBuilderService _visualRuleBuilder;
+        private readonly IWorkflowExecutionService _workflowExecution;
+
+        public WorkflowTemplateManager(
+            ApplicationDbContext context,
+            ILogger<WorkflowTemplateManager> logger,
+            IVisualRuleBuilderService visualRuleBuilder,
+            IWorkflowExecutionService workflowExecution)
+        {
+            _context = context;
+            _logger = logger;
+            _visualRuleBuilder = visualRuleBuilder;
+            _workflowExecution = workflowExecution;
+        }
+
+        /// <summary>
+        /// Creates a new workflow template from an existing workflow
+        /// </summary>
+        public async Task<Result<WorkflowTemplate>> CreateTemplateFromWorkflowAsync(CreateTemplateRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Creating template from workflow {WorkflowId}", request.SourceWorkflowId);
+
+                // Get source workflow
+                var workflow = await _context.WorkflowDefinitions
+                    .Include(w => w.Steps)
+                    .FirstOrDefaultAsync(w => w.Id == request.SourceWorkflowId);
+
+                if (workflow == null)
+                {
+                    return Result.Failure<WorkflowTemplate>("Source workflow not found");
+                }
+
+                // Create template
+                var template = new WorkflowTemplate
+                {
+                    Id = Guid.NewGuid(),
+                    Name = request.TemplateName,
+                    Description = request.Description,
+                    Category = request.Category ?? "General",
+                    CreatedBy = request.CreatedBy,
+                    CreatedAt = DateTime.UtcNow,
+                    IsActive = true,
+                    IsPublic = request.IsPublic,
+                    Version = "1.0.0",
+                    Tags = request.Tags ?? new List<string>(),
+                    
+                    // Template configuration
+                    Configuration = new TemplateConfiguration
+                    {
+                        WorkflowDefinition = SerializeWorkflow(workflow),
+                        Parameters = ExtractParameters(workflow, request.ParameterMappings),
+                        Requirements = DetermineRequirements(workflow),
+                        Complexity = CalculateComplexity(workflow),
+                        EstimatedDuration = EstimateExecutionTime(workflow),
+                        SupportedEntityTypes = ExtractEntityTypes(workflow)
+                    },
+                    
+                    // Metadata
+                    Metadata = new TemplateMetadata
+                    {
+                        OriginalWorkflowId = request.SourceWorkflowId,
+                        CreationContext = request.CreationContext ?? "Manual",
+                        SourceVersion = workflow.Version,
+                        Keywords = GenerateKeywords(workflow, request),
+                        Screenshots = request.Screenshots ?? new List<string>(),
+                        Documentation = request.Documentation
+                    }
+                };
+
+                await _context.WorkflowTemplates.AddAsync(template);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Created template {TemplateId} from workflow {WorkflowId}", 
+                    template.Id, request.SourceWorkflowId);
+
+                return Result.Success(template);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating template from workflow {WorkflowId}", request.SourceWorkflowId);
+                return Result.Failure<WorkflowTemplate>($"Failed to create template: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Creates a workflow from a template
+        /// </summary>
+        public async Task<Result<Guid>> CreateWorkflowFromTemplateAsync(CreateFromTemplateRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Creating workflow from template {TemplateId}", request.TemplateId);
+
+                // Get template
+                var template = await _context.WorkflowTemplates
+                    .FirstOrDefaultAsync(t => t.Id == request.TemplateId && t.IsActive);
+
+                if (template == null)
+                {
+                    return Result.Failure<Guid>("Template not found or inactive");
+                }
+
+                // Validate parameters
+                var parameterValidation = ValidateTemplateParameters(template, request.Parameters);
+                if (!parameterValidation.IsValid)
+                {
+                    return Result.Failure<Guid>($"Invalid parameters: {string.Join(", ", parameterValidation.Errors)}");
+                }
+
+                // Deserialize and customize workflow
+                var workflowDefinition = DeserializeWorkflow(template.Configuration.WorkflowDefinition);
+                var customizedWorkflow = ApplyTemplateParameters(workflowDefinition, template, request.Parameters);
+
+                // Create new workflow
+                var newWorkflow = new WorkflowDefinition
+                {
+                    Id = Guid.NewGuid(),
+                    Name = request.WorkflowName,
+                    Description = request.Description ?? template.Description,
+                    Category = template.Category,
+                    CreatedBy = request.CreatedBy,
+                    CreatedAt = DateTime.UtcNow,
+                    IsActive = true,
+                    Version = "1.0.0",
+                    Steps = customizedWorkflow.Steps,
+                    Configuration = customizedWorkflow.Configuration,
+                    Metadata = new WorkflowMetadata
+                    {
+                        CreatedFromTemplateId = template.Id,
+                        TemplateVersion = template.Version,
+                        CustomParameters = request.Parameters
+                    }
+                };
+
+                await _context.WorkflowDefinitions.AddAsync(newWorkflow);
+
+                // Update template usage statistics
+                await UpdateTemplateUsageAsync(template.Id);
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Created workflow {WorkflowId} from template {TemplateId}", 
+                    newWorkflow.Id, request.TemplateId);
+
+                return Result.Success(newWorkflow.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating workflow from template {TemplateId}", request.TemplateId);
+                return Result.Failure<Guid>($"Failed to create workflow from template: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets templates with filtering and sorting
+        /// </summary>
+        public async Task<Result<PagedTemplateResult>> GetTemplatesAsync(TemplateFilter filter)
+        {
+            try
+            {
+                var query = _context.WorkflowTemplates.AsQueryable();
+
+                // Apply filters
+                if (!string.IsNullOrEmpty(filter.Category))
+                {
+                    query = query.Where(t => t.Category == filter.Category);
+                }
+
+                if (!string.IsNullOrEmpty(filter.SearchTerm))
+                {
+                    var searchTerm = filter.SearchTerm.ToLower();
+                    query = query.Where(t => 
+                        t.Name.ToLower().Contains(searchTerm) ||
+                        t.Description.ToLower().Contains(searchTerm) ||
+                        t.Tags.Any(tag => tag.ToLower().Contains(searchTerm)));
+                }
+
+                if (filter.Tags?.Any() == true)
+                {
+                    query = query.Where(t => filter.Tags.All(tag => t.Tags.Contains(tag)));
+                }
+
+                if (filter.CreatedBy != null)
+                {
+                    query = query.Where(t => t.CreatedBy == filter.CreatedBy);
+                }
+
+                if (filter.IsPublic.HasValue)
+                {
+                    query = query.Where(t => t.IsPublic == filter.IsPublic.Value);
+                }
+
+                if (filter.MinRating.HasValue)
+                {
+                    query = query.Where(t => t.Statistics.AverageRating >= filter.MinRating.Value);
+                }
+
+                if (filter.ComplexityLevel.HasValue)
+                {
+                    query = query.Where(t => t.Configuration.Complexity == filter.ComplexityLevel.Value);
+                }
+
+                // Apply sorting
+                query = filter.SortBy?.ToLower() switch
+                {
+                    "name" => filter.SortDirection == SortDirection.Descending 
+                        ? query.OrderByDescending(t => t.Name)
+                        : query.OrderBy(t => t.Name),
+                    "created" => filter.SortDirection == SortDirection.Descending
+                        ? query.OrderByDescending(t => t.CreatedAt)
+                        : query.OrderBy(t => t.CreatedAt),
+                    "rating" => filter.SortDirection == SortDirection.Descending
+                        ? query.OrderByDescending(t => t.Statistics.AverageRating)
+                        : query.OrderBy(t => t.Statistics.AverageRating),
+                    "usage" => filter.SortDirection == SortDirection.Descending
+                        ? query.OrderByDescending(t => t.Statistics.UsageCount)
+                        : query.OrderBy(t => t.Statistics.UsageCount),
+                    _ => query.OrderByDescending(t => t.CreatedAt)
+                };
+
+                // Get total count
+                var totalCount = await query.CountAsync();
+
+                // Apply pagination
+                var templates = await query
+                    .Skip((filter.PageNumber - 1) * filter.PageSize)
+                    .Take(filter.PageSize)
+                    .Include(t => t.Statistics)
+                    .ToListAsync();
+
+                var result = new PagedTemplateResult
+                {
+                    Templates = templates,
+                    TotalCount = totalCount,
+                    PageNumber = filter.PageNumber,
+                    PageSize = filter.PageSize,
+                    TotalPages = (int)Math.Ceiling((double)totalCount / filter.PageSize)
+                };
+
+                return Result.Success(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting templates with filter");
+                return Result.Failure<PagedTemplateResult>($"Failed to get templates: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets template by ID with full details
+        /// </summary>
+        public async Task<Result<WorkflowTemplate>> GetTemplateAsync(Guid templateId)
+        {
+            try
+            {
+                var template = await _context.WorkflowTemplates
+                    .Include(t => t.Statistics)
+                    .Include(t => t.Reviews)
+                    .FirstOrDefaultAsync(t => t.Id == templateId);
+
+                if (template == null)
+                {
+                    return Result.Failure<WorkflowTemplate>("Template not found");
+                }
+
+                return Result.Success(template);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting template {TemplateId}", templateId);
+                return Result.Failure<WorkflowTemplate>($"Failed to get template: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Updates template information
+        /// </summary>
+        public async Task<Result<WorkflowTemplate>> UpdateTemplateAsync(Guid templateId, UpdateTemplateRequest request)
+        {
+            try
+            {
+                var template = await _context.WorkflowTemplates
+                    .FirstOrDefaultAsync(t => t.Id == templateId);
+
+                if (template == null)
+                {
+                    return Result.Failure<WorkflowTemplate>("Template not found");
+                }
+
+                // Update basic properties
+                if (!string.IsNullOrEmpty(request.Name))
+                    template.Name = request.Name;
+                
+                if (!string.IsNullOrEmpty(request.Description))
+                    template.Description = request.Description;
+                
+                if (!string.IsNullOrEmpty(request.Category))
+                    template.Category = request.Category;
+                
+                if (request.Tags != null)
+                    template.Tags = request.Tags;
+                
+                if (request.IsPublic.HasValue)
+                    template.IsPublic = request.IsPublic.Value;
+
+                template.UpdatedAt = DateTime.UtcNow;
+                template.UpdatedBy = request.UpdatedBy;
+
+                await _context.SaveChangesAsync();
+
+                return Result.Success(template);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating template {TemplateId}", templateId);
+                return Result.Failure<WorkflowTemplate>($"Failed to update template: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Deletes or deactivates a template
+        /// </summary>
+        public async Task<Result<bool>> DeleteTemplateAsync(Guid templateId, bool hardDelete = false)
+        {
+            try
+            {
+                var template = await _context.WorkflowTemplates
+                    .FirstOrDefaultAsync(t => t.Id == templateId);
+
+                if (template == null)
+                {
+                    return Result.Failure<bool>("Template not found");
+                }
+
+                if (hardDelete)
+                {
+                    _context.WorkflowTemplates.Remove(template);
+                }
+                else
+                {
+                    template.IsActive = false;
+                    template.UpdatedAt = DateTime.UtcNow;
+                }
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Template {TemplateId} {Action}", 
+                    templateId, hardDelete ? "deleted" : "deactivated");
+
+                return Result.Success(true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting template {TemplateId}", templateId);
+                return Result.Failure<bool>($"Failed to delete template: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Adds a review to a template
+        /// </summary>
+        public async Task<Result<TemplateReview>> AddReviewAsync(Guid templateId, AddReviewRequest request)
+        {
+            try
+            {
+                var template = await _context.WorkflowTemplates
+                    .Include(t => t.Reviews)
+                    .FirstOrDefaultAsync(t => t.Id == templateId);
+
+                if (template == null)
+                {
+                    return Result.Failure<TemplateReview>("Template not found");
+                }
+
+                // Check if user already reviewed this template
+                var existingReview = template.Reviews
+                    .FirstOrDefault(r => r.ReviewerId == request.ReviewerId);
+
+                if (existingReview != null)
+                {
+                    return Result.Failure<TemplateReview>("User has already reviewed this template");
+                }
+
+                var review = new TemplateReview
+                {
+                    Id = Guid.NewGuid(),
+                    TemplateId = templateId,
+                    ReviewerId = request.ReviewerId,
+                    Rating = request.Rating,
+                    Comment = request.Comment,
+                    ReviewDate = DateTime.UtcNow,
+                    IsVerified = request.IsVerified
+                };
+
+                await _context.TemplateReviews.AddAsync(review);
+
+                // Update template statistics
+                await RecalculateTemplateStatisticsAsync(templateId);
+
+                await _context.SaveChangesAsync();
+
+                return Result.Success(review);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error adding review to template {TemplateId}", templateId);
+                return Result.Failure<TemplateReview>($"Failed to add review: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets template categories with usage counts
+        /// </summary>
+        public async Task<Result<List<TemplateCategoryInfo>>> GetCategoriesAsync()
+        {
+            try
+            {
+                var categories = await _context.WorkflowTemplates
+                    .Where(t => t.IsActive)
+                    .GroupBy(t => t.Category)
+                    .Select(g => new TemplateCategoryInfo
+                    {
+                        Name = g.Key,
+                        Count = g.Count(),
+                        AverageRating = g.Average(t => t.Statistics.AverageRating),
+                        TotalUsage = g.Sum(t => t.Statistics.UsageCount)
+                    })
+                    .OrderBy(c => c.Name)
+                    .ToListAsync();
+
+                return Result.Success(categories);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting template categories");
+                return Result.Failure<List<TemplateCategoryInfo>>($"Failed to get categories: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets popular templates based on usage and ratings
+        /// </summary>
+        public async Task<Result<List<WorkflowTemplate>>> GetPopularTemplatesAsync(int count = 10)
+        {
+            try
+            {
+                var popularTemplates = await _context.WorkflowTemplates
+                    .Include(t => t.Statistics)
+                    .Where(t => t.IsActive && t.IsPublic)
+                    .OrderByDescending(t => t.Statistics.PopularityScore)
+                    .ThenByDescending(t => t.Statistics.AverageRating)
+                    .Take(count)
+                    .ToListAsync();
+
+                return Result.Success(popularTemplates);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting popular templates");
+                return Result.Failure<List<WorkflowTemplate>>($"Failed to get popular templates: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Validates template parameters
+        /// </summary>
+        public async Task<Result<TemplateParameterValidationResult>> ValidateParametersAsync(
+            Guid templateId, Dictionary<string, object> parameters)
+        {
+            try
+            {
+                var template = await _context.WorkflowTemplates
+                    .FirstOrDefaultAsync(t => t.Id == templateId);
+
+                if (template == null)
+                {
+                    return Result.Failure<TemplateParameterValidationResult>("Template not found");
+                }
+
+                var validation = ValidateTemplateParameters(template, parameters);
+                return Result.Success(validation);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating template parameters {TemplateId}", templateId);
+                return Result.Failure<TemplateParameterValidationResult>($"Failed to validate parameters: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Exports template to JSON format
+        /// </summary>
+        public async Task<Result<string>> ExportTemplateAsync(Guid templateId, TemplateExportOptions options)
+        {
+            try
+            {
+                var template = await _context.WorkflowTemplates
+                    .Include(t => t.Statistics)
+                    .Include(t => t.Reviews)
+                    .FirstOrDefaultAsync(t => t.Id == templateId);
+
+                if (template == null)
+                {
+                    return Result.Failure<string>("Template not found");
+                }
+
+                var exportData = new
+                {
+                    template.Id,
+                    template.Name,
+                    template.Description,
+                    template.Category,
+                    template.Version,
+                    template.Tags,
+                    Configuration = options.IncludeConfiguration ? template.Configuration : null,
+                    Statistics = options.IncludeStatistics ? template.Statistics : null,
+                    Reviews = options.IncludeReviews ? template.Reviews : null,
+                    Metadata = options.IncludeMetadata ? template.Metadata : null,
+                    ExportedAt = DateTime.UtcNow,
+                    ExportVersion = "1.0.0"
+                };
+
+                var json = JsonSerializer.Serialize(exportData, new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+
+                return Result.Success(json);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting template {TemplateId}", templateId);
+                return Result.Failure<string>($"Failed to export template: {ex.Message}");
+            }
+        }
+
+        // Private helper methods
+
+        private string SerializeWorkflow(WorkflowDefinition workflow)
+        {
+            return JsonSerializer.Serialize(workflow, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+        }
+
+        private WorkflowDefinition DeserializeWorkflow(string workflowJson)
+        {
+            return JsonSerializer.Deserialize<WorkflowDefinition>(workflowJson) 
+                ?? throw new InvalidOperationException("Failed to deserialize workflow");
+        }
+
+        private List<TemplateParameter> ExtractParameters(WorkflowDefinition workflow, 
+            Dictionary<string, ParameterMapping>? mappings)
+        {
+            var parameters = new List<TemplateParameter>();
+
+            // Extract parameters from workflow steps and configuration
+            // This would analyze the workflow to find parameterizable values
+
+            return parameters;
+        }
+
+        private List<string> DetermineRequirements(WorkflowDefinition workflow)
+        {
+            var requirements = new List<string>();
+
+            // Analyze workflow to determine requirements
+            // e.g., required services, permissions, data sources
+
+            return requirements;
+        }
+
+        private ComplexityLevel CalculateComplexity(WorkflowDefinition workflow)
+        {
+            var stepCount = workflow.Steps.Count;
+            var hasConditions = workflow.Steps.Any(s => s.Type == "Condition");
+            var hasLoops = workflow.Steps.Any(s => s.Type == "Loop");
+
+            if (stepCount <= 5 && !hasConditions && !hasLoops)
+                return ComplexityLevel.Simple;
+            if (stepCount <= 15 && (hasConditions || hasLoops))
+                return ComplexityLevel.Medium;
+            
+            return ComplexityLevel.Complex;
+        }
+
+        private TimeSpan EstimateExecutionTime(WorkflowDefinition workflow)
+        {
+            // Simple estimation based on step count and types
+            var baseTime = TimeSpan.FromSeconds(workflow.Steps.Count * 2);
+            
+            // Add time for complex operations
+            foreach (var step in workflow.Steps)
+            {
+                switch (step.Type?.ToLower())
+                {
+                    case "api_call":
+                    case "http_request":
+                        baseTime = baseTime.Add(TimeSpan.FromSeconds(5));
+                        break;
+                    case "database_query":
+                        baseTime = baseTime.Add(TimeSpan.FromSeconds(2));
+                        break;
+                    case "file_operation":
+                        baseTime = baseTime.Add(TimeSpan.FromSeconds(3));
+                        break;
+                }
+            }
+
+            return baseTime;
+        }
+
+        private List<string> ExtractEntityTypes(WorkflowDefinition workflow)
+        {
+            var entityTypes = new List<string>();
+
+            // Extract entity types referenced in the workflow
+            // This would analyze workflow steps to find data entities
+
+            return entityTypes;
+        }
+
+        private List<string> GenerateKeywords(WorkflowDefinition workflow, CreateTemplateRequest request)
+        {
+            var keywords = new List<string>();
+
+            // Add from request
+            if (request.Tags != null)
+                keywords.AddRange(request.Tags);
+
+            // Add from workflow analysis
+            keywords.Add(workflow.Category);
+            keywords.AddRange(workflow.Steps.Select(s => s.Type ?? "").Where(t => !string.IsNullOrEmpty(t)));
+
+            return keywords.Distinct().ToList();
+        }
+
+        private WorkflowDefinition ApplyTemplateParameters(WorkflowDefinition workflow, 
+            WorkflowTemplate template, Dictionary<string, object> parameters)
+        {
+            // Create a copy of the workflow and apply parameter substitutions
+            var workflowJson = JsonSerializer.Serialize(workflow);
+            
+            foreach (var parameter in template.Configuration.Parameters)
+            {
+                if (parameters.TryGetValue(parameter.Name, out var value))
+                {
+                    var placeholder = $"{{{{ {parameter.Name} }}}}";
+                    workflowJson = workflowJson.Replace(placeholder, value?.ToString() ?? "");
+                }
+            }
+
+            return JsonSerializer.Deserialize<WorkflowDefinition>(workflowJson) 
+                ?? throw new InvalidOperationException("Failed to apply template parameters");
+        }
+
+        private TemplateParameterValidationResult ValidateTemplateParameters(
+            WorkflowTemplate template, Dictionary<string, object> parameters)
+        {
+            var result = new TemplateParameterValidationResult
+            {
+                IsValid = true,
+                Errors = new List<string>(),
+                ValidatedParameters = new Dictionary<string, object>()
+            };
+
+            foreach (var templateParam in template.Configuration.Parameters)
+            {
+                if (templateParam.Required && !parameters.ContainsKey(templateParam.Name))
+                {
+                    result.Errors.Add($"Required parameter '{templateParam.Name}' is missing");
+                    result.IsValid = false;
+                    continue;
+                }
+
+                if (parameters.TryGetValue(templateParam.Name, out var value))
+                {
+                    // Validate parameter type and constraints
+                    if (templateParam.Validation != null)
+                    {
+                        var validationResult = ValidateParameterValue(templateParam, value);
+                        if (!validationResult.IsValid)
+                        {
+                            result.Errors.AddRange(validationResult.Errors);
+                            result.IsValid = false;
+                        }
+                        else
+                        {
+                            result.ValidatedParameters[templateParam.Name] = validationResult.ValidatedValue;
+                        }
+                    }
+                    else
+                    {
+                        result.ValidatedParameters[templateParam.Name] = value;
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private (bool IsValid, List<string> Errors, object ValidatedValue) ValidateParameterValue(
+            TemplateParameter parameter, object value)
+        {
+            var errors = new List<string>();
+            var isValid = true;
+            var validatedValue = value;
+
+            // Type validation
+            if (!ValidateParameterType(parameter.Type, value))
+            {
+                errors.Add($"Parameter '{parameter.Name}' must be of type {parameter.Type}");
+                isValid = false;
+            }
+
+            // Additional validations would go here based on parameter.Validation
+
+            return (isValid, errors, validatedValue);
+        }
+
+        private bool ValidateParameterType(string expectedType, object value)
+        {
+            if (value == null) return true; // Null values are handled separately
+
+            return expectedType.ToLower() switch
+            {
+                "string" => value is string,
+                "int" or "integer" => value is int or long,
+                "decimal" or "number" => value is decimal or double or float or int or long,
+                "bool" or "boolean" => value is bool,
+                "datetime" => value is DateTime,
+                "guid" => value is Guid or (value is string s && Guid.TryParse(s, out _)),
+                _ => true // Unknown types are accepted
+            };
+        }
+
+        private async Task UpdateTemplateUsageAsync(Guid templateId)
+        {
+            var template = await _context.WorkflowTemplates
+                .Include(t => t.Statistics)
+                .FirstOrDefaultAsync(t => t.Id == templateId);
+
+            if (template?.Statistics != null)
+            {
+                template.Statistics.UsageCount++;
+                template.Statistics.LastUsedAt = DateTime.UtcNow;
+                template.Statistics.PopularityScore = CalculatePopularityScore(template.Statistics);
+            }
+        }
+
+        private async Task RecalculateTemplateStatisticsAsync(Guid templateId)
+        {
+            var template = await _context.WorkflowTemplates
+                .Include(t => t.Statistics)
+                .Include(t => t.Reviews)
+                .FirstOrDefaultAsync(t => t.Id == templateId);
+
+            if (template?.Statistics != null && template.Reviews.Any())
+            {
+                template.Statistics.AverageRating = template.Reviews.Average(r => r.Rating);
+                template.Statistics.ReviewCount = template.Reviews.Count;
+                template.Statistics.PopularityScore = CalculatePopularityScore(template.Statistics);
+            }
+        }
+
+        private double CalculatePopularityScore(TemplateStatistics stats)
+        {
+            // Weighted popularity score based on usage, ratings, and recency
+            var usageScore = Math.Log10(stats.UsageCount + 1) * 0.4;
+            var ratingScore = stats.AverageRating * 0.3;
+            var recencyScore = CalculateRecencyScore(stats.LastUsedAt) * 0.3;
+
+            return usageScore + ratingScore + recencyScore;
+        }
+
+        private double CalculateRecencyScore(DateTime? lastUsed)
+        {
+            if (!lastUsed.HasValue) return 0;
+
+            var daysSinceUsed = (DateTime.UtcNow - lastUsed.Value).TotalDays;
+            return Math.Max(0, 5 - (daysSinceUsed / 30)); // Score decreases over time
+        }
+    }
+}

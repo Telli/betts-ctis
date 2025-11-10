@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Mail, Send, Settings, Shield } from 'lucide-react';
-import { AdminSettingsService, type EmailSettingsDto, type TestEmailDto } from '@/lib/services/admin-settings-service';
+import { AdminSettingsService, type EmailSettingsDto, type TestEmailDto, type TaxSettingsDto } from '@/lib/services/admin-settings-service';
 
 const emailSettingsSchema = z.object({
   smtpHost: z.string().min(1, 'SMTP Host is required'),
@@ -34,6 +34,16 @@ const testEmailSchema = z.object({
 type EmailSettingsFormData = z.infer<typeof emailSettingsSchema>;
 type TestEmailFormData = z.infer<typeof testEmailSchema>;
 
+const taxSettingsSchema = z.object({
+  gstRegistrationThreshold: z.number().min(0, 'Threshold must be zero or positive'),
+  gstRatePercent: z.number().min(0).max(100, 'GST rate must be 0-100'),
+  annualInterestRatePercent: z.number().min(0).max(100, 'Annual interest must be 0-100'),
+  incomeMinimumTaxRatePercent: z.number().min(0).max(100, 'Minimum tax rate must be 0-100'),
+  incomeMatRatePercent: z.number().min(0).max(100, 'MAT rate must be 0-100'),
+});
+
+type TaxSettingsFormData = z.infer<typeof taxSettingsSchema>;
+
 export default function AdminSettingsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isTestingEmail, setIsTestingEmail] = useState(false);
@@ -54,6 +64,17 @@ export default function AdminSettingsPage() {
     },
   });
 
+  const taxForm = useForm<TaxSettingsFormData>({
+    resolver: zodResolver(taxSettingsSchema),
+    defaultValues: {
+      gstRegistrationThreshold: 0,
+      gstRatePercent: 15,
+      annualInterestRatePercent: 15,
+      incomeMinimumTaxRatePercent: 0.5,
+      incomeMatRatePercent: 3,
+    },
+  });
+
   const testEmailForm = useForm<TestEmailFormData>({
     resolver: zodResolver(testEmailSchema),
     defaultValues: {
@@ -65,6 +86,7 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     loadEmailSettings();
+    loadTaxSettings();
   }, []);
 
   const loadEmailSettings = async () => {
@@ -90,6 +112,43 @@ export default function AdminSettingsPage() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadTaxSettings = async () => {
+    try {
+      const settings = await AdminSettingsService.getTaxSettings();
+      taxForm.reset({
+        gstRegistrationThreshold: Number(settings.gstRegistrationThreshold ?? 0),
+        gstRatePercent: Number(settings.gstRatePercent ?? 15),
+        annualInterestRatePercent: Number(settings.annualInterestRatePercent ?? 15),
+        incomeMinimumTaxRatePercent: Number(settings.incomeMinimumTaxRatePercent ?? 0.5),
+        incomeMatRatePercent: Number(settings.incomeMatRatePercent ?? 3),
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Tax Settings',
+        description: 'Failed to load tax settings',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const onSaveTaxSettings = async (data: TaxSettingsFormData) => {
+    try {
+      setIsSaving(true);
+      await AdminSettingsService.updateTaxSettings({
+        gstRegistrationThreshold: data.gstRegistrationThreshold,
+        gstRatePercent: data.gstRatePercent,
+        annualInterestRatePercent: data.annualInterestRatePercent,
+        incomeMinimumTaxRatePercent: data.incomeMinimumTaxRatePercent,
+        incomeMatRatePercent: data.incomeMatRatePercent,
+      });
+      toast({ title: 'Settings Saved', description: 'Tax settings updated successfully' });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to save tax settings', variant: 'destructive' });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -155,6 +214,10 @@ export default function AdminSettingsPage() {
           <TabsTrigger value="email" className="flex items-center space-x-2">
             <Mail className="h-4 w-4" />
             <span>Email Settings</span>
+          </TabsTrigger>
+          <TabsTrigger value="tax" className="flex items-center space-x-2">
+            <Settings className="h-4 w-4" />
+            <span>Tax Settings</span>
           </TabsTrigger>
           <TabsTrigger value="security" className="flex items-center space-x-2">
             <Shield className="h-4 w-4" />
@@ -338,6 +401,100 @@ export default function AdminSettingsPage() {
                     <p><strong>Yahoo:</strong> smtp.mail.yahoo.com:587 (TLS)</p>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="tax" className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>GST Registration Threshold</CardTitle>
+                <CardDescription>
+                  Annual turnover threshold (SLE) at which GST registration is required. Changes annually.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={taxForm.handleSubmit(onSaveTaxSettings)} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="gstRegistrationThreshold">Threshold (SLE)</Label>
+                    <Input
+                      id="gstRegistrationThreshold"
+                      type="number"
+                      placeholder="0"
+                      step="1"
+                      {...taxForm.register('gstRegistrationThreshold', { valueAsNumber: true })}
+                    />
+                    {taxForm.formState.errors.gstRegistrationThreshold && (
+                      <p className="text-sm text-red-600">{taxForm.formState.errors.gstRegistrationThreshold.message}</p>
+                    )}
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="gstRatePercent">GST Rate (%)</Label>
+                      <Input
+                        id="gstRatePercent"
+                        type="number"
+                        step="0.01"
+                        placeholder="15"
+                        {...taxForm.register('gstRatePercent', { valueAsNumber: true })}
+                      />
+                      {taxForm.formState.errors.gstRatePercent && (
+                        <p className="text-sm text-red-600">{taxForm.formState.errors.gstRatePercent.message}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="annualInterestRatePercent">Annual Interest Rate (%)</Label>
+                      <Input
+                        id="annualInterestRatePercent"
+                        type="number"
+                        step="0.01"
+                        placeholder="15"
+                        {...taxForm.register('annualInterestRatePercent', { valueAsNumber: true })}
+                      />
+                      {taxForm.formState.errors.annualInterestRatePercent && (
+                        <p className="text-sm text-red-600">{taxForm.formState.errors.annualInterestRatePercent.message}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="incomeMinimumTaxRatePercent">Minimum Tax Rate (%)</Label>
+                      <Input
+                        id="incomeMinimumTaxRatePercent"
+                        type="number"
+                        step="0.01"
+                        placeholder="0.5"
+                        {...taxForm.register('incomeMinimumTaxRatePercent', { valueAsNumber: true })}
+                      />
+                      {taxForm.formState.errors.incomeMinimumTaxRatePercent && (
+                        <p className="text-sm text-red-600">{taxForm.formState.errors.incomeMinimumTaxRatePercent.message}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="incomeMatRatePercent">MAT Rate (%)</Label>
+                      <Input
+                        id="incomeMatRatePercent"
+                        type="number"
+                        step="0.01"
+                        placeholder="3"
+                        {...taxForm.register('incomeMatRatePercent', { valueAsNumber: true })}
+                      />
+                      {taxForm.formState.errors.incomeMatRatePercent && (
+                        <p className="text-sm text-red-600">{taxForm.formState.errors.incomeMatRatePercent.message}</p>
+                      )}
+                    </div>
+                  </div>
+                  <Button type="submit" disabled={isSaving} className="w-full">
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Tax Settings'
+                    )}
+                  </Button>
+                </form>
               </CardContent>
             </Card>
           </div>

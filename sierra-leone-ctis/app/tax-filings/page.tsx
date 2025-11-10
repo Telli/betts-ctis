@@ -9,11 +9,11 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { TaxFilingService, TaxFilingDto, TaxType, FilingStatus, CreateTaxFilingDto } from '@/lib/services'
 import { Plus, Search, FileText, Calendar, DollarSign, Filter, Eye, Edit, Trash } from 'lucide-react'
 import Loading from '@/app/loading'
-import TaxFilingForm from '@/components/tax-filing-form'
+import Link from 'next/link'
 
 export default function TaxFilingsPage() {
   const { toast } = useToast()
@@ -23,16 +23,17 @@ export default function TaxFilingsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTaxType, setSelectedTaxType] = useState<TaxType | 'ALL'>('ALL')
   const [selectedStatus, setSelectedStatus] = useState<FilingStatus | 'ALL'>('ALL')
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [selectedFiling, setSelectedFiling] = useState<TaxFilingDto | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
+  const [tableStatusMessage, setTableStatusMessage] = useState<string>('')
 
   const pageSize = 20
 
   // Fetch tax filings
   const fetchTaxFilings = async () => {
+    console.log('[Tax Filings] Starting to fetch data...')
     try {
       setLoading(true)
       const response = await TaxFilingService.getTaxFilings(
@@ -44,19 +45,31 @@ export default function TaxFilingsPage() {
       )
       
       if (response.success) {
+        console.log('[Tax Filings] Successfully loaded data:', response.data.length, 'filings')
         setTaxFilings(response.data)
         setFilteredFilings(response.data)
         setTotalPages(response.pagination.totalPages)
         setTotalCount(response.pagination.totalCount)
+        setTableStatusMessage(`Loaded ${response.data.length} tax filings, page ${response.pagination.currentPage} of ${response.pagination.totalPages}`)
       }
     } catch (error) {
-      console.error('Error fetching tax filings:', error)
+      console.error('[Tax Filings] Error caught, setting empty state:', error)
+      
+      // Set empty state so UI still renders
+      setTaxFilings([])
+      setFilteredFilings([])
+      setTotalPages(1)
+      setTotalCount(0)
+      
       toast({
         variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to load tax filings',
+        title: 'Backend Connection Error',
+        description: 'Cannot load tax filings. Please restart the backend. You can still create new filings using the button above.',
+        duration: 10000,
       })
     } finally {
+      // Always clear loading state so UI renders
+      console.log('[Tax Filings] Setting loading to false')
       setLoading(false)
     }
   }
@@ -111,18 +124,22 @@ export default function TaxFilingsPage() {
         return 'bg-sierra-green text-white'
       case TaxType.ExciseDuty:
         return 'bg-gray-600 text-white'
+      case TaxType.PAYE:
+        return 'bg-sierra-orange text-white'
+      case TaxType.WithholdingTax:
+        return 'bg-purple-600 text-white'
+      case TaxType.PersonalIncomeTax:
+        return 'bg-blue-700 text-white'
+      case TaxType.CorporateIncomeTax:
+        return 'bg-teal-600 text-white'
       default:
         return 'bg-gray-500 text-white'
     }
   }
 
-  if (loading) {
-    return <Loading />
-  }
-
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      {/* Header */}
+      {/* Header - Always visible */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-sierra-blue">Tax Filings</h2>
@@ -130,26 +147,24 @@ export default function TaxFilingsPage() {
             Manage and track tax filings for Sierra Leone compliance
           </p>
         </div>
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogTrigger asChild>
-            <Button className="bg-sierra-blue hover:bg-sierra-blue/90">
-              <Plus className="mr-2 h-4 w-4" />
-              New Tax Filing
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Create New Tax Filing</DialogTitle>
-            </DialogHeader>
-            <TaxFilingForm 
-              onSuccess={() => {
-                setShowCreateDialog(false)
-                fetchTaxFilings()
-              }}
-            />
-          </DialogContent>
-        </Dialog>
+        <Button asChild data-testid="new-tax-filing-button">
+          <Link href="/tax-filings/new">
+            <Plus className="mr-2 h-4 w-4" />
+            New Tax Filing
+          </Link>
+        </Button>
       </div>
+
+      {/* Show loading indicator while fetching */}
+      {loading && (
+        <Card>
+          <CardContent className="py-8">
+            <div className="flex items-center justify-center">
+              <div className="text-muted-foreground">Loading tax filings...</div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card>
@@ -174,7 +189,7 @@ export default function TaxFilingsPage() {
               </div>
             </div>
             <div className="w-full sm:w-48">
-              <Select value={selectedTaxType} onValueChange={(value) => setSelectedTaxType(value as TaxType | 'ALL')}>
+              <Select value={selectedTaxType} onValueChange={(value: string) => setSelectedTaxType(value as TaxType | 'ALL')}>
                 <SelectTrigger>
                   <SelectValue placeholder="Tax Type" />
                 </SelectTrigger>
@@ -184,11 +199,15 @@ export default function TaxFilingsPage() {
                   <SelectItem value={TaxType.GST}>GST</SelectItem>
                   <SelectItem value={TaxType.PayrollTax}>Payroll Tax</SelectItem>
                   <SelectItem value={TaxType.ExciseDuty}>Excise Duty</SelectItem>
+                  <SelectItem value={TaxType.PAYE}>PAYE</SelectItem>
+                  <SelectItem value={TaxType.WithholdingTax}>Withholding Tax</SelectItem>
+                  <SelectItem value={TaxType.PersonalIncomeTax}>Personal Income Tax</SelectItem>
+                  <SelectItem value={TaxType.CorporateIncomeTax}>Corporate Income Tax</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="w-full sm:w-48">
-              <Select value={selectedStatus} onValueChange={(value) => setSelectedStatus(value as FilingStatus | 'ALL')}>
+              <Select value={selectedStatus} onValueChange={(value: string) => setSelectedStatus(value as FilingStatus | 'ALL')}>
                 <SelectTrigger>
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -345,7 +364,7 @@ export default function TaxFilingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium">Client</label>
-                  <p className="text-sm text-muted-foreground">{selectedFiling.clientName} ({selectedFiling.clientNumber})</p>
+                  <p className="text-sm text-muted-foreground">{selectedFiling.clientName}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Tax Type</label>
@@ -386,20 +405,20 @@ export default function TaxFilingsPage() {
               <div className="grid grid-cols-3 gap-4 text-center">
                 <Card>
                   <CardContent className="pt-6">
-                    <div className="text-2xl font-bold text-sierra-blue">{selectedFiling.documentCount}</div>
+                    <div className="text-2xl font-bold text-sierra-blue">{selectedFiling.documentCount || 0}</div>
                     <p className="text-sm text-muted-foreground">Documents</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-6">
-                    <div className="text-2xl font-bold text-sierra-gold">{selectedFiling.paymentCount}</div>
+                    <div className="text-2xl font-bold text-sierra-gold">{selectedFiling.paymentCount || 0}</div>
                     <p className="text-sm text-muted-foreground">Payments</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-6">
                     <div className="text-2xl font-bold text-sierra-green">
-                      {selectedFiling.totalPaid.toLocaleString('en-US', {
+                      {(selectedFiling.totalPaid || 0).toLocaleString('en-US', {
                         style: 'currency',
                         currency: 'SLE'
                       })}
@@ -412,6 +431,16 @@ export default function TaxFilingsPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Screen reader status announcements */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {tableStatusMessage}
+      </div>
     </div>
   )
 }

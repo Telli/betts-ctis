@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -62,6 +62,17 @@ export default function AfricellMoneyForm({
       description: taxType && taxYear ? `${taxType} payment for ${taxYear}` : ''
     }
   })
+
+  useEffect(() => {
+    form.setValue('amount', amount)
+  }, [amount, form])
+
+  useEffect(() => {
+    const currentDescription = form.getValues('description')
+    if (!currentDescription && taxType && taxYear) {
+      form.setValue('description', `${taxType} payment for ${taxYear}`)
+    }
+  }, [taxType, taxYear, form])
 
   const formatPhoneNumber = (phone: string): string => {
     // Remove all non-digit characters

@@ -1,0 +1,535 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using BettsTax.Data;
+using BettsTax.Data.Models;
+using BettsTax.Core.Services;
+using BettsTax.Shared;
+
+// Alias to resolve ambiguity  
+using DataWorkflowTemplate = BettsTax.Data.WorkflowTemplate;
+
+namespace BettsTax.Core.Services
+{
+    /// <summary>
+    /// Implementation of workflow automation engine
+    /// </summary>
+    public class WorkflowEngineService : IWorkflowEngineService
+    {
+        private readonly ApplicationDbContext _context;
+        private readonly ILogger<WorkflowEngineService> _logger;
+        private readonly IWorkflowRuleBuilderService _ruleBuilder;
+
+        public WorkflowEngineService(
+            ApplicationDbContext context,
+            ILogger<WorkflowEngineService> logger,
+            IWorkflowRuleBuilderService ruleBuilder)
+        {
+            _context = context;
+            _logger = logger;
+            _ruleBuilder = ruleBuilder;
+        }
+
+        public async Task<Workflow> CreateWorkflowAsync(Workflow workflow)
+        {
+            // Validate workflow before saving
+            var validation = await ValidateWorkflowAsync(workflow);
+            if (!validation.IsValid)
+            {
+                throw new ArgumentException($"Invalid workflow: {string.Join(", ", validation.Errors)}");
+            }
+
+            workflow.CreatedAt = DateTime.UtcNow;
+            _context.Workflows.Add(workflow);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Created workflow {WorkflowId} - {WorkflowName}", workflow.Id, workflow.Name);
+            return workflow;
+        }
+
+        public async Task<Workflow> UpdateWorkflowAsync(Guid workflowId, Workflow workflow)
+        {
+            var existingWorkflow = await _context.Workflows.FindAsync(workflowId);
+            if (existingWorkflow == null)
+            {
+                throw new KeyNotFoundException($"Workflow {workflowId} not found");
+            }
+
+            // Validate updated workflow
+            var validation = await ValidateWorkflowAsync(workflow);
+            if (!validation.IsValid)
+            {
+                throw new ArgumentException($"Invalid workflow: {string.Join(", ", validation.Errors)}");
+            }
+
+            existingWorkflow.Name = workflow.Name;
+            existingWorkflow.Description = workflow.Description;
+            existingWorkflow.Type = workflow.Type;
+            existingWorkflow.Trigger = workflow.Trigger;
+            existingWorkflow.IsActive = workflow.IsActive;
+            existingWorkflow.Priority = workflow.Priority;
+            existingWorkflow.TriggerConditions = workflow.TriggerConditions;
+            existingWorkflow.Steps = workflow.Steps;
+            existingWorkflow.UpdatedAt = DateTime.UtcNow;
+            existingWorkflow.UpdatedBy = workflow.UpdatedBy;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Updated workflow {WorkflowId} - {WorkflowName}", workflowId, workflow.Name);
+            return existingWorkflow;
+        }
+
+        public async Task DeleteWorkflowAsync(Guid workflowId)
+        {
+            var workflow = await _context.Workflows.FindAsync(workflowId);
+            if (workflow == null)
+            {
+                throw new KeyNotFoundException($"Workflow {workflowId} not found");
+            }
+
+            _context.Workflows.Remove(workflow);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Deleted workflow {WorkflowId} - {WorkflowName}", workflowId, workflow.Name);
+        }
+
+        public async Task<Workflow?> GetWorkflowAsync(Guid workflowId)
+        {
+            return await _context.Workflows.FindAsync(workflowId);
+        }
+
+        public async Task<IEnumerable<Workflow>> GetWorkflowsAsync(WorkflowType? type = null, bool? isActive = null)
+        {
+            var query = _context.Workflows.AsQueryable();
+
+            if (type.HasValue)
+            {
+                query = query.Where(w => w.Type == type.Value);
+            }
+
+            if (isActive.HasValue)
+            {
+                query = query.Where(w => w.IsActive == isActive.Value);
+            }
+
+            return await query.OrderBy(w => w.Name).ToListAsync();
+        }
+
+        public async Task<WorkflowExecution> TriggerWorkflowAsync(Guid workflowId, Dictionary<string, object> contextData)
+        {
+            var workflow = await _context.Workflows.FindAsync(workflowId);
+            if (workflow == null)
+            {
+                throw new KeyNotFoundException($"Workflow {workflowId} not found");
+            }
+
+            if (!workflow.IsActive)
+            {
+                throw new InvalidOperationException($"Workflow {workflowId} is not active");
+            }
+
+            var execution = new WorkflowExecution
+            {
+                WorkflowId = workflowId,
+                Status = WorkflowExecutionStatus.Pending,
+                ContextData = JsonSerializer.Serialize(contextData),
+                StartedAt = DateTime.UtcNow
+            };
+
+            _context.WorkflowExecutions.Add(execution);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Triggered workflow execution {ExecutionId} for workflow {WorkflowId}",
+                execution.Id, workflowId);
+
+            // Start execution asynchronously
+            _ = ExecuteWorkflowAsync(execution.Id);
+
+            return execution;
+        }
+
+        public async Task<IEnumerable<Workflow>> EvaluateTriggersAsync(string eventType, Dictionary<string, object> eventData)
+        {
+            var workflows = await _context.Workflows
+                .Where(w => w.IsActive && w.Trigger == WorkflowTrigger.EventBased)
+                .ToListAsync();
+
+            var matchingWorkflows = new List<Workflow>();
+
+            foreach (var workflow in workflows)
+            {
+                try
+                {
+                    var conditions = JsonSerializer.Deserialize<Dictionary<string, object>>(workflow.TriggerConditions);
+                    if (conditions != null && EvaluateConditions(conditions, eventData))
+                    {
+                        matchingWorkflows.Add(workflow);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error evaluating trigger conditions for workflow {WorkflowId}", workflow.Id);
+                }
+            }
+
+            return matchingWorkflows.OrderByDescending(w => w.Priority);
+        }
+
+        public async Task ExecuteWorkflowStepAsync(Guid executionId, int stepIndex)
+        {
+            var execution = await _context.WorkflowExecutions
+                .Include(e => e.Workflow)
+                .FirstOrDefaultAsync(e => e.Id == executionId);
+
+            if (execution == null)
+            {
+                throw new KeyNotFoundException($"Workflow execution {executionId} not found");
+            }
+
+            if (execution.Status != WorkflowExecutionStatus.Running)
+            {
+                return; // Already completed or failed
+            }
+
+            var steps = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(execution.Workflow.Steps);
+            if (steps == null || stepIndex >= steps.Count)
+            {
+                // Workflow completed
+                execution.Status = WorkflowExecutionStatus.Completed;
+                execution.CompletedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return;
+            }
+
+            var step = steps[stepIndex];
+            var stepType = (WorkflowStepType)Convert.ToInt32(step["type"]);
+
+            try
+            {
+                switch (stepType)
+                {
+                    case WorkflowStepType.Condition:
+                        await ExecuteConditionStepAsync(execution, step);
+                        break;
+                    case WorkflowStepType.Action:
+                        await ExecuteActionStepAsync(execution, step);
+                        break;
+                    case WorkflowStepType.Approval:
+                        await ExecuteApprovalStepAsync(execution, step);
+                        break;
+                    case WorkflowStepType.Notification:
+                        await ExecuteNotificationStepAsync(execution, step);
+                        break;
+                    case WorkflowStepType.Integration:
+                        await ExecuteIntegrationStepAsync(execution, step);
+                        break;
+                    case WorkflowStepType.Delay:
+                        await ExecuteDelayStepAsync(execution, step);
+                        break;
+                }
+
+                // Move to next step
+                await ExecuteWorkflowStepAsync(executionId, stepIndex + 1);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error executing workflow step {StepIndex} for execution {ExecutionId}", stepIndex, executionId);
+                execution.Status = WorkflowExecutionStatus.Failed;
+                execution.ErrorMessage = ex.Message;
+                execution.CompletedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+        }
+
+        public async Task<WorkflowExecution?> GetWorkflowExecutionAsync(Guid executionId)
+        {
+            return await _context.WorkflowExecutions
+                .Include(e => e.Workflow)
+                .FirstOrDefaultAsync(e => e.Id == executionId);
+        }
+
+        public async Task<IEnumerable<WorkflowExecution>> GetWorkflowExecutionsAsync(Guid workflowId, int page = 1, int pageSize = 20)
+        {
+            return await _context.WorkflowExecutions
+                .Where(e => e.WorkflowId == workflowId)
+                .OrderByDescending(e => e.StartedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+        }
+
+        public async Task<Workflow> CreateWorkflowFromTemplateAsync(Guid templateId, string name, Dictionary<string, object> parameters)
+        {
+            var template = await _context.WorkflowTemplates.FindAsync(templateId);
+            if (template == null)
+            {
+                throw new KeyNotFoundException($"Workflow template {templateId} not found");
+            }
+
+            var templateDefinition = JsonSerializer.Deserialize<Dictionary<string, object>>(template.TemplateDefinition);
+            if (templateDefinition == null)
+            {
+                throw new InvalidOperationException($"Invalid template definition for template {templateId}");
+            }
+
+            // Apply parameters to template
+            var workflowDefinition = ApplyTemplateParameters(templateDefinition, parameters);
+
+            var workflow = new Workflow
+            {
+                Name = name,
+                Description = template.Description,
+                Type = template.Type,
+                Trigger = (WorkflowTrigger)Convert.ToInt32(workflowDefinition["trigger"]),
+                TriggerConditions = JsonSerializer.Serialize(workflowDefinition["triggerConditions"]),
+                Steps = JsonSerializer.Serialize(workflowDefinition["steps"])
+            };
+
+            return await CreateWorkflowAsync(workflow);
+        }
+
+        public async Task<IEnumerable<DataWorkflowTemplate>> GetWorkflowTemplatesAsync(bool includeSystemTemplates = true)
+        {
+            var query = _context.WorkflowTemplates.AsQueryable();
+
+            if (!includeSystemTemplates)
+            {
+                query = query.Where(t => !t.IsSystemTemplate);
+            }
+
+            return await query.OrderBy(t => t.Name).ToListAsync();
+        }
+
+        public async Task<ValidationResult> ValidateWorkflowAsync(Workflow workflow)
+        {
+            var result = new ValidationResult { IsValid = true };
+
+            if (string.IsNullOrWhiteSpace(workflow.Name))
+            {
+                result.Errors.Add("Workflow name is required");
+                result.IsValid = false;
+            }
+
+            if (string.IsNullOrWhiteSpace(workflow.Steps) || workflow.Steps == "[]")
+            {
+                result.Errors.Add("Workflow must have at least one step");
+                result.IsValid = false;
+            }
+
+            // Validate JSON structure
+            try
+            {
+                JsonSerializer.Deserialize<List<Dictionary<string, object>>>(workflow.Steps);
+            }
+            catch
+            {
+                result.Errors.Add("Invalid workflow steps JSON");
+                result.IsValid = false;
+            }
+
+            try
+            {
+                JsonSerializer.Deserialize<Dictionary<string, object>>(workflow.TriggerConditions);
+            }
+            catch
+            {
+                result.Errors.Add("Invalid trigger conditions JSON");
+                result.IsValid = false;
+            }
+
+            return result;
+        }
+
+        private async Task ExecuteWorkflowAsync(Guid executionId)
+        {
+            var execution = await _context.WorkflowExecutions.FindAsync(executionId);
+            if (execution == null) return;
+
+            execution.Status = WorkflowExecutionStatus.Running;
+            await _context.SaveChangesAsync();
+
+            await ExecuteWorkflowStepAsync(executionId, 0);
+        }
+
+        private bool EvaluateConditions(Dictionary<string, object> conditions, Dictionary<string, object> eventData)
+        {
+            // Simple condition evaluation - can be extended for complex logic
+            foreach (var condition in conditions)
+            {
+                if (eventData.TryGetValue(condition.Key, out var eventValue))
+                {
+                    if (!condition.Value.Equals(eventValue))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private async Task ExecuteConditionStepAsync(WorkflowExecution execution, Dictionary<string, object> step)
+        {
+            // Implementation for condition evaluation
+            var conditionExpression = step["conditionExpression"]?.ToString();
+            if (string.IsNullOrEmpty(conditionExpression))
+            {
+                throw new InvalidOperationException("Condition expression is required");
+            }
+
+            // Evaluate condition and determine next step
+            var contextData = JsonSerializer.Deserialize<Dictionary<string, object>>(execution.ContextData);
+            var result = EvaluateConditionExpression(conditionExpression, contextData ?? new Dictionary<string, object>());
+
+            // Update execution results
+            var results = JsonSerializer.Deserialize<Dictionary<string, object>>(execution.ExecutionResults) ?? new Dictionary<string, object>();
+            results[$"step_{step["id"]}"] = result;
+            execution.ExecutionResults = JsonSerializer.Serialize(results);
+            await _context.SaveChangesAsync();
+        }
+
+        private async Task ExecuteActionStepAsync(WorkflowExecution execution, Dictionary<string, object> step)
+        {
+            // Implementation for action execution
+            var actionType = (WorkflowActionType)Convert.ToInt32(step["actionType"]);
+
+            switch (actionType)
+            {
+                case WorkflowActionType.UpdateRecord:
+                    await ExecuteUpdateRecordActionAsync(execution, step);
+                    break;
+                case WorkflowActionType.SendNotification:
+                    await ExecuteSendNotificationActionAsync(execution, step);
+                    break;
+                case WorkflowActionType.CreateTask:
+                    await ExecuteCreateTaskActionAsync(execution, step);
+                    break;
+                // Add other action types as needed
+                default:
+                    throw new NotImplementedException($"Action type {actionType} not implemented");
+            }
+        }
+
+        private async Task ExecuteApprovalStepAsync(WorkflowExecution execution, Dictionary<string, object> step)
+        {
+            // Implementation for approval step
+            execution.Status = WorkflowExecutionStatus.Pending; // Wait for approval
+            await _context.SaveChangesAsync();
+        }
+
+        private async Task ExecuteNotificationStepAsync(WorkflowExecution execution, Dictionary<string, object> step)
+        {
+            // Implementation for notification step
+            var notificationType = step["notificationType"]?.ToString();
+            var recipients = step["recipients"]?.ToString();
+
+            // Send notification logic here
+            _logger.LogInformation("Sending {NotificationType} notification to {Recipients}",
+                notificationType, recipients);
+        }
+
+        private async Task ExecuteIntegrationStepAsync(WorkflowExecution execution, Dictionary<string, object> step)
+        {
+            // Implementation for integration step (webhooks, API calls, etc.)
+            var integrationType = step["integrationType"]?.ToString();
+            var endpoint = step["endpoint"]?.ToString();
+
+            // Integration logic here
+            _logger.LogInformation("Executing {IntegrationType} integration to {Endpoint}",
+                integrationType, endpoint);
+        }
+
+        private async Task ExecuteDelayStepAsync(WorkflowExecution execution, Dictionary<string, object> step)
+        {
+            // Implementation for delay step
+            var delayMinutes = Convert.ToInt32(step["delayMinutes"]);
+            await Task.Delay(TimeSpan.FromMinutes(delayMinutes));
+        }
+
+        private bool EvaluateConditionExpression(string expression, Dictionary<string, object> contextData)
+        {
+            // Simple expression evaluation - can be extended with a proper expression engine
+            return true; // Placeholder implementation
+        }
+
+        private async Task ExecuteUpdateRecordActionAsync(WorkflowExecution execution, Dictionary<string, object> step)
+        {
+            // Implementation for updating records
+            var entityType = step["entityType"]?.ToString();
+            var fieldUpdates = step["fieldUpdates"] as Dictionary<string, object>;
+
+            // Record update logic here
+            _logger.LogInformation("Updating {EntityType} record with {FieldCount} field updates",
+                entityType, fieldUpdates?.Count ?? 0);
+        }
+
+        private async Task ExecuteSendNotificationActionAsync(WorkflowExecution execution, Dictionary<string, object> step)
+        {
+            // Implementation for sending notifications
+            var notificationType = step["notificationType"]?.ToString();
+            var message = step["message"]?.ToString();
+
+            // Notification sending logic here
+            _logger.LogInformation("Sending {NotificationType} notification: {Message}",
+                notificationType, message);
+        }
+
+        private async Task ExecuteCreateTaskActionAsync(WorkflowExecution execution, Dictionary<string, object> step)
+        {
+            // Implementation for creating tasks
+            var taskTitle = step["taskTitle"]?.ToString();
+            var assignee = step["assignee"]?.ToString();
+
+            // Task creation logic here
+            _logger.LogInformation("Creating task '{TaskTitle}' assigned to {Assignee}",
+                taskTitle, assignee);
+        }
+
+        private Dictionary<string, object> ApplyTemplateParameters(Dictionary<string, object> template, Dictionary<string, object> parameters)
+        {
+            // Simple parameter replacement - can be extended for complex templating
+            var result = new Dictionary<string, object>(template);
+
+            foreach (var param in parameters)
+            {
+                // Replace parameter placeholders in the template
+                ReplaceParameterInObject(result, param.Key, param.Value);
+            }
+
+            return result;
+        }
+
+        private void ReplaceParameterInObject(object obj, string paramName, object paramValue)
+        {
+            // Recursive parameter replacement logic
+            if (obj is Dictionary<string, object> dict)
+            {
+                foreach (var key in dict.Keys.ToList())
+                {
+                    if (dict[key] is string str && str.Contains($"{{{paramName}}}"))
+                    {
+                        dict[key] = str.Replace($"{{{paramName}}}", paramValue.ToString());
+                    }
+                    else
+                    {
+                        ReplaceParameterInObject(dict[key], paramName, paramValue);
+                    }
+                }
+            }
+            else if (obj is List<object> list)
+            {
+                foreach (var item in list)
+                {
+                    ReplaceParameterInObject(item, paramName, paramValue);
+                }
+            }
+        }
+    }
+}

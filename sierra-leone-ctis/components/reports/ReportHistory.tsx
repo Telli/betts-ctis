@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { cn } from '@/lib/utils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +42,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface ReportHistoryProps {
   reports: ReportRequest[];
@@ -49,6 +57,15 @@ interface ReportHistoryProps {
   onDelete: (reportId: string) => void;
   onPreview?: (report: ReportRequest) => void;
   onRefresh?: () => void;
+  page?: number;
+  pageSize?: number;
+  hasMore?: boolean;
+  onPageChange?: (page: number) => void;
+  totalPages?: number;
+  totalItems?: number;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+  onSortChange?: (sortBy: string, sortDir: 'asc' | 'desc') => void;
 }
 
 export default function ReportHistory({
@@ -57,7 +74,16 @@ export default function ReportHistory({
   onDownload,
   onDelete,
   onPreview,
-  onRefresh
+  onRefresh,
+  page = 1,
+  pageSize = 20,
+  hasMore = false,
+  onPageChange,
+  totalPages,
+  totalItems,
+  sortBy = 'requestedAt',
+  sortDir = 'desc',
+  onSortChange
 }: ReportHistoryProps) {
   const { toast } = useToast();
   const [selectedReport, setSelectedReport] = useState<ReportRequest | null>(null);
@@ -188,15 +214,42 @@ export default function ReportHistory({
         <div>
           <h3 className="text-lg font-medium">Report History</h3>
           <p className="text-sm text-muted-foreground">
-            {reports.length} report{reports.length !== 1 ? 's' : ''} found
+            {typeof totalItems === 'number' ? `${totalItems} total` : `${reports.length} found`}
           </p>
         </div>
-        {onRefresh && (
-          <Button variant="outline" size="sm" onClick={onRefresh}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {onSortChange && (
+            <>
+              <Select value={sortBy} onValueChange={(value) => onSortChange(value, sortDir)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="requestedAt">Requested Date</SelectItem>
+                  <SelectItem value="completedAt">Completed Date</SelectItem>
+                  <SelectItem value="status">Status</SelectItem>
+                  <SelectItem value="type">Type</SelectItem>
+                  <SelectItem value="fileSize">File Size</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sortDir} onValueChange={(value: 'asc' | 'desc') => onSortChange(sortBy, value)}>
+                <SelectTrigger className="w-24">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="asc">Asc</SelectItem>
+                  <SelectItem value="desc">Desc</SelectItem>
+                </SelectContent>
+              </Select>
+            </>
+          )}
+          {onRefresh && (
+            <Button variant="outline" size="sm" onClick={onRefresh}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Reports List */}
@@ -321,6 +374,29 @@ export default function ReportHistory({
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* Pagination */}
+      <div className="flex items-center justify-between pt-2">
+        <div className="text-xs text-muted-foreground">Page {page}{typeof totalPages === 'number' ? ` of ${Math.max(totalPages, 1)}` : ''} · Showing up to {pageSize} per page</div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange && onPageChange(Math.max(1, page - 1))}
+            disabled={page <= 1}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange && onPageChange(page + 1)}
+            disabled={typeof totalPages === 'number' ? page >= totalPages : !hasMore}
+          >
+            Next
+          </Button>
+        </div>
       </div>
 
       {/* Report Details Dialog */}

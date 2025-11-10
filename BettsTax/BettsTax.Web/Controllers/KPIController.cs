@@ -1,265 +1,279 @@
-using BettsTax.Core.DTOs.KPI;
 using BettsTax.Core.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Identity;
+using BettsTax.Data;
+using BettsTax.Core.DTOs.KPI;
 using System.Security.Claims;
 
-namespace BettsTax.Web.Controllers;
-
-[ApiController]
-[Route("api/[controller]")]
-[Authorize]
-public class KPIController : ControllerBase
+namespace BettsTax.Web.Controllers
 {
-    private readonly IKPIService _kpiService;
-    private readonly ILogger<KPIController> _logger;
-
-    public KPIController(IKPIService kpiService, ILogger<KPIController> logger)
+    [ApiController]
+    [Route("api/kpi-simple")] // distinct path to avoid routing conflicts with legacy KPI service (if any)
+    public class KpiController : ControllerBase
     {
-        _kpiService = kpiService;
-        _logger = logger;
-    }
+        private readonly IKpiComputationService _kpi;
+        private readonly BettsTax.Core.Services.INotificationService _notifications;
+    private readonly ILogger<KpiController> _logger;
+    private readonly UserManager<ApplicationUser> _userManager;
 
-    /// <summary>
-    /// Get internal KPIs for firm administrators
-    /// </summary>
-    [HttpGet("internal")]
-    [Authorize(Roles = "Admin,SystemAdmin")]
-    public async Task<ActionResult<InternalKPIDto>> GetInternalKPIs(
-        [FromQuery] DateTime? fromDate = null,
-        [FromQuery] DateTime? toDate = null)
-    {
-        try
+        public KpiController(
+            IKpiComputationService kpi,
+            BettsTax.Core.Services.INotificationService notifications,
+            UserManager<ApplicationUser> userManager,
+            ILogger<KpiController> logger)
         {
-            var kpis = await _kpiService.GetInternalKPIsAsync(fromDate, toDate);
-            return Ok(kpis);
+            _kpi = kpi;
+            _notifications = notifications;
+            _userManager = userManager;
+            _logger = logger;
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving internal KPIs");
-            return StatusCode(500, "An error occurred while retrieving KPI data");
-        }
-    }
 
-    /// <summary>
-    /// Get KPI trends over time for administrators
-    /// </summary>
-    [HttpGet("internal/trends")]
-    [Authorize(Roles = "Admin,SystemAdmin")]
-    public async Task<ActionResult<List<InternalKPIDto>>> GetKPITrends(
-        [FromQuery] DateTime fromDate,
-        [FromQuery] DateTime toDate,
-        [FromQuery] string period = "Monthly")
-    {
-        try
+        [HttpGet("admin")]
+        [Authorize(Roles = "Admin,SystemAdmin")]
+        public async Task<IActionResult> GetAdmin()
         {
-            var trends = await _kpiService.GetKPITrendsAsync(fromDate, toDate, period);
-            return Ok(trends);
+            var metrics = await _kpi.GetCurrentAsync();
+            await GenerateAlertsIfNeeded(metrics);
+            return Ok(metrics);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving KPI trends from {FromDate} to {ToDate}", fromDate, toDate);
-            return StatusCode(500, "An error occurred while retrieving KPI trend data");
-        }
-    }
 
-    /// <summary>
-    /// Get client-specific KPIs (accessible by client or their associates)
-    /// </summary>
-    [HttpGet("client/{clientId}")]
-    public async Task<ActionResult<ClientKPIDto>> GetClientKPIs(
-        int clientId,
-        [FromQuery] DateTime? fromDate = null,
-        [FromQuery] DateTime? toDate = null)
-    {
-        try
+        [HttpGet("client")]
+        [Authorize(Roles = "Client,Associate,Admin,SystemAdmin")]
+        public async Task<IActionResult> GetClient()
         {
-            var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
-            
-            // Authorization check: Admin/SystemAdmin can access any client, 
-            // Clients can only access their own data
-            if (userRole != "Admin" && userRole != "SystemAdmin")
+            var m = await _kpi.GetCurrentAsync();
+            return Ok(new { m.GeneratedAtUtc, m.ClientComplianceRate, m.TaxFilingTimeliness, m.PaymentCompletionRate, m.DocumentSubmissionCompliance, m.ClientEngagementRate });
+        }
+
+        private async Task GenerateAlertsIfNeeded(Core.DTOs.KpiMetricsDto m)
+        {
+            var alerts = new List<string>();
+            if (m.ComplianceRateBelowThreshold) alerts.Add($"Compliance rate dropped to {m.ClientComplianceRate}%");
+            if (m.FilingTimelinessBelowThreshold) alerts.Add($"Filing timeliness {m.TaxFilingTimeliness}%");
+            if (m.PaymentCompletionBelowThreshold) alerts.Add($"Payment completion {m.PaymentCompletionRate}%");
+            if (m.DocumentSubmissionBelowThreshold) alerts.Add($"Document submission {m.DocumentSubmissionCompliance}%");
+            if (m.EngagementBelowThreshold) alerts.Add($"Engagement {m.ClientEngagementRate}%");
+            if (alerts.Count == 0) return;
+            // Fetch admin + system admin users once
+            var admins = _userManager.Users
+                .Where(u => u.LockoutEnd == null || u.LockoutEnd < DateTimeOffset.UtcNow) // active
+                .ToList(); // materialize to iterate and check roles asynchronously
+            foreach (var user in admins)
             {
-                var userClientId = User.FindFirst("ClientId")?.Value;
-                if (userClientId != clientId.ToString())
+                try
                 {
-                    return Forbid("You can only access your own KPI data");
+                    var roles = await _userManager.GetRolesAsync(user);
+                    if (!roles.Contains("Admin") && !roles.Contains("SystemAdmin")) continue;
+                    foreach (var msg in alerts)
+                        await _notifications.CreateAsync(user.Id, msg);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed creating KPI notifications for user {UserId}", user.Id);
                 }
             }
-
-            var kpis = await _kpiService.GetClientKPIsAsync(clientId, fromDate, toDate);
-            return Ok(kpis);
-        }
-        catch (ArgumentException ex)
-        {
-            return NotFound(ex.Message);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving client KPIs for client {ClientId}", clientId);
-            return StatusCode(500, "An error occurred while retrieving client KPI data");
         }
     }
 
-    /// <summary>
-    /// Get current user's KPI data (for client dashboard)
-    /// </summary>
-    [HttpGet("my-kpis")]
-    [Authorize(Roles = "Client")]
-    public async Task<ActionResult<ClientKPIDto>> GetMyKPIs(
-        [FromQuery] DateTime? fromDate = null,
-        [FromQuery] DateTime? toDate = null)
+    // New KPI controller with expected frontend endpoints
+    [ApiController]
+    [Route("api/kpi")]
+    public class KPIController : ControllerBase
     {
-        try
+        private readonly IKPIService _kpiService;
+        private readonly ILogger<KPIController> _logger;
+        private readonly UserManager<ApplicationUser> _userManager;
+
+        public KPIController(
+            IKPIService kpiService,
+            UserManager<ApplicationUser> userManager,
+            ILogger<KPIController> logger)
         {
-            var clientIdClaim = User.FindFirst("ClientId")?.Value;
-            if (!int.TryParse(clientIdClaim, out var clientId))
+            _kpiService = kpiService;
+            _userManager = userManager;
+            _logger = logger;
+        }
+
+        [HttpGet("internal")]
+        [Authorize(Roles = "Admin,SystemAdmin")]
+        public async Task<IActionResult> GetInternalKPIs(DateTime? fromDate = null, DateTime? toDate = null)
+        {
+            try
             {
-                return BadRequest("Client ID not found in token");
+                var kpis = await _kpiService.GetInternalKPIsAsync(fromDate, toDate);
+                return Ok(kpis);
             }
-
-            var kpis = await _kpiService.GetClientKPIsAsync(clientId, fromDate, toDate);
-            return Ok(kpis);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving KPIs for current user");
-            return StatusCode(500, "An error occurred while retrieving your KPI data");
-        }
-    }
-
-    /// <summary>
-    /// Get KPI alerts for administrators or specific client
-    /// </summary>
-    [HttpGet("alerts")]
-    public async Task<ActionResult<List<KPIAlertDto>>> GetKPIAlerts([FromQuery] int? clientId = null)
-    {
-        try
-        {
-            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
-            
-            // Non-admin users can only see their own alerts
-            if (userRole != "Admin" && userRole != "SystemAdmin")
+            catch (Exception ex)
             {
-                var userClientId = User.FindFirst("ClientId")?.Value;
-                if (int.TryParse(userClientId, out var parsedClientId))
+                _logger.LogError(ex, "Error fetching internal KPIs");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        [HttpGet("client/{clientId}")]
+        [Authorize(Roles = "Admin,SystemAdmin,Associate")]
+        public async Task<IActionResult> GetClientKPIs(int clientId, DateTime? fromDate = null, DateTime? toDate = null)
+        {
+            try
+            {
+                var clientKpis = await _kpiService.GetClientKPIsAsync(clientId, fromDate, toDate);
+                return Ok(clientKpis);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching client KPIs for client {ClientId}", clientId);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        [HttpGet("my-kpis")]
+        [Authorize(Roles = "Client")]
+        public async Task<IActionResult> GetMyKPIs(DateTime? fromDate = null, DateTime? toDate = null)
+        {
+            try
+            {
+                var user = await _userManager.GetUserAsync(User);
+                if (user?.ClientProfile == null)
                 {
-                    clientId = parsedClientId;
+                    return Unauthorized("User not associated with a client");
                 }
+
+                var clientKpis = await _kpiService.GetClientKPIsAsync(user.ClientProfile.Id, fromDate, toDate);
+                return Ok(clientKpis);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching my KPIs");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        [HttpGet("internal/trends")]
+        [Authorize(Roles = "Admin,SystemAdmin")]
+        public async Task<IActionResult> GetKpiTrends(DateTime fromDate, DateTime toDate, string period = "Monthly")
+        {
+            try
+            {
+                if (toDate == default)
+                {
+                    toDate = DateTime.UtcNow;
+                }
+
+                if (fromDate == default)
+                {
+                    fromDate = toDate.AddMonths(-3);
+                }
+
+                if (toDate < fromDate)
+                {
+                    (fromDate, toDate) = (toDate, fromDate);
+                }
+
+                var trends = await _kpiService.GetKPITrendsAsync(fromDate, toDate, period);
+                return Ok(trends);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching KPI trends between {From} and {To}", fromDate, toDate);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        [HttpGet("alerts")]
+        [Authorize]
+        public async Task<IActionResult> GetKpiAlerts(int? clientId = null)
+        {
+            try
+            {
+                var alerts = await _kpiService.GetKPIAlertsAsync(clientId);
+                return Ok(alerts);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching KPI alerts");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        [HttpPut("alerts/{alertId}/read")]
+        [Authorize]
+        public async Task<IActionResult> MarkAlertAsRead(int alertId)
+        {
+            try
+            {
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "system";
+                await _kpiService.MarkAlertAsReadAsync(alertId, userId);
+                return NoContent();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error marking KPI alert {AlertId} as read", alertId);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        [HttpPost("alerts")]
+        [Authorize(Roles = "Admin,SystemAdmin,Associate")]
+        public async Task<IActionResult> CreateAlert([FromBody] KPIAlertDto alert)
+        {
+            if (alert == null)
+            {
+                return BadRequest("Alert payload is required");
             }
 
-            var alerts = await _kpiService.GetKPIAlertsAsync(clientId);
-            return Ok(alerts);
+            try
+            {
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                await _kpiService.CreateKPIAlertAsync(alert, userId);
+                return Ok(alert);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating KPI alert");
+                return StatusCode(500, "Internal server error");
+            }
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving KPI alerts for client {ClientId}", clientId);
-            return StatusCode(500, "An error occurred while retrieving KPI alerts");
-        }
-    }
 
-    /// <summary>
-    /// Update KPI thresholds (admin only)
-    /// </summary>
-    [HttpPut("thresholds")]
-    [Authorize(Roles = "Admin,SystemAdmin")]
-    public async Task<ActionResult> UpdateKPIThresholds([FromBody] KPIThresholdDto thresholds)
-    {
-        try
+        [HttpPut("thresholds")]
+        [Authorize(Roles = "Admin,SystemAdmin")]
+        public async Task<IActionResult> UpdateThresholds([FromBody] KPIThresholdDto thresholds)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
 
-            await _kpiService.UpdateKPIThresholdsAsync(thresholds);
-            
-            _logger.LogInformation("KPI thresholds updated by user {UserId}", 
-                User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
-                
-            return Ok(new { message = "KPI thresholds updated successfully" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error updating KPI thresholds");
-            return StatusCode(500, "An error occurred while updating KPI thresholds");
-        }
-    }
-
-    /// <summary>
-    /// Refresh all KPI data (admin only)
-    /// </summary>
-    [HttpPost("refresh")]
-    [Authorize(Roles = "Admin,SystemAdmin")]
-    public async Task<ActionResult> RefreshKPIData()
-    {
-        try
-        {
-            var success = await _kpiService.RefreshKPIDataAsync();
-            
-            if (success)
+            try
             {
-                _logger.LogInformation("KPI data refresh initiated by user {UserId}", 
-                    User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
-                    
-                return Ok(new { message = "KPI data refresh completed successfully" });
+                await _kpiService.UpdateKPIThresholdsAsync(thresholds);
+                return Ok(new { success = true });
             }
-            else
+            catch (Exception ex)
             {
-                return StatusCode(500, "KPI data refresh failed");
+                _logger.LogError(ex, "Error updating KPI thresholds");
+                return StatusCode(500, "Internal server error");
             }
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error during KPI data refresh");
-            return StatusCode(500, "An error occurred while refreshing KPI data");
-        }
-    }
 
-    /// <summary>
-    /// Mark a KPI alert as read
-    /// </summary>
-    [HttpPut("alerts/{alertId}/read")]
-    public async Task<ActionResult> MarkAlertAsRead(int alertId)
-    {
-        try
+        [HttpPost("refresh")]
+        [Authorize(Roles = "Admin,SystemAdmin")]
+        public async Task<IActionResult> RefreshKpis()
         {
-            await _kpiService.MarkAlertAsReadAsync(alertId);
-            return Ok(new { message = "Alert marked as read" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error marking alert {AlertId} as read", alertId);
-            return StatusCode(500, "An error occurred while updating the alert");
-        }
-    }
-
-    /// <summary>
-    /// Create a manual KPI alert (admin only)
-    /// </summary>
-    [HttpPost("alerts")]
-    [Authorize(Roles = "Admin,SystemAdmin")]
-    public async Task<ActionResult> CreateKPIAlert([FromBody] KPIAlertDto alert)
-    {
-        try
-        {
-            if (!ModelState.IsValid)
+            try
             {
-                return BadRequest(ModelState);
+                var success = await _kpiService.RefreshKPIDataAsync();
+                return Ok(new { success });
             }
-
-            await _kpiService.CreateKPIAlertAsync(alert);
-            
-            _logger.LogInformation("Manual KPI alert created by user {UserId}: {Title}", 
-                User.FindFirst(ClaimTypes.NameIdentifier)?.Value, alert.Title);
-                
-            return Ok(new { message = "KPI alert created successfully" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error creating KPI alert");
-            return StatusCode(500, "An error occurred while creating the KPI alert");
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error refreshing KPI data");
+                return StatusCode(500, "Internal server error");
+            }
         }
     }
 }

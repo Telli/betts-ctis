@@ -83,8 +83,10 @@ namespace BettsTax.Data
                 }
             }
 
-            // Seed default system settings
+            // Seed default system settings (Email, etc.)
             await SeedDefaultSystemSettings(sp);
+            // Seed default tax settings (e.g., GST registration threshold)
+            await SeedDefaultTaxSettings(sp);
         }
 
         public static async Task SeedDefaultSystemSettings(IServiceProvider sp)
@@ -96,80 +98,157 @@ namespace BettsTax.Data
             var admin = await userManager.Users.FirstOrDefaultAsync(u => u.Email == "admin@thebettsfirmsl.com");
             if (admin == null) return;
 
-            // Check if email settings already exist
-            if (await context.SystemSettings.AnyAsync(s => s.Category == "Email"))
-                return;
-
-            var defaultEmailSettings = new List<SystemSetting>
+            // Only seed Email defaults if not present
+            if (!await context.SystemSettings.AnyAsync(s => s.Category == "Email"))
             {
-                new() 
+                var defaultEmailSettings = new List<SystemSetting>
                 {
-                    Key = "Email.SmtpHost",
-                    Value = "",
-                    Description = "SMTP server hostname or IP address",
-                    Category = "Email",
-                    UpdatedByUserId = admin.Id
-                },
-                new() 
-                {
-                    Key = "Email.SmtpPort",
-                    Value = "587",
-                    Description = "SMTP server port number (typically 587 or 25)",
-                    Category = "Email",
-                    UpdatedByUserId = admin.Id
-                },
-                new() 
-                {
-                    Key = "Email.Username",
-                    Value = "",
-                    Description = "SMTP authentication username",
-                    Category = "Email",
-                    UpdatedByUserId = admin.Id
-                },
-                new() 
-                {
-                    Key = "Email.Password",
-                    Value = "",
-                    Description = "SMTP authentication password",
-                    Category = "Email",
-                    IsEncrypted = true,
-                    UpdatedByUserId = admin.Id
-                },
-                new() 
-                {
-                    Key = "Email.FromEmail",
-                    Value = "noreply@thebettsfirmsl.com",
-                    Description = "Default sender email address",
-                    Category = "Email",
-                    UpdatedByUserId = admin.Id
-                },
-                new() 
-                {
-                    Key = "Email.FromName",
-                    Value = "The Betts Firm",
-                    Description = "Default sender display name",
-                    Category = "Email",
-                    UpdatedByUserId = admin.Id
-                },
-                new() 
-                {
-                    Key = "Email.UseSSL",
-                    Value = "true",
-                    Description = "Enable SSL encryption",
-                    Category = "Email",
-                    UpdatedByUserId = admin.Id
-                },
-                new() 
-                {
-                    Key = "Email.UseTLS",
-                    Value = "true",
-                    Description = "Enable TLS encryption",
-                    Category = "Email",
-                    UpdatedByUserId = admin.Id
-                }
-            };
+                    new() 
+                    {
+                        Key = "Email.SmtpHost",
+                        Value = "",
+                        Description = "SMTP server hostname or IP address",
+                        Category = "Email",
+                        UpdatedByUserId = admin.Id
+                    },
+                    new() 
+                    {
+                        Key = "Email.SmtpPort",
+                        Value = "587",
+                        Description = "SMTP server port number (typically 587 or 25)",
+                        Category = "Email",
+                        UpdatedByUserId = admin.Id
+                    },
+                    new() 
+                    {
+                        Key = "Email.Username",
+                        Value = "",
+                        Description = "SMTP authentication username",
+                        Category = "Email",
+                        UpdatedByUserId = admin.Id
+                    },
+                    new() 
+                    {
+                        Key = "Email.Password",
+                        Value = "",
+                        Description = "SMTP authentication password",
+                        Category = "Email",
+                        IsEncrypted = true,
+                        UpdatedByUserId = admin.Id
+                    },
+                    new() 
+                    {
+                        Key = "Email.FromEmail",
+                        Value = "noreply@thebettsfirmsl.com",
+                        Description = "Default sender email address",
+                        Category = "Email",
+                        UpdatedByUserId = admin.Id
+                    },
+                    new() 
+                    {
+                        Key = "Email.FromName",
+                        Value = "The Betts Firm",
+                        Description = "Default sender display name",
+                        Category = "Email",
+                        UpdatedByUserId = admin.Id
+                    },
+                    new() 
+                    {
+                        Key = "Email.UseSSL",
+                        Value = "true",
+                        Description = "Enable SSL encryption",
+                        Category = "Email",
+                        UpdatedByUserId = admin.Id
+                    },
+                    new() 
+                    {
+                        Key = "Email.UseTLS",
+                        Value = "true",
+                        Description = "Enable TLS encryption",
+                        Category = "Email",
+                        UpdatedByUserId = admin.Id
+                    }
+                };
 
-            context.SystemSettings.AddRange(defaultEmailSettings);
+                context.SystemSettings.AddRange(defaultEmailSettings);
+                await context.SaveChangesAsync();
+            }
+        }
+
+        public static async Task SeedDefaultTaxSettings(IServiceProvider sp)
+        {
+            var context = sp.GetRequiredService<ApplicationDbContext>();
+            var userManager = sp.GetRequiredService<UserManager<ApplicationUser>>();
+
+            // Get admin user for settings updates
+            var admin = await userManager.Users.FirstOrDefaultAsync(u => u.Email == "admin@thebettsfirmsl.com");
+            if (admin == null) return;
+
+            // Seed GST registration threshold if missing
+            if (!await context.SystemSettings.AnyAsync(s => s.Key == "Tax.GST.RegistrationThreshold"))
+            {
+                context.SystemSettings.Add(new SystemSetting
+                {
+                    Key = "Tax.GST.RegistrationThreshold",
+                    Value = "0",
+                    Description = "Annual turnover threshold for GST registration (SLE)",
+                    Category = "Tax",
+                    UpdatedByUserId = admin.Id
+                });
+            }
+
+            // Seed GST rate percent if missing (default 15)
+            if (!await context.SystemSettings.AnyAsync(s => s.Key == "Tax.GST.RatePercent"))
+            {
+                context.SystemSettings.Add(new SystemSetting
+                {
+                    Key = "Tax.GST.RatePercent",
+                    Value = "15",
+                    Description = "GST standard rate (percent)",
+                    Category = "Tax",
+                    UpdatedByUserId = admin.Id
+                });
+            }
+
+            // Seed Annual interest rate percent if missing (default 15)
+            if (!await context.SystemSettings.AnyAsync(s => s.Key == "Tax.AnnualInterestRatePercent"))
+            {
+                context.SystemSettings.Add(new SystemSetting
+                {
+                    Key = "Tax.AnnualInterestRatePercent",
+                    Value = "15",
+                    Description = "Annual interest rate for late payments (percent)",
+                    Category = "Tax",
+                    UpdatedByUserId = admin.Id
+                });
+            }
+
+            // Seed income minimum tax rate percent if missing (default 0.5)
+            if (!await context.SystemSettings.AnyAsync(s => s.Key == "Tax.Income.MinimumTaxRatePercent"))
+            {
+                context.SystemSettings.Add(new SystemSetting
+                {
+                    Key = "Tax.Income.MinimumTaxRatePercent",
+                    Value = "0.5",
+                    Description = "Income Tax minimum tax rate for companies (percent of turnover)",
+                    Category = "Tax",
+                    UpdatedByUserId = admin.Id
+                });
+            }
+
+            // Seed income MAT rate percent if missing (default 3)
+            if (!await context.SystemSettings.AnyAsync(s => s.Key == "Tax.Income.MATRatePercent"))
+            {
+                context.SystemSettings.Add(new SystemSetting
+                {
+                    Key = "Tax.Income.MATRatePercent",
+                    Value = "3",
+                    Description = "Minimum Alternate Tax rate (percent of turnover)",
+                    Category = "Tax",
+                    UpdatedByUserId = admin.Id
+                });
+            }
+
             await context.SaveChangesAsync();
         }
 
@@ -185,14 +264,6 @@ namespace BettsTax.Data
             // Create demo users
             var demoUsers = new List<ApplicationUser>
             {
-                new() {
-                    UserName = "sarah.bangura@bettsfirm.sl",
-                    Email = "sarah.bangura@bettsfirm.sl",
-                    FirstName = "Sarah",
-                    LastName = "Bangura",
-                    IsActive = true,
-                    CreatedDate = DateTime.UtcNow.AddDays(-180)
-                },
                 new() {
                     UserName = "john.kamara@sierramining.sl",
                     Email = "john.kamara@sierramining.sl",
@@ -251,7 +322,7 @@ namespace BettsTax.Data
             // Create users
             foreach (var user in demoUsers)
             {
-                var password = user.Email?.Contains("test") == true ? GetTestUserPassword(user.Email) : "Demo123!";
+                var password = GetUserPassword(user.Email!);
                 await userManager.CreateAsync(user, password);
                 
                 // Assign roles based on email
@@ -263,7 +334,7 @@ namespace BettsTax.Data
                     await userManager.AddToRoleAsync(user, "Client");
             }
 
-            string GetTestUserPassword(string email)
+            string GetUserPassword(string email)
             {
                 return email switch
                 {
@@ -275,10 +346,16 @@ namespace BettsTax.Data
             }
 
             // Refresh user references after creation
-            var associate = await userManager.FindByEmailAsync("sarah.bangura@bettsfirm.sl");
+            var associate = await userManager.FindByEmailAsync("associate@bettsfirm.sl");
             var clientUser1 = await userManager.FindByEmailAsync("john.kamara@sierramining.sl");
             var clientUser2 = await userManager.FindByEmailAsync("fatima.sesay@freetownlogistics.sl");
             var testClientUser = await userManager.FindByEmailAsync("client@testcompany.sl");
+
+            // Verify we have an associate user
+            if (associate == null)
+            {
+                throw new InvalidOperationException("Associate user not found. Cannot seed demo data.");
+            }
 
             // Create demo clients
             var clients = new List<Client>
@@ -318,7 +395,7 @@ namespace BettsTax.Data
                     UpdatedDate = DateTime.UtcNow.AddDays(-5)
                 },
                 new() {
-                    UserId = "",
+                    UserId = null,
                     ClientNumber = "CLN-003-2024",
                     BusinessName = "Atlantic Petroleum Services",
                     ContactPerson = "Mohamed Conteh",
@@ -335,7 +412,7 @@ namespace BettsTax.Data
                     UpdatedDate = DateTime.UtcNow.AddDays(-2)
                 },
                 new() {
-                    UserId = "",
+                    UserId = null,
                     ClientNumber = "CLN-004-2024",
                     BusinessName = "Diamond Mining Co Ltd",
                     ContactPerson = "Adama Kargbo",
@@ -352,7 +429,7 @@ namespace BettsTax.Data
                     UpdatedDate = DateTime.UtcNow.AddDays(-1)
                 },
                 new() {
-                    UserId = "",
+                    UserId = null,
                     ClientNumber = "CLN-005-2024",
                     BusinessName = "Kono Agricultural Enterprises",
                     ContactPerson = "Ibrahim Turay",

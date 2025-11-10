@@ -132,6 +132,28 @@ namespace BettsTax.Data
                         IsTestMode = true,
                         Priority = 11,
                         SupportedCurrency = "USD"
+                    },
+                    // Salone National Payment Switch (ISO 20022)
+                    new PaymentProviderConfig
+                    {
+                        Provider = PaymentProvider.SalonePaymentSwitch,
+                        Name = "Salone Payment Switch",
+                        Description = "National payment switch (ISO 20022)",
+                        ApiUrl = "https://api.salone-switch.sl/iso20022", // Placeholder
+                        ApiKey = "SWITCH_CLIENT_ID",
+                        ApiSecret = "SWITCH_CLIENT_SECRET",
+                        WebhookSecret = "SWITCH_WEBHOOK_SECRET",
+                        WebhookUrl = "/api/payment-integration/webhook/salone-switch",
+                        FeePercentage = 1.2m,
+                        FixedFee = 25m,
+                        MinAmount = 100m,
+                        MaxAmount = 1000000m,
+                        DailyLimit = 5000000m,
+                        MonthlyLimit = 75000000m,
+                        IsActive = true,
+                        IsTestMode = true,
+                        Priority = 3,
+                        SupportedCurrency = "SLE"
                     }
                 };
 
@@ -365,6 +387,30 @@ namespace BettsTax.Data
                     statusMappings.Add(new PaymentStatusMapping
                     {
                         Provider = PaymentProvider.AfricellMoney,
+                        ProviderStatus = status,
+                        MappedStatus = mappedStatus,
+                        IsSuccess = isSuccess,
+                        IsFinal = isFinal,
+                        Description = description
+                    });
+                }
+
+                // Salone Payment Switch (pain.002) status mappings (TxSts codes)
+                var saloneStatuses = new[]
+                {
+                    ("PDNG", PaymentTransactionStatus.Pending, false, false, "Pending processing"),
+                    ("PENDING", PaymentTransactionStatus.Pending, false, false, "Pending processing"),
+                    ("ACSC", PaymentTransactionStatus.Completed, true, true, "Accepted settlement completed"),
+                    ("COMPLETED", PaymentTransactionStatus.Completed, true, true, "Payment completed"),
+                    ("RJCT", PaymentTransactionStatus.Failed, false, true, "Rejected"),
+                    ("FAILED", PaymentTransactionStatus.Failed, false, true, "Failed"),
+                };
+
+                foreach (var (status, mappedStatus, isSuccess, isFinal, description) in saloneStatuses)
+                {
+                    statusMappings.Add(new PaymentStatusMapping
+                    {
+                        Provider = PaymentProvider.SalonePaymentSwitch,
                         ProviderStatus = status,
                         MappedStatus = mappedStatus,
                         IsSuccess = isSuccess,

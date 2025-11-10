@@ -10,6 +10,7 @@ interface RecentActivityListProps {
 }
 
 export default function RecentActivityList({ activities, className = '' }: RecentActivityListProps) {
+  const list = activities ?? []
   // Map activity types to colors and icons
   const getActivityMeta = (type: string) => {
     switch (type) {
@@ -87,11 +88,11 @@ export default function RecentActivityList({ activities, className = '' }: Recen
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {activities.length === 0 ? (
+        {list.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">No recent activities found</p>
         ) : (
           <div className="space-y-5">
-            {activities.map((activity) => {
+            {list.map((activity) => {
               const { color, icon } = getActivityMeta(activity.type)
               return (
                 <div key={`${activity.type}-${activity.id}`} className="flex items-start space-x-4">

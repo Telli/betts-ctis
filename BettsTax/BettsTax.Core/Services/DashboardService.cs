@@ -1,11 +1,17 @@
 using AutoMapper;
 using BettsTax.Core.DTOs;
+using BettsTax.Core.DTOs.Compliance;
 using BettsTax.Data;
+using BettsTax.Data.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using ComplianceOverviewDto = BettsTax.Core.DTOs.ComplianceOverviewDto;
+using ComplianceRiskLevel = BettsTax.Data.Models.ComplianceRiskLevel;
+
 
 namespace BettsTax.Core.Services
 {
@@ -103,10 +109,10 @@ namespace BettsTax.Core.Services
                     Description = $"Document uploaded: {doc.OriginalFileName}",
                     EntityName = doc.OriginalFileName,
                     ClientId = doc.ClientId,
-                    ClientName = doc.Client?.BusinessName,
+                    ClientName = doc.Client?.BusinessName ?? "Unknown Client",
                     Timestamp = doc.UploadedAt,
-                    UserId = null, // Document doesn't have UploadedById property
-                    UserName = null // We'll leave this null as we don't have the user info readily available
+                    UserId = string.Empty, // Document doesn't have UploadedById property
+                    UserName = string.Empty // We'll leave this empty as we don't have the user info readily available
                 });
             }
 
@@ -128,10 +134,10 @@ namespace BettsTax.Core.Services
                     Description = $"Payment {payment.Status.ToString().ToLower()}: ${payment.Amount}",
                     EntityName = $"${payment.Amount}",
                     ClientId = payment.ClientId,
-                    ClientName = payment.Client?.BusinessName,
+                    ClientName = payment.Client?.BusinessName ?? "Unknown Client",
                     Timestamp = payment.CreatedAt,
-                    UserId = null,
-                    UserName = null
+                    UserId = string.Empty,
+                    UserName = string.Empty
                 });
             }
 
@@ -155,7 +161,7 @@ namespace BettsTax.Core.Services
                     ClientName = client.BusinessName,
                     Timestamp = client.UpdatedDate,
                     UserId = client.UserId,
-                    UserName = null
+                    UserName = string.Empty
                 });
             }
 
@@ -187,14 +193,19 @@ namespace BettsTax.Core.Services
                     deadlines.Add(new UpcomingDeadlineDto
                     {
                         Id = tax.TaxYearId,
-                        Title = $"{tax.Year} Tax Filing",
-                        Description = $"Tax filing for {tax.Client?.BusinessName}",
+                        TaxType = TaxType.IncomeTax, // Default value, should be determined from context
+                        TaxTypeName = "Income Tax",
                         DueDate = tax.FilingDeadline.Value,
-                        Type = "filing",
-                        ClientId = tax.ClientId,
-                        ClientName = tax.Client?.BusinessName,
-                        IsUrgent = daysRemaining <= 7,
-                        DaysRemaining = daysRemaining
+                        DaysRemaining = daysRemaining,
+                        Priority = daysRemaining <= 7 ? BettsTax.Data.ComplianceRiskLevel.High : BettsTax.Data.ComplianceRiskLevel.Medium,
+                        PriorityName = daysRemaining <= 7 ? "High" : "Medium",
+                        Status = FilingStatus.Draft,
+                        StatusName = "Draft",
+                        EstimatedTaxLiability = 0,
+                        DocumentsReady = false,
+                        IsOverdue = daysRemaining < 0,
+                        PotentialPenalty = 0,
+                        Requirements = $"Tax filing for {tax.Client?.BusinessName}"
                     });
                 }
             }
@@ -221,9 +232,9 @@ namespace BettsTax.Core.Services
                 {
                     Id = payment.PaymentId,
                     ClientId = payment.ClientId,
-                    ClientName = payment.Client?.BusinessName,
+                    ClientName = payment.Client?.BusinessName ?? "Unknown Client",
                     Amount = payment.Amount,
-                    Description = $"Payment for {payment.Client?.BusinessName}",
+                    Description = $"Payment for {payment.Client?.BusinessName ?? "Unknown Client"}",
                     SubmittedDate = payment.CreatedAt,
                     SubmittedBy = "System", // This isn't tracked in the current model
                     Type = "payment",
@@ -415,14 +426,19 @@ namespace BettsTax.Core.Services
                     deadlines.Add(new UpcomingDeadlineDto
                     {
                         Id = tax.TaxYearId,
-                        Title = $"{tax.Year} Tax Filing",
-                        Description = $"Tax filing for {tax.Client?.BusinessName}",
+                        TaxType = TaxType.IncomeTax, // Default value, should be determined from context
+                        TaxTypeName = "Income Tax",
                         DueDate = tax.FilingDeadline.Value,
-                        Type = "filing",
-                        ClientId = tax.ClientId,
-                        ClientName = tax.Client?.BusinessName,
-                        IsUrgent = daysRemaining <= 7,
-                        DaysRemaining = daysRemaining
+                        DaysRemaining = daysRemaining,
+                        Priority = daysRemaining <= 7 ? BettsTax.Data.ComplianceRiskLevel.High : BettsTax.Data.ComplianceRiskLevel.Medium,
+                        PriorityName = daysRemaining <= 7 ? "High" : "Medium",
+                        Status = FilingStatus.Draft,
+                        StatusName = "Draft",
+                        EstimatedTaxLiability = 0,
+                        DocumentsReady = false,
+                        IsOverdue = daysRemaining < 0,
+                        PotentialPenalty = 0,
+                        Requirements = $"Tax filing for {tax.Client?.BusinessName}"
                     });
                 }
             }

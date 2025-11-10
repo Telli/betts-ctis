@@ -17,6 +17,14 @@ export interface TestEmailDto {
   body?: string;
 }
 
+export interface TaxSettingsDto {
+  gstRegistrationThreshold: number;
+  gstRatePercent: number;
+  annualInterestRatePercent: number;
+  incomeMinimumTaxRatePercent: number;
+  incomeMatRatePercent: number;
+}
+
 export const AdminSettingsService = {
   // Get current email settings
   getEmailSettings: async (): Promise<EmailSettingsDto> => {
@@ -42,5 +50,18 @@ export const AdminSettingsService = {
   // Get settings by category
   getSettingsByCategory: async (category: string): Promise<Record<string, string>> => {
     return await apiRequest<Record<string, string>>(`/api/adminsettings/category/${category}`);
+  },
+
+  // Get tax settings
+  getTaxSettings: async (): Promise<TaxSettingsDto> => {
+    return await apiRequest<TaxSettingsDto>('/api/adminsettings/tax');
+  },
+
+  // Update tax settings
+  updateTaxSettings: async (settings: TaxSettingsDto): Promise<void> => {
+    await apiRequest('/api/adminsettings/tax', {
+      method: 'POST',
+      body: settings,
+    });
   },
 };

@@ -11,7 +11,7 @@ interface UpcomingDeadlinesProps {
   className?: string
 }
 
-export default function UpcomingDeadlines({ deadlines, className = '' }: UpcomingDeadlinesProps) {
+export default function UpcomingDeadlines({ deadlines = [], className = '' }: UpcomingDeadlinesProps) {
   // Helper function to determine deadline badge styling
   const getDeadlineBadge = (daysRemaining: number) => {
     if (daysRemaining <= 3) {

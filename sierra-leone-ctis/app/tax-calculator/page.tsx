@@ -294,7 +294,7 @@ export default function TaxCalculatorPage() {
                 </div>
                 <div className="p-4 bg-white rounded-lg">
                   <h4 className="font-medium text-sierra-blue-800">Taxpayer Categories</h4>
-                  <p className="text-sm text-sierra-blue-700">Large: >2B, Medium: 500M-2B, Small: 100M-500M, Micro: <100M</p>
+                  <p className="text-sm text-sierra-blue-700">Large: &gt;2B, Medium: 500M-2B, Small: 100M-500M, Micro: &lt;100M</p>
                 </div>
               </div>
             </TabsContent>

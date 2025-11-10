@@ -1,0 +1,490 @@
+using BettsTax.Core.DTOs;
+using BettsTax.Core.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace BettsTax.Web.Controllers
+{
+    /// <summary>
+    /// Controller for managing workflow templates
+    /// </summary>
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class WorkflowTemplateController : ControllerBase
+    {
+        private readonly IWorkflowTemplateService _workflowTemplateService;
+        private readonly ILogger<WorkflowTemplateController> _logger;
+
+        public WorkflowTemplateController(
+            IWorkflowTemplateService workflowTemplateService,
+            ILogger<WorkflowTemplateController> logger)
+        {
+            _workflowTemplateService = workflowTemplateService;
+            _logger = logger;
+        }
+
+        /// <summary>
+        /// Get all workflow templates with optional filtering
+        /// </summary>
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<WorkflowTemplateDto>>> GetTemplates(
+            [FromQuery] string? category = null,
+            [FromQuery] string? triggerType = null,
+            [FromQuery] double? minRating = null,
+            [FromQuery] string[]? tags = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            try
+            {
+                var result = await _workflowTemplateService.GetTemplatesAsync(
+                    category, triggerType, minRating, tags?.ToList(), page, pageSize);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting workflow templates");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get a specific workflow template by ID
+        /// </summary>
+        [HttpGet("{id}")]
+        public async Task<ActionResult<WorkflowTemplateDto>> GetTemplate(int id)
+        {
+            try
+            {
+                var result = await _workflowTemplateService.GetTemplateAsync(id);
+                
+                if (!result.IsSuccess)
+                {
+                    return NotFound(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting workflow template {TemplateId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Create a new workflow template
+        /// </summary>
+        [HttpPost]
+        public async Task<ActionResult<WorkflowTemplateDto>> CreateTemplate([FromBody] WorkflowTemplateDto templateDto)
+        {
+            try
+            {
+                var result = await _workflowTemplateService.CreateTemplateAsync(templateDto);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return CreatedAtAction(nameof(GetTemplate), new { id = result.Data.Id }, result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating workflow template");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Update an existing workflow template
+        /// </summary>
+        [HttpPut("{id}")]
+        public async Task<ActionResult<WorkflowTemplateDto>> UpdateTemplate(int id, [FromBody] WorkflowTemplateDto templateDto)
+        {
+            try
+            {
+                if (id != templateDto.Id)
+                {
+                    return BadRequest("Template ID in URL does not match template ID in body");
+                }
+
+                var result = await _workflowTemplateService.UpdateTemplateAsync(templateDto);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating workflow template {TemplateId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Delete a workflow template
+        /// </summary>
+        [HttpDelete("{id}")]
+        public async Task<ActionResult> DeleteTemplate(int id)
+        {
+            try
+            {
+                var result = await _workflowTemplateService.DeleteTemplateAsync(id);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting workflow template {TemplateId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Create a workflow rule from a template
+        /// </summary>
+        [HttpPost("{id}/create-rule")]
+        public async Task<ActionResult<WorkflowRuleDto>> CreateRuleFromTemplate(
+            int id, 
+            [FromBody] Dictionary<string, object> parameters)
+        {
+            try
+            {
+                var result = await _workflowTemplateService.CreateRuleFromTemplateAsync(id, parameters);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating rule from template {TemplateId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get template parameters for configuration
+        /// </summary>
+        [HttpGet("{id}/parameters")]
+        public async Task<ActionResult<IEnumerable<WorkflowTemplateParameterDto>>> GetTemplateParameters(int id)
+        {
+            try
+            {
+                var result = await _workflowTemplateService.GetTemplateParametersAsync(id);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting template parameters for template {TemplateId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Import a workflow template from JSON
+        /// </summary>
+        [HttpPost("import")]
+        public async Task<ActionResult<WorkflowTemplateDto>> ImportTemplate([FromBody] string templateJson)
+        {
+            try
+            {
+                var result = await _workflowTemplateService.ImportTemplateAsync(templateJson);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error importing workflow template");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Export a workflow template to JSON
+        /// </summary>
+        [HttpGet("{id}/export")]
+        public async Task<ActionResult<string>> ExportTemplate(int id)
+        {
+            try
+            {
+                var result = await _workflowTemplateService.ExportTemplateAsync(id);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting workflow template {TemplateId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get template categories
+        /// </summary>
+        [HttpGet("categories")]
+        public async Task<ActionResult<IEnumerable<WorkflowTemplateCategoryDto>>> GetCategories()
+        {
+            try
+            {
+                var result = await _workflowTemplateService.GetCategoriesAsync();
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting template categories");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get predefined templates
+        /// </summary>
+        [HttpGet("predefined")]
+        public async Task<ActionResult<IEnumerable<WorkflowTemplateDto>>> GetPredefinedTemplates()
+        {
+            try
+            {
+                var result = await _workflowTemplateService.GetPredefinedTemplatesAsync();
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting predefined templates");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Create predefined templates in the system
+        /// </summary>
+        [HttpPost("predefined/create")]
+        public async Task<ActionResult> CreatePredefinedTemplates()
+        {
+            try
+            {
+                var result = await _workflowTemplateService.CreatePredefinedTemplatesAsync();
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(new { Message = "Predefined templates created successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating predefined templates");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Search templates by name or description
+        /// </summary>
+        [HttpGet("search")]
+        public async Task<ActionResult<IEnumerable<WorkflowTemplateDto>>> SearchTemplates(
+            [FromQuery] string query,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(query))
+                {
+                    return BadRequest("Search query is required");
+                }
+
+                var result = await _workflowTemplateService.SearchTemplatesAsync(query, page, pageSize);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching workflow templates with query: {Query}", query);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Rate a workflow template
+        /// </summary>
+        [HttpPost("{id}/rate")]
+        public async Task<ActionResult> RateTemplate(int id, [FromBody] WorkflowTemplateRatingDto rating)
+        {
+            try
+            {
+                var result = await _workflowTemplateService.RateTemplateAsync(id, rating.Rating, rating.Review);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error rating workflow template {TemplateId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Clone a workflow template
+        /// </summary>
+        [HttpPost("{id}/clone")]
+        public async Task<ActionResult<WorkflowTemplateDto>> CloneTemplate(int id, [FromBody] WorkflowTemplateCloneRequestDto cloneRequest)
+        {
+            try
+            {
+                var templateResult = await _workflowTemplateService.GetTemplateAsync(id);
+                if (!templateResult.IsSuccess)
+                {
+                    return NotFound(templateResult.ErrorMessage);
+                }
+
+                var template = templateResult.Data;
+                template.Id = 0; // Reset ID for new template
+                template.Name = cloneRequest.Name ?? $"{template.Name} - Copy";
+                template.Description = cloneRequest.Description ?? $"Copy of {template.Description}";
+                template.IsPublic = false; // Cloned templates are private by default
+                template.UsageCount = 0;
+                template.AverageRating = 0;
+                template.CreatedAt = DateTime.UtcNow;
+                template.UpdatedAt = DateTime.UtcNow;
+
+                var result = await _workflowTemplateService.CreateTemplateAsync(template);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error cloning workflow template {TemplateId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get template usage statistics
+        /// </summary>
+        [HttpGet("{id}/stats")]
+        public async Task<ActionResult<WorkflowTemplateStatsDto>> GetTemplateStats(int id)
+        {
+            try
+            {
+                var templateResult = await _workflowTemplateService.GetTemplateAsync(id);
+                if (!templateResult.IsSuccess)
+                {
+                    return NotFound(templateResult.ErrorMessage);
+                }
+
+                var template = templateResult.Data;
+                var stats = new WorkflowTemplateStatsDto
+                {
+                    TemplateId = id,
+                    UsageCount = template.UsageCount,
+                    AverageRating = template.AverageRating,
+                    RatingCount = template.RatingCount,
+                    CreatedAt = template.CreatedAt,
+                    LastUsed = template.LastUsed
+                };
+
+                return Ok(stats);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting template stats for template {TemplateId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+    }
+
+    /// <summary>
+    /// DTO for template rating requests
+    /// </summary>
+    public class WorkflowTemplateRatingDto
+    {
+        public double Rating { get; set; }
+        public string? Review { get; set; }
+    }
+
+    /// <summary>
+    /// DTO for template clone requests
+    /// </summary>
+    public class WorkflowTemplateCloneRequestDto
+    {
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+    }
+
+    /// <summary>
+    /// DTO for template statistics
+    /// </summary>
+    public class WorkflowTemplateStatsDto
+    {
+        public int TemplateId { get; set; }
+        public int UsageCount { get; set; }
+        public double AverageRating { get; set; }
+        public int RatingCount { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? LastUsed { get; set; }
+    }
+}

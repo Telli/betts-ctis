@@ -11,7 +11,7 @@ interface PendingApprovalsProps {
   className?: string
 }
 
-export default function PendingApprovals({ approvals, className = '' }: PendingApprovalsProps) {
+export default function PendingApprovals({ approvals = [], className = '' }: PendingApprovalsProps) {
   return (
     <Card className={className}>
       <CardHeader>

@@ -15,6 +15,8 @@ namespace BettsTax.Core.Services
         Task<bool> DeleteAsync(int id, string userId);
         Task<PaymentDto> ApproveAsync(int paymentId, ApprovePaymentDto dto, string approverId);
         Task<PaymentDto> RejectAsync(int paymentId, RejectPaymentDto dto, string approverId);
+    Task<DocumentDto> UploadEvidenceAsync(int paymentId, UploadPaymentEvidenceDto dto, Microsoft.AspNetCore.Http.IFormFile file, string userId);
+    Task<PaymentDto> ReconcileAsync(int paymentId, ReconcilePaymentDto dto, string userId);
         Task<decimal> GetTotalPaidByClientAsync(int clientId, int? taxYear = null);
         Task<List<PaymentDto>> GetPaymentsByTaxFilingAsync(int taxFilingId);
     }

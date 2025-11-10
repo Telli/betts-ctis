@@ -1,8 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Search, Filter, Download } from "lucide-react"
-import Link from "next/link"
+import { Search, Filter, Download } from "lucide-react"
 
 export function ClientsHeader() {
   return (
@@ -12,12 +11,6 @@ export function ClientsHeader() {
           <h1 className="text-2xl font-bold text-gray-900">Client Management</h1>
           <p className="text-gray-600">Manage taxpayer information and compliance status</p>
         </div>
-        <Link href="/clients/new">
-          <Button className="bg-blue-600 hover:bg-blue-700">
-            <Plus className="h-4 w-4 mr-2" />
-            Add New Client
-          </Button>
-        </Link>
       </div>
 
       <div className="flex items-center space-x-4 mb-4">

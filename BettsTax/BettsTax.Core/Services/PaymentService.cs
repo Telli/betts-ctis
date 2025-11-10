@@ -1,7 +1,10 @@
 using AutoMapper;
 using BettsTax.Core.DTOs;
+using BettsTax.Core.DTOs.Reports;
+using BettsTax.Core.Services.Interfaces;
 using BettsTax.Data;
 using BettsTax.Shared;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -16,6 +19,8 @@ namespace BettsTax.Core.Services
         private readonly INotificationService _notificationService;
         private readonly ISmsService _smsService;
         private readonly IActivityTimelineService _activityService;
+        private readonly IReportGenerator _reportGenerator;
+        private readonly IDocumentService _documentService;
 
         public PaymentService(
             ApplicationDbContext context,
@@ -24,7 +29,9 @@ namespace BettsTax.Core.Services
             IAuditService auditService,
             INotificationService notificationService,
             ISmsService smsService,
-            IActivityTimelineService activityService)
+            IActivityTimelineService activityService,
+            IReportGenerator reportGenerator,
+            IDocumentService documentService)
         {
             _context = context;
             _mapper = mapper;
@@ -33,6 +40,8 @@ namespace BettsTax.Core.Services
             _notificationService = notificationService;
             _smsService = smsService;
             _activityService = activityService;
+            _reportGenerator = reportGenerator;
+            _documentService = documentService;
         }
 
         public async Task<PagedResult<PaymentDto>> GetPaymentsAsync(
@@ -45,7 +54,7 @@ namespace BettsTax.Core.Services
             var query = _context.Payments
                 .Include(p => p.Client)
                 .Include(p => p.TaxFiling)
-                .Include(p => p.ApprovedBy)
+                // Removed Include for ApprovedBy because the navigation is ignored in the model
                 .AsQueryable();
 
             // Apply filters
@@ -86,7 +95,7 @@ namespace BettsTax.Core.Services
             var payment = await _context.Payments
                 .Include(p => p.Client)
                 .Include(p => p.TaxFiling)
-                .Include(p => p.ApprovedBy)
+                // Removed Include for ApprovedBy because the navigation is ignored in the model
                 .FirstOrDefaultAsync(p => p.PaymentId == id);
 
             return payment == null ? null : _mapper.Map<PaymentDto>(payment);
@@ -97,7 +106,7 @@ namespace BettsTax.Core.Services
             var payments = await _context.Payments
                 .Include(p => p.Client)
                 .Include(p => p.TaxFiling)
-                .Include(p => p.ApprovedBy)
+                // Removed Include for ApprovedBy because the navigation is ignored in the model
                 .Where(p => p.ClientId == clientId)
                 .OrderByDescending(p => p.PaymentDate)
                 .ToListAsync();
@@ -149,9 +158,12 @@ namespace BettsTax.Core.Services
             await _auditService.LogAsync(userId, "CREATE", "Payment", payment.PaymentId.ToString(),
                 $"Created payment {paymentReference} of {payment.Amount:C} for client {client.BusinessName}");
 
-            // Notification
-            await _notificationService.CreateAsync(client.UserId,
-                $"Payment of {payment.Amount:C} created and pending approval.");
+            // Notification (only if client has a linked user account)
+            if (!string.IsNullOrEmpty(client.UserId))
+            {
+                await _notificationService.CreateAsync(client.UserId,
+                    $"Payment of {payment.Amount:C} created and pending approval.");
+            }
 
             _logger.LogInformation("Created payment {PaymentReference} for client {ClientId}", 
                 paymentReference, dto.ClientId);
@@ -235,8 +247,11 @@ namespace BettsTax.Core.Services
             // Notification
             if (payment.Client != null)
             {
-                await _notificationService.CreateAsync(payment.Client.UserId,
-                    $"Payment {payment.PaymentReference} of {payment.Amount:C} has been approved.");
+                if (!string.IsNullOrEmpty(payment.Client.UserId))
+                {
+                    await _notificationService.CreateAsync(payment.Client.UserId,
+                        $"Payment {payment.PaymentReference} of {payment.Amount:C} has been approved.");
+                }
                 
                 // Send SMS confirmation
                 await _smsService.SendPaymentConfirmationAsync(paymentId);
@@ -247,8 +262,71 @@ namespace BettsTax.Core.Services
 
             _logger.LogInformation("Approved payment {PaymentId} by user {ApproverId}", paymentId, approverId);
 
+            // Attempt to generate and store a payment receipt document (non-blocking on failure)
+            try
+            {
+                await GenerateAndStoreReceiptAsync(payment, approverId);
+            }
+            catch (Exception rex)
+            {
+                _logger.LogError(rex, "Failed to generate/store receipt for payment {PaymentId}", paymentId);
+                // Do not rethrow – approval succeeded, receipt is a best-effort add-on
+            }
+
             return await GetPaymentByIdAsync(paymentId) ??
                 throw new InvalidOperationException("Failed to retrieve approved payment");
+        }
+
+        private async Task GenerateAndStoreReceiptAsync(Payment payment, string userId)
+        {
+            // Build a minimal receipt report payload
+            var data = new ReportDataDto
+            {
+                Title = "Payment Receipt",
+                Subtitle = payment.Client != null ? $"Client: {payment.Client.BusinessName} (ID {payment.ClientId})" : $"Client ID: {payment.ClientId}",
+                GeneratedAt = DateTime.UtcNow,
+                GeneratedBy = userId,
+                Data = new Dictionary<string, object>
+                {
+                    ["ReceiptReference"] = payment.PaymentReference,
+                    ["PaymentId"] = payment.PaymentId,
+                    ["ClientId"] = payment.ClientId,
+                    ["TaxFilingId"] = payment.TaxFilingId ?? 0,
+                    ["TaxYearId"] = payment.TaxYearId ?? 0,
+                    ["TaxType"] = payment.TaxType?.ToString() ?? "N/A",
+                    ["AmountSLE"] = payment.Amount,
+                    ["Method"] = payment.Method.ToString(),
+                    ["Status"] = payment.Status.ToString(),
+                    ["PaymentDate"] = payment.PaymentDate.ToString("yyyy-MM-dd HH:mm:ss")
+                }
+            };
+
+            // Generate PDF-like content (SimpleReportGenerator returns text bytes as a PDF alternative)
+            var bytes = await _reportGenerator.GeneratePdfReportAsync(data, templateName: "paymentreceipt");
+
+            // Create an in-memory IFormFile to reuse existing upload path
+            var fileName = $"Receipt_{payment.PaymentReference}_{DateTime.UtcNow:yyyyMMddHHmmss}.pdf";
+            using var ms = new MemoryStream(bytes);
+            IFormFile file = new FormFile(ms, 0, bytes.Length, name: "file", fileName: fileName)
+            {
+                Headers = new HeaderDictionary(),
+                ContentType = "application/pdf"
+            };
+
+            var upload = new UploadDocumentDto
+            {
+                ClientId = payment.ClientId,
+                TaxYearId = payment.TaxYearId,
+                TaxFilingId = payment.TaxFilingId,
+                Category = DocumentCategory.Receipt,
+                Description = $"Payment receipt for reference {payment.PaymentReference}"
+            };
+
+            // Store document; this logs audit + activity internally
+            await _documentService.UploadAsync(upload, file, userId);
+
+            // Also log a payment activity note about receipt creation
+            await _activityService.LogPaymentActivityAsync(payment.PaymentId, ActivityType.PaymentProcessed, "Receipt generated and stored");
         }
 
         public async Task<PaymentDto> RejectAsync(int paymentId, RejectPaymentDto dto, string approverId)
@@ -275,14 +353,79 @@ namespace BettsTax.Core.Services
             // Notification
             if (payment.Client != null)
             {
-                await _notificationService.CreateAsync(payment.Client.UserId,
-                    $"Payment {payment.PaymentReference} has been rejected. Reason: {dto.RejectionReason}");
+                if (!string.IsNullOrEmpty(payment.Client.UserId))
+                {
+                    await _notificationService.CreateAsync(payment.Client.UserId,
+                        $"Payment {payment.PaymentReference} has been rejected. Reason: {dto.RejectionReason}");
+                }
             }
 
             _logger.LogInformation("Rejected payment {PaymentId} by user {ApproverId}", paymentId, approverId);
 
             return await GetPaymentByIdAsync(paymentId) ??
                 throw new InvalidOperationException("Failed to retrieve rejected payment");
+        }
+
+        public async Task<DocumentDto> UploadEvidenceAsync(int paymentId, UploadPaymentEvidenceDto dto, IFormFile file, string userId)
+        {
+            var payment = await _context.Payments.FirstOrDefaultAsync(p => p.PaymentId == paymentId);
+            if (payment == null)
+                throw new InvalidOperationException("Payment not found");
+
+            if (payment.ClientId != dto.ClientId)
+                throw new InvalidOperationException("Client mismatch for payment evidence upload");
+
+            // Reuse document service to store the evidence
+            var upload = new UploadDocumentDto
+            {
+                ClientId = dto.ClientId,
+                TaxYearId = dto.TaxYearId,
+                TaxFilingId = dto.TaxFilingId,
+                Category = dto.Category,
+                Description = string.IsNullOrWhiteSpace(dto.Description) ? $"Payment evidence for {payment.PaymentReference}" : dto.Description
+            };
+
+            var document = await _documentService.UploadAsync(upload, file, userId);
+
+            // Log activity against the payment
+            await _activityService.LogPaymentActivityAsync(payment.PaymentId, ActivityType.DocumentUploaded, "Payment evidence uploaded");
+
+            return document;
+        }
+
+        public async Task<PaymentDto> ReconcileAsync(int paymentId, ReconcilePaymentDto dto, string userId)
+        {
+            var payment = await _context.Payments.FirstOrDefaultAsync(p => p.PaymentId == paymentId);
+            if (payment == null)
+                throw new InvalidOperationException("Payment not found");
+
+            // Only allow reconciliation for Approved or Pending bank/cash/cheque payments
+            if (payment.Status == PaymentStatus.Rejected)
+                throw new InvalidOperationException("Cannot reconcile a rejected payment");
+
+            payment.IsReconciled = true;
+            payment.ReconciledAt = DateTime.UtcNow;
+            payment.ReconciledBy = userId;
+            payment.ReconciliationReference = dto.ReconciliationReference;
+            payment.BankStatementReference = dto.BankStatementReference;
+            payment.BankStatementDate = dto.BankStatementDate;
+            payment.ReconciliationNotes = dto.Notes;
+
+            if (dto.MarkAsCompleted)
+            {
+                payment.Status = PaymentStatus.Completed;
+                payment.CompletedAtUtc = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+
+            // Audit + activity
+            await _auditService.LogAsync(userId, "RECONCILE", "Payment", payment.PaymentId.ToString(),
+                $"Reconciled payment {payment.PaymentReference} (Amount {payment.Amount:C})");
+            await _activityService.LogPaymentActivityAsync(payment.PaymentId, ActivityType.PaymentProcessed, "Payment reconciled");
+
+            return await GetPaymentByIdAsync(paymentId) ??
+                throw new InvalidOperationException("Failed to retrieve reconciled payment");
         }
 
         public async Task<decimal> GetTotalPaidByClientAsync(int clientId, int? taxYear = null)
@@ -302,7 +445,7 @@ namespace BettsTax.Core.Services
         {
             var payments = await _context.Payments
                 .Include(p => p.Client)
-                .Include(p => p.ApprovedBy)
+                // Removed Include for ApprovedBy because the navigation is ignored in the model
                 .Where(p => p.TaxFilingId == taxFilingId)
                 .OrderByDescending(p => p.PaymentDate)
                 .ToListAsync();

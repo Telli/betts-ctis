@@ -1,0 +1,434 @@
+using BettsTax.Core.DTOs;
+using BettsTax.Core.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace BettsTax.Web.Controllers
+{
+    /// <summary>
+    /// Controller for managing workflow rules
+    /// </summary>
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class WorkflowRuleController : ControllerBase
+    {
+        private readonly IWorkflowRuleService _workflowRuleService;
+        private readonly IWorkflowExecutionService _workflowExecutionService;
+        private readonly ILogger<WorkflowRuleController> _logger;
+
+        public WorkflowRuleController(
+            IWorkflowRuleService workflowRuleService,
+            IWorkflowExecutionService workflowExecutionService,
+            ILogger<WorkflowRuleController> logger)
+        {
+            _workflowRuleService = workflowRuleService;
+            _workflowExecutionService = workflowExecutionService;
+            _logger = logger;
+        }
+
+        /// <summary>
+        /// Get all workflow rules with optional filtering
+        /// </summary>
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<WorkflowRuleDto>>> GetRules(
+            [FromQuery] string? triggerType = null,
+            [FromQuery] bool? isActive = null,
+            [FromQuery] string? category = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            try
+            {
+                var result = await _workflowRuleService.GetRulesAsync(triggerType, isActive, category, page, pageSize);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting workflow rules");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get a specific workflow rule by ID
+        /// </summary>
+        [HttpGet("{id}")]
+        public async Task<ActionResult<WorkflowRuleDto>> GetRule(int id)
+        {
+            try
+            {
+                var result = await _workflowRuleService.GetRuleAsync(id);
+                
+                if (!result.IsSuccess)
+                {
+                    return NotFound(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting workflow rule {RuleId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Create a new workflow rule
+        /// </summary>
+        [HttpPost]
+        public async Task<ActionResult<WorkflowRuleDto>> CreateRule([FromBody] WorkflowRuleDto ruleDto)
+        {
+            try
+            {
+                var result = await _workflowRuleService.CreateRuleAsync(ruleDto);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return CreatedAtAction(nameof(GetRule), new { id = result.Data.Id }, result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating workflow rule");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Update an existing workflow rule
+        /// </summary>
+        [HttpPut("{id}")]
+        public async Task<ActionResult<WorkflowRuleDto>> UpdateRule(int id, [FromBody] WorkflowRuleDto ruleDto)
+        {
+            try
+            {
+                if (id != ruleDto.Id)
+                {
+                    return BadRequest("Rule ID in URL does not match rule ID in body");
+                }
+
+                var result = await _workflowRuleService.UpdateRuleAsync(ruleDto);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating workflow rule {RuleId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Delete a workflow rule
+        /// </summary>
+        [HttpDelete("{id}")]
+        public async Task<ActionResult> DeleteRule(int id)
+        {
+            try
+            {
+                var result = await _workflowRuleService.DeleteRuleAsync(id);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting workflow rule {RuleId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Test a workflow rule with sample data
+        /// </summary>
+        [HttpPost("{id}/test")]
+        public async Task<ActionResult<WorkflowRuleTestResultDto>> TestRule(int id, [FromBody] object testData)
+        {
+            try
+            {
+                var result = await _workflowRuleService.TestRuleAsync(id, testData);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error testing workflow rule {RuleId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Execute a workflow rule manually
+        /// </summary>
+        [HttpPost("{id}/execute")]
+        public async Task<ActionResult<WorkflowExecutionResultDto>> ExecuteRule(int id, [FromBody] object executionData)
+        {
+            try
+            {
+                var result = await _workflowExecutionService.ExecuteRuleAsync(id, executionData);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error executing workflow rule {RuleId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Enable a workflow rule
+        /// </summary>
+        [HttpPost("{id}/enable")]
+        public async Task<ActionResult> EnableRule(int id)
+        {
+            try
+            {
+                var ruleResult = await _workflowRuleService.GetRuleAsync(id);
+                if (!ruleResult.IsSuccess)
+                {
+                    return NotFound(ruleResult.ErrorMessage);
+                }
+
+                var rule = ruleResult.Data;
+                rule.IsActive = true;
+
+                var updateResult = await _workflowRuleService.UpdateRuleAsync(rule);
+                if (!updateResult.IsSuccess)
+                {
+                    return BadRequest(updateResult.ErrorMessage);
+                }
+
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error enabling workflow rule {RuleId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Disable a workflow rule
+        /// </summary>
+        [HttpPost("{id}/disable")]
+        public async Task<ActionResult> DisableRule(int id)
+        {
+            try
+            {
+                var ruleResult = await _workflowRuleService.GetRuleAsync(id);
+                if (!ruleResult.IsSuccess)
+                {
+                    return NotFound(ruleResult.ErrorMessage);
+                }
+
+                var rule = ruleResult.Data;
+                rule.IsActive = false;
+
+                var updateResult = await _workflowRuleService.UpdateRuleAsync(rule);
+                if (!updateResult.IsSuccess)
+                {
+                    return BadRequest(updateResult.ErrorMessage);
+                }
+
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error disabling workflow rule {RuleId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get available trigger types
+        /// </summary>
+        [HttpGet("triggers")]
+        public async Task<ActionResult<IEnumerable<WorkflowTriggerDto>>> GetAvailableTriggers()
+        {
+            try
+            {
+                var result = await _workflowRuleService.GetAvailableTriggersAsync();
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting available triggers");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get available action types
+        /// </summary>
+        [HttpGet("actions")]
+        public async Task<ActionResult<IEnumerable<WorkflowActionTypeDto>>> GetAvailableActions()
+        {
+            try
+            {
+                var result = await _workflowRuleService.GetAvailableActionsAsync();
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting available actions");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get execution history for a rule
+        /// </summary>
+        [HttpGet("{id}/history")]
+        public async Task<ActionResult<IEnumerable<WorkflowExecutionHistoryDto>>> GetRuleHistory(
+            int id,
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            try
+            {
+                var result = await _workflowRuleService.GetRuleExecutionHistoryAsync(
+                    id, startDate, endDate, page, pageSize);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting rule execution history for rule {RuleId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get rule metrics
+        /// </summary>
+        [HttpGet("{id}/metrics")]
+        public async Task<ActionResult<WorkflowRuleMetricsDto>> GetRuleMetrics(
+            int id,
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null)
+        {
+            try
+            {
+                var result = await _workflowRuleService.GetRuleMetricsAsync(id, startDate, endDate);
+                
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result.ErrorMessage);
+                }
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting rule metrics for rule {RuleId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Bulk enable/disable rules
+        /// </summary>
+        [HttpPost("bulk-update")]
+        public async Task<ActionResult> BulkUpdateRules([FromBody] WorkflowRuleBulkUpdateDto bulkUpdate)
+        {
+            try
+            {
+                var successCount = 0;
+                var failedRules = new List<string>();
+
+                foreach (var ruleId in bulkUpdate.RuleIds)
+                {
+                    var ruleResult = await _workflowRuleService.GetRuleAsync(ruleId);
+                    if (!ruleResult.IsSuccess)
+                    {
+                        failedRules.Add($"Rule {ruleId}: {ruleResult.ErrorMessage}");
+                        continue;
+                    }
+
+                    var rule = ruleResult.Data;
+                    rule.IsActive = bulkUpdate.IsActive;
+
+                    var updateResult = await _workflowRuleService.UpdateRuleAsync(rule);
+                    if (updateResult.IsSuccess)
+                    {
+                        successCount++;
+                    }
+                    else
+                    {
+                        failedRules.Add($"Rule {ruleId}: {updateResult.ErrorMessage}");
+                    }
+                }
+
+                return Ok(new
+                {
+                    SuccessCount = successCount,
+                    FailedCount = failedRules.Count,
+                    FailedRules = failedRules
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error bulk updating workflow rules");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+    }
+
+    /// <summary>
+    /// DTO for bulk rule updates
+    /// </summary>
+    public class WorkflowRuleBulkUpdateDto
+    {
+        public List<int> RuleIds { get; set; } = new();
+        public bool IsActive { get; set; }
+    }
+}

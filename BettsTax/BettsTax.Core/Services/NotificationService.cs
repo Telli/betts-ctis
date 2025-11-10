@@ -65,5 +65,33 @@ namespace BettsTax.Core.Services
             await Task.CompletedTask;
             return true;
         }
+        
+        public async Task<bool> SendNotificationAsync(string userId, string message, string notificationType)
+        {
+            // Example implementation: Create a notification and send an email or SMS based on the type
+            var notification = new Notification
+            {
+                UserId = userId,
+                Message = message,
+                Status = NotificationStatus.Unread,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Notifications.Add(notification);
+            await _context.SaveChangesAsync();
+
+            if (notificationType == "Email")
+            {
+                // Call SendEmailAsync (assuming email is fetched from user profile)
+                return await SendEmailAsync("user@example.com", "Notification", message);
+            }
+            else if (notificationType == "SMS")
+            {
+                // Call SendSmsAsync (assuming phone number is fetched from user profile)
+                return await SendSmsAsync("+1234567890", message);
+            }
+
+            return true;
+        }
     }
 }

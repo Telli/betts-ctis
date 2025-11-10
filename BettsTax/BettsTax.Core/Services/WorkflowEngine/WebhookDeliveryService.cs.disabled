@@ -1,0 +1,848 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using BettsTax.Core.DTOs;
+using BettsTax.Data;
+using BettsTax.Shared;
+
+namespace BettsTax.Core.Services.WorkflowEngine
+{
+    /// <summary>
+    /// Comprehensive event-driven webhook system with secure delivery and monitoring
+    /// Handles webhook registration, delivery, retry logic, and analytics
+    /// </summary>
+    public class WebhookDeliveryService : BackgroundService, IWebhookDeliveryService
+    {
+        private readonly IServiceProvider _serviceProvider;
+        private readonly ILogger<WebhookDeliveryService> _logger;
+        private readonly WebhookOptions _options;
+        private readonly HttpClient _httpClient;
+        private Timer? _cleanupTimer;
+        private Timer? _retryTimer;
+
+        public WebhookDeliveryService(
+            IServiceProvider serviceProvider,
+            ILogger<WebhookDeliveryService> logger,
+            IOptions<WebhookOptions> options,
+            HttpClient httpClient)
+        {
+            _serviceProvider = serviceProvider;
+            _logger = logger;
+            _options = options.Value;
+            _httpClient = httpClient;
+        }
+
+        /// <summary>
+        /// Registers a new webhook endpoint
+        /// </summary>
+        public async Task<Result<DTOs.WebhookRegistration>> RegisterWebhookAsync(RegisterWebhookRequest request)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                _logger.LogInformation("Registering webhook for URL: {Url}", request.Url);
+
+                // Validate webhook URL
+                if (!Uri.TryCreate(request.Url, UriKind.Absolute, out var uri))
+                {
+                    return Result.Failure<WebhookRegistration>("Invalid webhook URL");
+                }
+
+                if (uri.Scheme != "https" && !_options.AllowInsecureUrls)
+                {
+                    return Result.Failure<WebhookRegistration>("HTTPS is required for webhook URLs");
+                }
+
+                // Check for existing webhook
+                var existingWebhook = await context.WebhookRegistrations
+                    .FirstOrDefaultAsync(w => w.Url == request.Url && w.UserId == request.UserId && w.IsActive);
+
+                if (existingWebhook != null)
+                {
+                    return Result.Failure<WebhookRegistration>("Webhook already registered for this URL");
+                }
+
+                // Generate webhook secrets
+                var secret = GenerateWebhookSecret();
+                var apiKey = GenerateApiKey();
+
+                var webhook = new WebhookRegistration
+                {
+                    Id = Guid.NewGuid(),
+                    Url = request.Url,
+                    UserId = request.UserId,
+                    Name = request.Name,
+                    Description = request.Description,
+                    EventTypes = request.EventTypes ?? new List<string>(),
+                    Secret = secret,
+                    ApiKey = apiKey,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    Settings = new WebhookSettings
+                    {
+                        TimeoutSeconds = request.TimeoutSeconds ?? _options.DefaultTimeoutSeconds,
+                        MaxRetryAttempts = request.MaxRetryAttempts ?? _options.DefaultMaxRetryAttempts,
+                        RetryDelaySeconds = request.RetryDelaySeconds ?? _options.DefaultRetryDelaySeconds,
+                        IncludeHeaders = request.IncludeHeaders ?? true,
+                        IncludeUserData = request.IncludeUserData ?? false,
+                        ContentType = request.ContentType ?? "application/json",
+                        CustomHeaders = request.CustomHeaders ?? new Dictionary<string, string>(),
+                        FilterConditions = request.FilterConditions ?? new List<WebhookFilter>()
+                    },
+                    SecuritySettings = new WebhookSecuritySettings
+                    {
+                        RequireSignature = request.RequireSignature ?? true,
+                        SignatureHeader = request.SignatureHeader ?? "X-Webhook-Signature",
+                        AllowedIpRanges = request.AllowedIpRanges ?? new List<string>(),
+                        RateLimitPerHour = request.RateLimitPerHour ?? _options.DefaultRateLimitPerHour
+                    }
+                };
+
+                await context.WebhookRegistrations.AddAsync(webhook);
+                await context.SaveChangesAsync();
+
+                _logger.LogInformation("Registered webhook {WebhookId} for URL: {Url}", webhook.Id, request.Url);
+
+                // Test webhook if requested
+                if (request.TestOnRegistration)
+                {
+                    await SendTestWebhookAsync(webhook.Id);
+                }
+
+                return Result.Success(webhook);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error registering webhook for URL: {Url}", request.Url);
+                return Result.Failure<WebhookRegistration>($"Failed to register webhook: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Sends an event to all registered webhooks
+        /// </summary>
+        public async Task<Result<WebhookBroadcastResult>> SendEventAsync(SendWebhookEventRequest request)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                _logger.LogInformation("Broadcasting event {EventType} to webhooks", request.EventType);
+
+                // Get matching webhooks
+                var webhooks = await context.WebhookRegistrations
+                    .Where(w => w.IsActive && 
+                               (w.EventTypes.Contains(request.EventType) || w.EventTypes.Contains("*")))
+                    .ToListAsync();
+
+                if (!webhooks.Any())
+                {
+                    _logger.LogInformation("No active webhooks found for event type: {EventType}", request.EventType);
+                    return Result.Success(new WebhookBroadcastResult
+                    {
+                        EventType = request.EventType,
+                        TotalWebhooks = 0,
+                        SuccessfulDeliveries = 0,
+                        FailedDeliveries = 0,
+                        DeliveryResults = new List<WebhookDeliveryResult>()
+                    });
+                }
+
+                var deliveryTasks = new List<Task<WebhookDeliveryResult>>();
+
+                foreach (var webhook in webhooks)
+                {
+                    // Apply filters
+                    if (webhook.Settings.FilterConditions.Any() && !ApplyFilters(webhook.Settings.FilterConditions, request.Data))
+                    {
+                        continue;
+                    }
+
+                    // Check rate limits
+                    if (!await CheckRateLimitAsync(context, webhook.Id))
+                    {
+                        _logger.LogWarning("Rate limit exceeded for webhook {WebhookId}", webhook.Id);
+                        continue;
+                    }
+
+                    deliveryTasks.Add(DeliverWebhookAsync(webhook, request));
+                }
+
+                var deliveryResults = await Task.WhenAll(deliveryTasks);
+
+                var result = new WebhookBroadcastResult
+                {
+                    EventType = request.EventType,
+                    TotalWebhooks = webhooks.Count,
+                    SuccessfulDeliveries = deliveryResults.Count(r => r.Success),
+                    FailedDeliveries = deliveryResults.Count(r => !r.Success),
+                    DeliveryResults = deliveryResults.ToList()
+                };
+
+                _logger.LogInformation("Broadcast complete for event {EventType}: {Success}/{Total} successful", 
+                    request.EventType, result.SuccessfulDeliveries, result.TotalWebhooks);
+
+                return Result.Success(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error broadcasting event {EventType}", request.EventType);
+                return Result.Failure<WebhookBroadcastResult>($"Failed to broadcast event: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets webhook registrations with filtering
+        /// </summary>
+        public async Task<Result<List<WebhookRegistration>>> GetWebhooksAsync(WebhookFilter? filter = null)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                var query = context.WebhookRegistrations.AsQueryable();
+
+                if (filter?.UserId != null)
+                    query = query.Where(w => w.UserId == filter.UserId);
+
+                if (filter?.EventType != null)
+                    query = query.Where(w => w.EventTypes.Contains(filter.EventType));
+
+                if (filter?.IsActive.HasValue == true)
+                    query = query.Where(w => w.IsActive == filter.IsActive.Value);
+
+                var webhooks = await query
+                    .Include(w => w.Statistics)
+                    .OrderByDescending(w => w.CreatedAt)
+                    .ToListAsync();
+
+                return Result.Success(webhooks);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting webhooks");
+                return Result.Failure<List<WebhookRegistration>>($"Failed to get webhooks: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets webhook delivery history
+        /// </summary>
+        public async Task<Result<PagedResult<WebhookDeliveryLog>>> GetDeliveryHistoryAsync(
+            Guid webhookId, int pageSize = 50, int pageNumber = 1)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                var query = context.WebhookDeliveryLogs
+                    .Where(d => d.WebhookId == webhookId)
+                    .OrderByDescending(d => d.DeliveredAt);
+
+                var totalCount = await query.CountAsync();
+                var logs = await query
+                    .Skip((pageNumber - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync();
+
+                var result = new PagedResult<WebhookDeliveryLog>
+                {
+                    Items = logs,
+                    TotalCount = totalCount,
+                    PageNumber = pageNumber,
+                    PageSize = pageSize
+                };
+
+                return Result.Success(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting delivery history for webhook {WebhookId}", webhookId);
+                return Result.Failure<PagedResult<WebhookDeliveryLog>>($"Failed to get delivery history: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Updates webhook configuration
+        /// </summary>
+        public async Task<Result<WebhookRegistration>> UpdateWebhookAsync(Guid webhookId, UpdateWebhookRequest request)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                var webhook = await context.WebhookRegistrations
+                    .FirstOrDefaultAsync(w => w.Id == webhookId);
+
+                if (webhook == null)
+                {
+                    return Result.Failure<WebhookRegistration>("Webhook not found");
+                }
+
+                // Update basic properties
+                if (!string.IsNullOrEmpty(request.Name))
+                    webhook.Name = request.Name;
+
+                if (!string.IsNullOrEmpty(request.Description))
+                    webhook.Description = request.Description;
+
+                if (request.EventTypes != null)
+                    webhook.EventTypes = request.EventTypes;
+
+                if (request.IsActive.HasValue)
+                    webhook.IsActive = request.IsActive.Value;
+
+                // Update settings
+                if (request.Settings != null)
+                {
+                    webhook.Settings.TimeoutSeconds = request.Settings.TimeoutSeconds ?? webhook.Settings.TimeoutSeconds;
+                    webhook.Settings.MaxRetryAttempts = request.Settings.MaxRetryAttempts ?? webhook.Settings.MaxRetryAttempts;
+                    webhook.Settings.RetryDelaySeconds = request.Settings.RetryDelaySeconds ?? webhook.Settings.RetryDelaySeconds;
+                    webhook.Settings.IncludeHeaders = request.Settings.IncludeHeaders ?? webhook.Settings.IncludeHeaders;
+                    webhook.Settings.IncludeUserData = request.Settings.IncludeUserData ?? webhook.Settings.IncludeUserData;
+                    
+                    if (request.Settings.CustomHeaders != null)
+                        webhook.Settings.CustomHeaders = request.Settings.CustomHeaders;
+                        
+                    if (request.Settings.FilterConditions != null)
+                        webhook.Settings.FilterConditions = request.Settings.FilterConditions;
+                }
+
+                webhook.UpdatedAt = DateTime.UtcNow;
+                await context.SaveChangesAsync();
+
+                _logger.LogInformation("Updated webhook {WebhookId}", webhookId);
+
+                return Result.Success(webhook);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating webhook {WebhookId}", webhookId);
+                return Result.Failure<WebhookRegistration>($"Failed to update webhook: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Deletes webhook registration
+        /// </summary>
+        public async Task<Result<bool>> DeleteWebhookAsync(Guid webhookId)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                var webhook = await context.WebhookRegistrations
+                    .FirstOrDefaultAsync(w => w.Id == webhookId);
+
+                if (webhook == null)
+                {
+                    return Result.Failure<bool>("Webhook not found");
+                }
+
+                webhook.IsActive = false;
+                webhook.UpdatedAt = DateTime.UtcNow;
+                await context.SaveChangesAsync();
+
+                _logger.LogInformation("Deleted webhook {WebhookId}", webhookId);
+
+                return Result.Success(true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting webhook {WebhookId}", webhookId);
+                return Result.Failure<bool>($"Failed to delete webhook: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Sends a test webhook
+        /// </summary>
+        public async Task<Result<WebhookDeliveryResult>> SendTestWebhookAsync(Guid webhookId)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                var webhook = await context.WebhookRegistrations
+                    .FirstOrDefaultAsync(w => w.Id == webhookId);
+
+                if (webhook == null)
+                {
+                    return Result.Failure<WebhookDeliveryResult>("Webhook not found");
+                }
+
+                var testEvent = new SendWebhookEventRequest
+                {
+                    EventType = "webhook.test",
+                    Data = new Dictionary<string, object>
+                    {
+                        ["test"] = true,
+                        ["timestamp"] = DateTime.UtcNow,
+                        ["webhook_id"] = webhookId.ToString(),
+                        ["message"] = "This is a test webhook delivery"
+                    },
+                    UserId = webhook.UserId,
+                    Timestamp = DateTime.UtcNow
+                };
+
+                var result = await DeliverWebhookAsync(webhook, testEvent);
+
+                _logger.LogInformation("Test webhook sent to {WebhookId}: {Success}", 
+                    webhookId, result.Success);
+
+                return Result.Success(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending test webhook {WebhookId}", webhookId);
+                return Result.Failure<WebhookDeliveryResult>($"Failed to send test webhook: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets webhook statistics and analytics
+        /// </summary>
+        public async Task<Result<WebhookAnalytics>> GetWebhookAnalyticsAsync(
+            Guid? webhookId = null, TimeSpan? period = null)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                var since = DateTime.UtcNow.Subtract(period ?? TimeSpan.FromDays(30));
+
+                var query = context.WebhookDeliveryLogs.AsQueryable();
+
+                if (webhookId.HasValue)
+                    query = query.Where(d => d.WebhookId == webhookId.Value);
+
+                query = query.Where(d => d.DeliveredAt >= since);
+
+                var deliveries = await query.ToListAsync();
+
+                var analytics = new WebhookAnalytics
+                {
+                    Period = period ?? TimeSpan.FromDays(30),
+                    TotalDeliveries = deliveries.Count,
+                    SuccessfulDeliveries = deliveries.Count(d => d.Success),
+                    FailedDeliveries = deliveries.Count(d => !d.Success),
+                    AverageResponseTime = deliveries.Where(d => d.ResponseTime.HasValue)
+                                                   .Average(d => d.ResponseTime!.Value.TotalMilliseconds),
+                    EventTypeBreakdown = deliveries.GroupBy(d => d.EventType)
+                                                   .ToDictionary(g => g.Key, g => g.Count()),
+                    DailyStats = deliveries.GroupBy(d => d.DeliveredAt.Date)
+                                          .Select(g => new DailyWebhookStats
+                                          {
+                                              Date = g.Key,
+                                              TotalDeliveries = g.Count(),
+                                              SuccessfulDeliveries = g.Count(d => d.Success),
+                                              FailedDeliveries = g.Count(d => !d.Success)
+                                          }).ToList(),
+                    TopFailureReasons = deliveries.Where(d => !d.Success && !string.IsNullOrEmpty(d.ErrorMessage))
+                                                  .GroupBy(d => d.ErrorMessage!)
+                                                  .OrderByDescending(g => g.Count())
+                                                  .Take(5)
+                                                  .ToDictionary(g => g.Key, g => g.Count())
+                };
+
+                return Result.Success(analytics);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting webhook analytics");
+                return Result.Failure<WebhookAnalytics>($"Failed to get webhook analytics: {ex.Message}");
+            }
+        }
+
+        // Background service implementation
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            _logger.LogInformation("Webhook delivery service starting");
+
+            // Set up cleanup timer
+            _cleanupTimer = new Timer(CleanupOldDeliveryLogs, null, 
+                TimeSpan.FromHours(1), TimeSpan.FromHours(6));
+
+            // Set up retry timer
+            _retryTimer = new Timer(ProcessRetryQueue, null, 
+                TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5));
+
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try
+                {
+                    await ProcessWebhookQueue(stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error in webhook processing loop");
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+            }
+        }
+
+        public override void Dispose()
+        {
+            _cleanupTimer?.Dispose();
+            _retryTimer?.Dispose();
+            base.Dispose();
+        }
+
+        // Private helper methods
+
+        private async Task<WebhookDeliveryResult> DeliverWebhookAsync(
+            WebhookRegistration webhook, SendWebhookEventRequest eventRequest)
+        {
+            var startTime = DateTime.UtcNow;
+            var deliveryResult = new WebhookDeliveryResult
+            {
+                WebhookId = webhook.Id,
+                EventType = eventRequest.EventType,
+                DeliveredAt = startTime,
+                Success = false
+            };
+
+            try
+            {
+                // Create webhook payload
+                var payload = CreateWebhookPayload(webhook, eventRequest);
+                var jsonPayload = JsonSerializer.Serialize(payload);
+
+                // Create HTTP request
+                var request = new HttpRequestMessage(HttpMethod.Post, webhook.Url)
+                {
+                    Content = new StringContent(jsonPayload, Encoding.UTF8, webhook.Settings.ContentType)
+                };
+
+                // Add headers
+                if (webhook.Settings.IncludeHeaders)
+                {
+                    request.Headers.Add("User-Agent", "BettsTax-Webhook/1.0");
+                    request.Headers.Add("X-Webhook-Event", eventRequest.EventType);
+                    request.Headers.Add("X-Webhook-Id", webhook.Id.ToString());
+                    request.Headers.Add("X-Webhook-Timestamp", startTime.ToString("O"));
+                }
+
+                // Add custom headers
+                foreach (var header in webhook.Settings.CustomHeaders)
+                {
+                    request.Headers.Add(header.Key, header.Value);
+                }
+
+                // Add signature
+                if (webhook.SecuritySettings.RequireSignature)
+                {
+                    var signature = GenerateSignature(jsonPayload, webhook.Secret);
+                    request.Headers.Add(webhook.SecuritySettings.SignatureHeader, signature);
+                }
+
+                // Send request
+                _httpClient.Timeout = TimeSpan.FromSeconds(webhook.Settings.TimeoutSeconds);
+                var response = await _httpClient.SendAsync(request);
+
+                var endTime = DateTime.UtcNow;
+                var responseTime = endTime - startTime;
+
+                deliveryResult.ResponseTime = responseTime;
+                deliveryResult.StatusCode = (int)response.StatusCode;
+                deliveryResult.Success = response.IsSuccessStatusCode;
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    deliveryResult.ErrorMessage = $"HTTP {response.StatusCode}: {response.ReasonPhrase}";
+                    var responseContent = await response.Content.ReadAsStringAsync();
+                    if (!string.IsNullOrEmpty(responseContent))
+                    {
+                        deliveryResult.ResponseBody = responseContent.Length > 1000 
+                            ? responseContent.Substring(0, 1000) + "..." 
+                            : responseContent;
+                    }
+                }
+                else
+                {
+                    deliveryResult.ResponseBody = await response.Content.ReadAsStringAsync();
+                }
+
+                // Log delivery
+                await LogWebhookDeliveryAsync(webhook.Id, deliveryResult, jsonPayload);
+
+                // Update webhook statistics
+                await UpdateWebhookStatisticsAsync(webhook.Id, deliveryResult.Success, responseTime);
+
+                return deliveryResult;
+            }
+            catch (Exception ex)
+            {
+                deliveryResult.ErrorMessage = ex.Message;
+                deliveryResult.ResponseTime = DateTime.UtcNow - startTime;
+
+                await LogWebhookDeliveryAsync(webhook.Id, deliveryResult, "");
+
+                _logger.LogError(ex, "Error delivering webhook {WebhookId} to {Url}", 
+                    webhook.Id, webhook.Url);
+
+                return deliveryResult;
+            }
+        }
+
+        private object CreateWebhookPayload(WebhookRegistration webhook, SendWebhookEventRequest eventRequest)
+        {
+            var payload = new Dictionary<string, object>
+            {
+                ["event_type"] = eventRequest.EventType,
+                ["timestamp"] = eventRequest.Timestamp,
+                ["data"] = eventRequest.Data
+            };
+
+            if (webhook.Settings.IncludeUserData && !string.IsNullOrEmpty(eventRequest.UserId))
+            {
+                payload["user_id"] = eventRequest.UserId;
+            }
+
+            return payload;
+        }
+
+        private string GenerateSignature(string payload, string secret)
+        {
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+            var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
+            return "sha256=" + Convert.ToHexString(hash).ToLower();
+        }
+
+        private string GenerateWebhookSecret()
+        {
+            var bytes = new byte[32];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(bytes);
+            return Convert.ToBase64String(bytes);
+        }
+
+        private string GenerateApiKey()
+        {
+            return "bx_" + Guid.NewGuid().ToString("N")[..24];
+        }
+
+        private bool ApplyFilters(List<WebhookFilter> filters, Dictionary<string, object> data)
+        {
+            foreach (var filter in filters)
+            {
+                if (!EvaluateFilter(filter, data))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private bool EvaluateFilter(WebhookFilter filter, Dictionary<string, object> data)
+        {
+            if (!data.TryGetValue(filter.Field, out var value))
+                return false;
+
+            return filter.Operator.ToLower() switch
+            {
+                "equals" => value?.ToString() == filter.Value?.ToString(),
+                "not_equals" => value?.ToString() != filter.Value?.ToString(),
+                "contains" => value?.ToString()?.Contains(filter.Value?.ToString() ?? "") == true,
+                "starts_with" => value?.ToString()?.StartsWith(filter.Value?.ToString() ?? "") == true,
+                "ends_with" => value?.ToString()?.EndsWith(filter.Value?.ToString() ?? "") == true,
+                "greater_than" => CompareValues(value, filter.Value) > 0,
+                "less_than" => CompareValues(value, filter.Value) < 0,
+                "exists" => value != null,
+                "not_exists" => value == null,
+                _ => true
+            };
+        }
+
+        private int CompareValues(object? left, object? right)
+        {
+            if (left == null && right == null) return 0;
+            if (left == null) return -1;
+            if (right == null) return 1;
+
+            if (double.TryParse(left.ToString(), out var leftNum) && 
+                double.TryParse(right.ToString(), out var rightNum))
+            {
+                return leftNum.CompareTo(rightNum);
+            }
+
+            return string.Compare(left.ToString(), right.ToString(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private async Task<bool> CheckRateLimitAsync(ApplicationDbContext context, Guid webhookId)
+        {
+            var webhook = await context.WebhookRegistrations
+                .Include(w => w.Statistics)
+                .FirstOrDefaultAsync(w => w.Id == webhookId);
+
+            if (webhook?.SecuritySettings?.RateLimitPerHour == null)
+                return true;
+
+            var hourAgo = DateTime.UtcNow.AddHours(-1);
+            var recentDeliveries = await context.WebhookDeliveryLogs
+                .CountAsync(d => d.WebhookId == webhookId && d.DeliveredAt >= hourAgo);
+
+            return recentDeliveries < webhook.SecuritySettings.RateLimitPerHour;
+        }
+
+        private async Task LogWebhookDeliveryAsync(Guid webhookId, WebhookDeliveryResult result, string payload)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                var log = new WebhookDeliveryLog
+                {
+                    Id = Guid.NewGuid(),
+                    WebhookId = webhookId,
+                    EventType = result.EventType,
+                    DeliveredAt = result.DeliveredAt,
+                    Success = result.Success,
+                    StatusCode = result.StatusCode,
+                    ResponseTime = result.ResponseTime,
+                    ErrorMessage = result.ErrorMessage,
+                    RequestPayload = payload.Length > 5000 ? payload.Substring(0, 5000) + "..." : payload,
+                    ResponseBody = result.ResponseBody?.Length > 2000 
+                        ? result.ResponseBody.Substring(0, 2000) + "..." 
+                        : result.ResponseBody
+                };
+
+                await context.WebhookDeliveryLogs.AddAsync(log);
+                await context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error logging webhook delivery for {WebhookId}", webhookId);
+            }
+        }
+
+        private async Task UpdateWebhookStatisticsAsync(Guid webhookId, bool success, TimeSpan responseTime)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                var webhook = await context.WebhookRegistrations
+                    .Include(w => w.Statistics)
+                    .FirstOrDefaultAsync(w => w.Id == webhookId);
+
+                if (webhook?.Statistics != null)
+                {
+                    webhook.Statistics.TotalDeliveries++;
+                    if (success)
+                    {
+                        webhook.Statistics.SuccessfulDeliveries++;
+                    }
+                    else
+                    {
+                        webhook.Statistics.FailedDeliveries++;
+                    }
+
+                    webhook.Statistics.LastDeliveryAt = DateTime.UtcNow;
+                    webhook.Statistics.AverageResponseTime = CalculateAverageResponseTime(
+                        webhook.Statistics.AverageResponseTime, 
+                        responseTime.TotalMilliseconds, 
+                        webhook.Statistics.TotalDeliveries);
+
+                    await context.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating webhook statistics for {WebhookId}", webhookId);
+            }
+        }
+
+        private double CalculateAverageResponseTime(double currentAverage, double newValue, int totalCount)
+        {
+            if (totalCount <= 1) return newValue;
+            return ((currentAverage * (totalCount - 1)) + newValue) / totalCount;
+        }
+
+        private async Task ProcessWebhookQueue(CancellationToken cancellationToken)
+        {
+            // Process queued webhooks (if implementing queue system)
+            await Task.CompletedTask;
+        }
+
+        private void ProcessRetryQueue(object? state)
+        {
+            // Process failed webhook retries
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                    // Find failed deliveries that need retry
+                    var failedDeliveries = await context.WebhookDeliveryLogs
+                        .Where(d => !d.Success && d.RetryCount < 3 && 
+                                   d.DeliveredAt >= DateTime.UtcNow.AddHours(-24))
+                        .ToListAsync();
+
+                    foreach (var delivery in failedDeliveries)
+                    {
+                        // Implement retry logic
+                        _logger.LogInformation("Retrying webhook delivery {DeliveryId}", delivery.Id);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing webhook retry queue");
+                }
+            });
+        }
+
+        private void CleanupOldDeliveryLogs(object? state)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                    var cutoffDate = DateTime.UtcNow.AddDays(-_options.RetentionDays);
+                    
+                    var oldLogs = await context.WebhookDeliveryLogs
+                        .Where(d => d.DeliveredAt < cutoffDate)
+                        .ToListAsync();
+
+                    context.WebhookDeliveryLogs.RemoveRange(oldLogs);
+                    await context.SaveChangesAsync();
+
+                    _logger.LogInformation("Cleaned up {Count} old webhook delivery logs", oldLogs.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error cleaning up old webhook delivery logs");
+                }
+            });
+        }
+    }
+}

@@ -9,6 +9,7 @@ namespace BettsTax.Core.Profiles
         public DocumentProfile()
         {
             CreateMap<Document, DocumentDto>().ReverseMap();
+            CreateMap<DocumentVersion, DocumentVersionDto>().ReverseMap();
         }
     }
 }

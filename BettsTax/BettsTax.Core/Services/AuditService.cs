@@ -21,7 +21,7 @@ namespace BettsTax.Core.Services
             {
                 var log = new SecurityAuditLog
                 {
-                    UserId = userId,
+                    UserId = string.IsNullOrWhiteSpace(userId) ? null : userId,
                     Action = action,
                     Entity = entity,
                     EntityId = entityId,
@@ -29,6 +29,7 @@ namespace BettsTax.Core.Services
                     Operation = BettsTax.Data.Models.Security.AuditOperation.Create,
                     Severity = BettsTax.Data.Models.Security.AuditSeverity.Medium,
                     Category = BettsTax.Data.Models.Security.AuditCategory.DataAccess,
+                    IpAddress = "127.0.0.1",
                     Timestamp = DateTime.UtcNow
                 };
                 _db.AuditLogs.Add(log);
@@ -114,13 +115,13 @@ namespace BettsTax.Core.Services
             {
                 var log = new SecurityAuditLog
                 {
-                    UserId = userId ?? "SYSTEM",
+                    UserId = string.IsNullOrWhiteSpace(userId) ? null : userId,
                     Action = actionType.ToString(),
                     Entity = "Security",
                     EntityId = "N/A",
                     Description = details,
                     Operation = BettsTax.Data.Models.Security.AuditOperation.Login,
-                    IpAddress = ipAddress ?? "Unknown",
+                    IpAddress = string.IsNullOrWhiteSpace(ipAddress) ? "127.0.0.1" : ipAddress,
                     UserAgent = userAgent,
                     Severity = isSuccess ? BettsTax.Data.Models.Security.AuditSeverity.Low : BettsTax.Data.Models.Security.AuditSeverity.High,
                     Category = BettsTax.Data.Models.Security.AuditCategory.SecurityEvent,

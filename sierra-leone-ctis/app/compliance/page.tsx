@@ -6,9 +6,14 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { AlertTriangle, CheckCircle, Clock, XCircle, TrendingUp, FileText, DollarSign, Calendar } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Clock, XCircle, TrendingUp, FileText, DollarSign, Calendar, Download } from 'lucide-react'
 import { ComplianceService, ComplianceOverviewData, ComplianceItem } from '@/lib/services/compliance-service'
 import { formatSierraLeones, formatPercentage } from '@/lib/utils/currency'
+import { PageHeader } from '@/components/page-header'
+import { FilingChecklistMatrix } from '@/components/filing-checklist-matrix'
+import { PenaltyWarningsCard } from '@/components/penalty-warnings-card'
+import { DocumentSubmissionTracker } from '@/components/document-submission-tracker'
+import { ComplianceTimeline } from '@/components/compliance-timeline'
 
 
 export default function CompliancePage() {
@@ -131,19 +136,20 @@ export default function CompliancePage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Compliance Monitoring</h1>
-          <p className="text-muted-foreground mt-2">
-            Monitor client compliance with Sierra Leone Finance Act 2025 requirements
-          </p>
-        </div>
-        <Button>
-          <FileText className="mr-2 h-4 w-4" />
-          Export Report
-        </Button>
-      </div>
+    <div className="flex-1 flex flex-col">
+      <PageHeader
+        title="Compliance Overview"
+        breadcrumbs={[{ label: 'Compliance' }]}
+        description="Monitor client compliance with Sierra Leone Finance Act 2025 requirements"
+        actions={
+          <Button variant="outline">
+            <Download className="mr-2 h-4 w-4" />
+            Export Report
+          </Button>
+        }
+      />
+      
+      <div className="flex-1 p-6 space-y-6">
 
       {/* Overview Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -364,6 +370,18 @@ export default function CompliancePage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* New Phase 3 Components */}
+      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
+        <FilingChecklistMatrix />
+        <PenaltyWarningsCard />
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
+        <DocumentSubmissionTracker />
+        <ComplianceTimeline />
+      </div>
+    </div>
     </div>
   )
 }

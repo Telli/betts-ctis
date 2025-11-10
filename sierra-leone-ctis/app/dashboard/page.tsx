@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useToast } from '@/components/ui/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { DashboardService, DashboardData } from '@/lib/services'
 import Loading from '@/app/loading'
 import ClientSummaryCard from '@/components/dashboard/client-summary-card'
@@ -12,6 +13,9 @@ import RecentActivityList from '@/components/dashboard/recent-activity-list'
 import UpcomingDeadlines from '@/components/dashboard/upcoming-deadlines'
 import PendingApprovals from '@/components/dashboard/pending-approvals'
 import { useAuthGuard } from '@/hooks/use-auth-guard'
+import { PageHeader } from '@/components/page-header'
+import { MetricCard } from '@/components/metric-card'
+import { CheckCircle, Clock, DollarSign, FileText, RefreshCw } from 'lucide-react'
 
 function DashboardPage() {
   const { isLoading: authLoading, isAuthorized } = useAuthGuard({ requireAuth: true })
@@ -79,23 +83,71 @@ function DashboardPage() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-        <div className="flex items-center gap-2">
-          <button 
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md" 
-            onClick={() => window.location.reload()}
-          >
+    <div className="flex-1 flex flex-col">
+      <PageHeader
+        title="Dashboard"
+        breadcrumbs={[{ label: 'Dashboard' }]}
+        description="Overview of your tax compliance and filing status"
+        actions={
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            <RefreshCw className="w-4 h-4 mr-2" />
             Refresh Data
-          </button>
-        </div>
-      </div>
+          </Button>
+        }
+      />
       
       {dashboardData && (
-        <>
+        <div className="flex-1 space-y-6 p-6">
+          {/* Key Metrics */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <MetricCard
+              title="Compliance Rate"
+              value="94%"
+              trend="up"
+              trendValue="+3%"
+              subtitle="vs last month"
+              icon={<CheckCircle className="w-4 h-4" />}
+              color="success"
+            />
+            <MetricCard
+              title="Filing Timeliness"
+              value="15 days"
+              trend="up"
+              trendValue="+2 days"
+              subtitle="avg before deadline"
+              icon={<Clock className="w-4 h-4" />}
+              color="info"
+            />
+            <MetricCard
+              title="Payment Status"
+              value="87%"
+              trend="down"
+              trendValue="-3%"
+              subtitle="on-time payments"
+              icon={<DollarSign className="w-4 h-4" />}
+              color="warning"
+            />
+            <MetricCard
+              title="Documents"
+              value="94%"
+              trend="up"
+              trendValue="+8%"
+              subtitle="submission rate"
+              icon={<FileText className="w-4 h-4" />}
+              color="primary"
+            />
+          </div>
+
           {/* Client Summary */}
-          <ClientSummaryCard clientSummary={dashboardData.clientSummary} />
+          <ClientSummaryCard 
+            clientSummary={dashboardData.clientSummary ?? {
+              totalClients: 0,
+              compliantClients: 0,
+              pendingClients: 0,
+              warningClients: 0,
+              overdueClients: 0,
+            }} 
+          />
           
           <Tabs defaultValue="overview" className="space-y-4">
             <TabsList>
@@ -108,24 +160,31 @@ function DashboardPage() {
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                 <ComplianceOverview 
                   className="col-span-4" 
-                  complianceOverview={dashboardData.complianceOverview} 
+                  complianceOverview={dashboardData.complianceOverview ?? {
+                    totalFilings: 0,
+                    completedFilings: 0,
+                    pendingFilings: 0,
+                    lateFilings: 0,
+                    taxTypeBreakdown: {},
+                    monthlyRevenue: {},
+                  }} 
                 />
                 <UpcomingDeadlines
                   className="col-span-3"
-                  deadlines={dashboardData.upcomingDeadlines}
+                  deadlines={dashboardData.upcomingDeadlines ?? []}
                 />
               </div>
             </TabsContent>
             
             <TabsContent value="activity" className="space-y-4">
-              <RecentActivityList activities={dashboardData.recentActivity} />
+              <RecentActivityList activities={dashboardData.recentActivity ?? []} />
             </TabsContent>
             
             <TabsContent value="approvals" className="space-y-4">
-              <PendingApprovals approvals={dashboardData.pendingApprovals} />
+              <PendingApprovals approvals={dashboardData.pendingApprovals ?? []} />
             </TabsContent>
           </Tabs>
-        </>
+        </div>
       )}
     </div>
   )

@@ -14,6 +14,7 @@ namespace BettsTax.Data
         public DbSet<TaxYear> TaxYears { get; set; }
         public DbSet<TaxFiling> TaxFilings { get; set; }
         public DbSet<Document> Documents { get; set; }
+        public DbSet<DocumentVersion> DocumentVersions { get; set; }
         public DbSet<Payment> Payments { get; set; }
         // Removed - using Security.AuditLog instead
         public DbSet<Notification> Notifications { get; set; }
@@ -90,10 +91,19 @@ namespace BettsTax.Data
         public DbSet<Models.ChatRoom> ChatRooms { get; set; }
         public DbSet<Models.ChatRoomParticipant> ChatRoomParticipants { get; set; }
         public DbSet<Models.ChatMessage> ChatMessages { get; set; }
+        public DbSet<Models.ChatRoomInvitation> ChatRoomInvitations { get; set; }
+        public DbSet<Models.ChatMessageReaction> ChatMessageReactions { get; set; }
+        public DbSet<Models.ChatMessageRead> ChatMessageReads { get; set; }
 
         // Payment Gateway System DbSets
         public DbSet<Models.PaymentGatewayConfig> PaymentGatewayConfigs { get; set; }
         public DbSet<Models.PaymentTransaction> PaymentGatewayTransactions { get; set; }
+
+        // Phase 3: Enhanced Workflow Automation System - Additional entities only
+        public DbSet<WorkflowInstance> WorkflowInstances { get; set; }
+        public DbSet<WorkflowStepInstance> WorkflowStepInstances { get; set; }
+        public DbSet<WorkflowTrigger> WorkflowTriggers { get; set; }
+        public DbSet<WorkflowApproval> WorkflowApprovals { get; set; }
         public DbSet<Models.PaymentTransactionLog> PaymentTransactionLogs { get; set; }
         public DbSet<Models.PaymentRefund> PaymentRefunds { get; set; }
         public DbSet<Models.PaymentWebhookLog> PaymentGatewayWebhookLogs { get; set; }
@@ -116,9 +126,68 @@ namespace BettsTax.Data
         public DbSet<Models.PaymentFailureRecord> PaymentFailureRecords { get; set; }
         public DbSet<Models.PaymentDeadLetterQueue> PaymentDeadLetterQueue { get; set; }
 
+        // KPI System DbSets
+        public DbSet<Models.KpiSnapshot> KpiSnapshots { get; set; }
+        public DbSet<Models.ClientKpiMetrics> ClientKpiMetrics { get; set; }
+        public DbSet<Models.KpiAlert> KpiAlerts { get; set; }
+
+        // Case Management DbSets
+        public DbSet<Models.CaseIssue> CaseIssues { get; set; }
+        public DbSet<Models.CaseComment> CaseComments { get; set; }
+        public DbSet<Models.CaseAttachment> CaseAttachments { get; set; }
+
+        // Compliance History DbSets
+        public DbSet<Models.ComplianceHistory> ComplianceHistories { get; set; }
+        public DbSet<Models.ComplianceHistoryEvent> ComplianceHistoryEvents { get; set; }
+
+        // Workflow Automation System DbSets
+        public DbSet<Models.Workflow> Workflows { get; set; }
+        public DbSet<Models.WorkflowExecution> WorkflowExecutions { get; set; }
+        public DbSet<Models.WorkflowTemplate> WorkflowTemplates { get; set; }
+        public DbSet<Models.WorkflowRule> WorkflowRules { get; set; }
+
+        // Tax Authority Integration DbSets
+        public DbSet<TaxAuthoritySubmission> TaxAuthoritySubmissions { get; set; }
+        public DbSet<TaxAuthorityStatusCheck> TaxAuthorityStatusChecks { get; set; }
+
+        // Accounting Integration System DbSets
+        public DbSet<AccountingConnection> AccountingConnections { get; set; }
+        public DbSet<AccountingMapping> AccountingMappings { get; set; }
+        public DbSet<AccountingSyncHistory> AccountingSyncHistory { get; set; }
+        public DbSet<AccountingTransactionMapping> AccountingTransactionMappings { get; set; }
+
+        // Advanced Workflow Rule System DbSets
+        public DbSet<WorkflowRule> WorkflowRuleEntities { get; set; }
+        public DbSet<WorkflowCondition> WorkflowConditions { get; set; }
+        public DbSet<WorkflowAction> WorkflowActions { get; set; }
+        public DbSet<WorkflowTemplate> WorkflowRuleTemplates { get; set; }
+        public DbSet<WorkflowTemplateReview> WorkflowTemplateReviews { get; set; }
+        public DbSet<WorkflowExecutionHistory> WorkflowExecutionHistories { get; set; }
+        public DbSet<WorkflowActionExecution> WorkflowActionExecutions { get; set; }
+        public DbSet<WorkflowRuleMetrics> WorkflowRuleMetrics { get; set; }
+        public DbSet<WorkflowSystemConfiguration> WorkflowSystemConfigurations { get; set; }
+        public DbSet<WorkflowExecutionQueue> WorkflowExecutionQueues { get; set; }
+
+        // Enhanced Workflow Automation System DbSets
+        public DbSet<WebhookRegistration> WebhookRegistrations { get; set; }
+        public DbSet<WebhookStatistics> WebhookStatistics { get; set; }
+        public DbSet<WebhookDeliveryLog> WebhookDeliveryLogs { get; set; }
+        public DbSet<TemplateReview> TemplateReviews { get; set; }
+        public DbSet<TemplateStatistics> TemplateStatistics { get; set; }
+        public DbSet<WorkflowDefinition> WorkflowDefinitions { get; set; }
+        public DbSet<WorkflowStep> WorkflowSteps { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // Ensure Client uses ClientId as the primary key (not the generic Id)
+            modelBuilder.Entity<Client>()
+                .HasKey(c => c.ClientId);
+
+            modelBuilder.Entity<Client>()
+                .Property(c => c.ClientId)
+                .ValueGeneratedOnAdd();
 
             // Configure Client-User relationships
             modelBuilder.Entity<Client>()
@@ -153,11 +222,28 @@ namespace BettsTax.Data
                 .OnDelete(DeleteBehavior.Restrict);
 
             // Configure Payment relationships
+            // Ensure Payment uses PaymentId as the primary key (not the generic Id)
+            modelBuilder.Entity<Payment>()
+                .HasKey(p => p.PaymentId);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.PaymentId)
+                .ValueGeneratedOnAdd();
+
             modelBuilder.Entity<Payment>()
                 .HasOne(p => p.TaxFiling)
                 .WithMany(tf => tf.Payments)
                 .HasForeignKey(p => p.TaxFilingId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Payment>()
+                .HasOne(p => p.ApprovedBy)
+                .WithMany()
+                .HasForeignKey(p => p.ApprovedById)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Payment>()
+                .Ignore(p => p.ApprovedBy);
 
             // Configure Document relationships
             modelBuilder.Entity<Document>()
@@ -171,6 +257,44 @@ namespace BettsTax.Data
                 .WithMany(u => u.UploadedDocuments)
                 .HasForeignKey(d => d.UploadedById)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Configure DocumentVersion relationships
+            modelBuilder.Entity<DocumentVersion>()
+                .HasOne(dv => dv.Document)
+                .WithMany(d => d.Versions)
+                .HasForeignKey(dv => dv.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<DocumentVersion>()
+                .HasOne(dv => dv.UploadedBy)
+                .WithMany()
+                .HasForeignKey(dv => dv.UploadedById)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<DocumentVersion>()
+                .HasOne(dv => dv.DeletedBy)
+                .WithMany()
+                .HasForeignKey(dv => dv.DeletedById)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Configure DocumentVersion indexes
+            modelBuilder.Entity<DocumentVersion>()
+                .HasIndex(dv => new { dv.DocumentId, dv.VersionNumber })
+                .IsUnique()
+                .HasDatabaseName("IX_DocumentVersion_Document_Version");
+
+            modelBuilder.Entity<DocumentVersion>()
+                .HasIndex(dv => dv.UploadedAt)
+                .HasDatabaseName("IX_DocumentVersion_UploadedAt");
+
+            modelBuilder.Entity<DocumentVersion>()
+                .HasIndex(dv => dv.IsDeleted)
+                .HasDatabaseName("IX_DocumentVersion_IsDeleted");
+
+            // Configure default for current version number
+            modelBuilder.Entity<Document>()
+                .Property(d => d.CurrentVersionNumber)
+                .HasDefaultValue(0);
 
             // Configure AuditLog relationships
             modelBuilder.Entity<AuditLog>()
@@ -193,6 +317,125 @@ namespace BettsTax.Data
             modelBuilder.Entity<Payment>()
                 .Property(p => p.Amount)
                 .HasPrecision(18, 2);
+
+            // Extended Payment field configurations
+            modelBuilder.Entity<Payment>()
+                .HasOne(p => p.ReconciledByUser)
+                .WithMany()
+                .HasForeignKey(p => p.ReconciledBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Payment>()
+                .HasOne(p => p.ReviewedByUser)
+                .WithMany()
+                .HasForeignKey(p => p.ReviewedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Extended Payment decimal field precision
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.InterestAmount)
+                .HasPrecision(18, 2);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.PenaltyAmount)
+                .HasPrecision(18, 2);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.FeeAmount)
+                .HasPrecision(18, 2);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.TaxAmount)
+                .HasPrecision(18, 2);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.ExchangeRate)
+                .HasPrecision(18, 6);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.OriginalAmount)
+                .HasPrecision(18, 2);
+
+            // Extended Payment string field lengths
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.Currency)
+                .HasMaxLength(3);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.OriginalCurrency)
+                .HasMaxLength(3);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.PaymentBatchId)
+                .HasMaxLength(100);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.PaymentCategory)
+                .HasMaxLength(50);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.PaymentSubCategory)
+                .HasMaxLength(100);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.ReconciliationReference)
+                .HasMaxLength(200);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.BankStatementReference)
+                .HasMaxLength(200);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.RetryStrategy)
+                .HasMaxLength(50);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.NotificationMethod)
+                .HasMaxLength(50);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.PaymentHash)
+                .HasMaxLength(256);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.PaymentChannel)
+                .HasMaxLength(50);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.PaymentSource)
+                .HasMaxLength(50);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.IpAddress)
+                .HasMaxLength(45);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.DeviceFingerprint)
+                .HasMaxLength(500);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.UserAgent)
+                .HasMaxLength(1000);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.ExtendedMetadata)
+                .HasMaxLength(4000);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.Tags)
+                .HasMaxLength(1000);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.CustomField1)
+                .HasMaxLength(500);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.CustomField2)
+                .HasMaxLength(500);
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.CustomField3)
+                .HasMaxLength(500);
 
             modelBuilder.Entity<Client>()
                 .Property(c => c.AnnualTurnover)
@@ -1051,8 +1294,15 @@ namespace BettsTax.Data
             // Payment Gateway system configuration
             ConfigurePaymentGatewaySystem(modelBuilder);
             
-            // Security system configuration
+            // Configure security system
             ConfigureSecuritySystem(modelBuilder);
+            
+            // Configure KPI system
+            ConfigureKpiSystem(modelBuilder);
+            
+            // Configure Case Management system
+            ConfigureCaseManagementSystem(modelBuilder);
+            ConfigureComplianceHistorySystem(modelBuilder);
         }
 
         private void ConfigureCommunicationModels(ModelBuilder modelBuilder)
@@ -1204,6 +1454,24 @@ namespace BettsTax.Data
                 .HasForeignKey(cr => cr.CreatedBy)
                 .OnDelete(DeleteBehavior.SetNull);
 
+            modelBuilder.Entity<Models.ChatRoom>()
+                .HasOne(cr => cr.ArchivedByUser)
+                .WithMany()
+                .HasForeignKey(cr => cr.ArchivedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.ChatRoom>()
+                .HasOne(cr => cr.TopicSetByUser)
+                .WithMany()
+                .HasForeignKey(cr => cr.TopicSetBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.ChatRoom>()
+                .HasOne(cr => cr.Client)
+                .WithMany()
+                .HasForeignKey(cr => cr.ClientId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             // ChatRoomParticipant configuration
             modelBuilder.Entity<Models.ChatRoomParticipant>()
                 .HasOne(crp => crp.ChatRoom)
@@ -1228,13 +1496,100 @@ namespace BettsTax.Data
                 .HasOne(cm => cm.Sender)
                 .WithMany()
                 .HasForeignKey(cm => cm.SenderId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.ChatMessage>()
+                .HasOne(cm => cm.EditedByUser)
+                .WithMany()
+                .HasForeignKey(cm => cm.EditedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.ChatMessage>()
+                .HasOne(cm => cm.DeletedByUser)
+                .WithMany()
+                .HasForeignKey(cm => cm.DeletedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.ChatMessage>()
+                .HasOne(cm => cm.PinnedByUser)
+                .WithMany()
+                .HasForeignKey(cm => cm.PinnedBy)
+                .OnDelete(DeleteBehavior.SetNull);
 
             modelBuilder.Entity<Models.ChatMessage>()
                 .HasOne(cm => cm.ReplyToMessage)
                 .WithMany()
                 .HasForeignKey(cm => cm.ReplyToMessageId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.ChatMessage>()
+                .HasOne(cm => cm.ThreadParent)
+                .WithMany(cm => cm.ThreadReplies)
+                .HasForeignKey(cm => cm.ThreadId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.ChatMessage>()
+                .HasOne(cm => cm.RelatedTaxFiling)
+                .WithMany()
+                .HasForeignKey(cm => cm.RelatedTaxFilingId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.ChatMessage>()
+                .HasOne(cm => cm.RelatedPayment)
+                .WithMany()
+                .HasForeignKey(cm => cm.RelatedPaymentId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.ChatMessage>()
+                .HasOne(cm => cm.RelatedDocument)
+                .WithMany()
+                .HasForeignKey(cm => cm.RelatedDocumentId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // ChatRoomInvitation configuration
+            modelBuilder.Entity<Models.ChatRoomInvitation>()
+                .HasOne(cri => cri.ChatRoom)
+                .WithMany(cr => cr.Invitations)
+                .HasForeignKey(cri => cri.ChatRoomId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.ChatRoomInvitation>()
+                .HasOne(cri => cri.InvitedUser)
+                .WithMany()
+                .HasForeignKey(cri => cri.InvitedUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.ChatRoomInvitation>()
+                .HasOne(cri => cri.InvitedByUser)
+                .WithMany()
+                .HasForeignKey(cri => cri.InvitedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // ChatMessageReaction configuration
+            modelBuilder.Entity<Models.ChatMessageReaction>()
+                .HasOne(cmr => cmr.ChatMessage)
+                .WithMany(cm => cm.Reactions)
+                .HasForeignKey(cmr => cmr.ChatMessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.ChatMessageReaction>()
+                .HasOne(cmr => cmr.User)
+                .WithMany()
+                .HasForeignKey(cmr => cmr.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // ChatMessageRead configuration
+            modelBuilder.Entity<Models.ChatMessageRead>()
+                .HasOne(cmr => cmr.ChatMessage)
+                .WithMany(cm => cm.ReadReceipts)
+                .HasForeignKey(cmr => cmr.ChatMessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.ChatMessageRead>()
+                .HasOne(cmr => cmr.User)
+                .WithMany()
+                .HasForeignKey(cmr => cmr.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             // Add indexes for performance
             modelBuilder.Entity<Models.Conversation>()
@@ -1274,6 +1629,57 @@ namespace BettsTax.Data
                 .HasIndex(crp => new { crp.ChatRoomId, crp.UserId })
                 .IsUnique()
                 .HasDatabaseName("IX_ChatRoomParticipant_ChatRoomId_UserId");
+
+            // Enhanced Chat indexes for performance
+            modelBuilder.Entity<Models.ChatRoom>()
+                .HasIndex(cr => cr.Type)
+                .HasDatabaseName("IX_ChatRoom_Type");
+
+            modelBuilder.Entity<Models.ChatRoom>()
+                .HasIndex(cr => cr.ClientId)
+                .HasDatabaseName("IX_ChatRoom_ClientId");
+
+            modelBuilder.Entity<Models.ChatRoom>()
+                .HasIndex(cr => cr.IsActive)
+                .HasDatabaseName("IX_ChatRoom_IsActive");
+
+            modelBuilder.Entity<Models.ChatRoom>()
+                .HasIndex(cr => cr.LastActivityAt)
+                .HasDatabaseName("IX_ChatRoom_LastActivityAt");
+
+            modelBuilder.Entity<Models.ChatMessage>()
+                .HasIndex(cm => cm.SentAt)
+                .HasDatabaseName("IX_ChatMessage_SentAt");
+
+            modelBuilder.Entity<Models.ChatMessage>()
+                .HasIndex(cm => cm.Type)
+                .HasDatabaseName("IX_ChatMessage_Type");
+
+            modelBuilder.Entity<Models.ChatMessage>()
+                .HasIndex(cm => cm.ThreadId)
+                .HasDatabaseName("IX_ChatMessage_ThreadId");
+
+            modelBuilder.Entity<Models.ChatMessage>()
+                .HasIndex(cm => new { cm.ChatRoomId, cm.SentAt })
+                .HasDatabaseName("IX_ChatMessage_ChatRoomId_SentAt");
+
+            modelBuilder.Entity<Models.ChatMessageReaction>()
+                .HasIndex(cmr => new { cmr.ChatMessageId, cmr.UserId, cmr.Reaction })
+                .IsUnique()
+                .HasDatabaseName("IX_ChatMessageReaction_MessageId_UserId_Reaction");
+
+            modelBuilder.Entity<Models.ChatMessageRead>()
+                .HasIndex(cmr => new { cmr.ChatMessageId, cmr.UserId })
+                .IsUnique()
+                .HasDatabaseName("IX_ChatMessageRead_MessageId_UserId");
+
+            modelBuilder.Entity<Models.ChatRoomInvitation>()
+                .HasIndex(cri => new { cri.ChatRoomId, cri.InvitedUserId })
+                .HasDatabaseName("IX_ChatRoomInvitation_ChatRoomId_InvitedUserId");
+
+            modelBuilder.Entity<Models.ChatRoomInvitation>()
+                .HasIndex(cri => cri.Status)
+                .HasDatabaseName("IX_ChatRoomInvitation_Status");
         }
 
         private void ConfigurePaymentGatewaySystem(ModelBuilder modelBuilder)
@@ -1714,6 +2120,456 @@ namespace BettsTax.Data
             modelBuilder.Entity<Models.PaymentDeadLetterQueue>()
                 .HasIndex(pdlq => pdlq.CreatedAt)
                 .HasDatabaseName("IX_PaymentDeadLetterQueue_CreatedAt");
+
+            // Additional indexes for performance optimization (CTIS Enhancement)
+            // Payment indexes for KPI queries
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => new { p.Status, p.DueDate })
+                .HasDatabaseName("IX_Payment_Status_DueDate");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => new { p.ClientId, p.PaymentDate })
+                .HasDatabaseName("IX_Payment_Client_PaymentDate");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => new { p.TaxType, p.Status, p.PaymentDate })
+                .HasDatabaseName("IX_Payment_TaxType_Status_PaymentDate");
+
+            // Extended Payment field indexes for performance
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => p.PaymentBatchId)
+                .HasDatabaseName("IX_Payment_PaymentBatchId");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => p.PaymentCategory)
+                .HasDatabaseName("IX_Payment_PaymentCategory");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => p.IsReconciled)
+                .HasDatabaseName("IX_Payment_IsReconciled");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => p.ReconciledAt)
+                .HasDatabaseName("IX_Payment_ReconciledAt");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => p.NextRetryAt)
+                .HasDatabaseName("IX_Payment_NextRetryAt");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => p.RequiresManualReview)
+                .HasDatabaseName("IX_Payment_RequiresManualReview");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => p.IsSuspicious)
+                .HasDatabaseName("IX_Payment_IsSuspicious");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => p.PaymentChannel)
+                .HasDatabaseName("IX_Payment_PaymentChannel");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => p.PaymentSource)
+                .HasDatabaseName("IX_Payment_PaymentSource");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => p.Currency)
+                .HasDatabaseName("IX_Payment_Currency");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => new { p.ClientId, p.PaymentCategory, p.Status })
+                .HasDatabaseName("IX_Payment_ClientId_Category_Status");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => new { p.IsReconciled, p.ReconciledAt })
+                .HasDatabaseName("IX_Payment_Reconciled_ReconciledAt");
+
+            modelBuilder.Entity<Payment>()
+                .HasIndex(p => new { p.RequiresManualReview, p.ReviewedAt })
+                .HasDatabaseName("IX_Payment_Review_ReviewedAt");
+
+            // TaxFiling indexes for compliance queries
+            modelBuilder.Entity<TaxFiling>()
+                .HasIndex(tf => new { tf.ClientId, tf.TaxYear, tf.Status })
+                .HasDatabaseName("IX_TaxFiling_Client_Year_Status");
+
+            modelBuilder.Entity<TaxFiling>()
+                .HasIndex(tf => new { tf.DueDate, tf.SubmittedDate })
+                .HasDatabaseName("IX_TaxFiling_DueDate_SubmittedDate");
+
+            modelBuilder.Entity<TaxFiling>()
+                .HasIndex(tf => new { tf.TaxType, tf.Status, tf.DueDate })
+                .HasDatabaseName("IX_TaxFiling_TaxType_Status_DueDate");
+
+            // Document indexes for compliance tracking
+            modelBuilder.Entity<Document>()
+                .HasIndex(d => new { d.ClientId, d.Category })
+                .HasDatabaseName("IX_Document_Client_Category");
+
+            modelBuilder.Entity<Document>()
+                .HasIndex(d => new { d.UploadedAt, d.IsDeleted })
+                .HasDatabaseName("IX_Document_UploadedAt_IsDeleted");
+
+            // Chat/Message indexes for real-time queries
+            modelBuilder.Entity<Message>()
+                .HasIndex(m => new { m.ClientId, m.CreatedDate })
+                .HasDatabaseName("IX_Message_Client_CreatedDate");
+
+            modelBuilder.Entity<Message>()
+                .HasIndex(m => new { m.Status, m.CreatedDate })
+                .HasDatabaseName("IX_Message_Status_CreatedDate");
+        }
+
+        private void ConfigureKpiSystem(ModelBuilder modelBuilder)
+        {
+            // KpiSnapshot configuration
+            modelBuilder.Entity<Models.KpiSnapshot>()
+                .HasOne(ks => ks.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(ks => ks.CreatedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.KpiSnapshot>()
+                .Property(ks => ks.ClientComplianceRate)
+                .HasPrecision(5, 2);
+
+            modelBuilder.Entity<Models.KpiSnapshot>()
+                .Property(ks => ks.TaxFilingTimeliness)
+                .HasPrecision(5, 2);
+
+            modelBuilder.Entity<Models.KpiSnapshot>()
+                .Property(ks => ks.PaymentCompletionRate)
+                .HasPrecision(5, 2);
+
+            modelBuilder.Entity<Models.KpiSnapshot>()
+                .Property(ks => ks.DocumentSubmissionCompliance)
+                .HasPrecision(5, 2);
+
+            modelBuilder.Entity<Models.KpiSnapshot>()
+                .Property(ks => ks.ClientEngagementRate)
+                .HasPrecision(5, 2);
+
+            modelBuilder.Entity<Models.KpiSnapshot>()
+                .Property(ks => ks.OnTimePaymentPercentage)
+                .HasPrecision(5, 2);
+
+            modelBuilder.Entity<Models.KpiSnapshot>()
+                .Property(ks => ks.FilingTimelinessAverage)
+                .HasPrecision(8, 2);
+
+            modelBuilder.Entity<Models.KpiSnapshot>()
+                .Property(ks => ks.DocumentReadinessRate)
+                .HasPrecision(5, 2);
+
+            // ClientKpiMetrics configuration
+            modelBuilder.Entity<Models.ClientKpiMetrics>()
+                .HasOne(ckm => ckm.Client)
+                .WithMany()
+                .HasForeignKey(ckm => ckm.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.ClientKpiMetrics>()
+                .HasOne(ckm => ckm.KpiSnapshot)
+                .WithMany()
+                .HasForeignKey(ckm => ckm.KpiSnapshotId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.ClientKpiMetrics>()
+                .Property(ckm => ckm.OnTimePaymentPercentage)
+                .HasPrecision(5, 2);
+
+            modelBuilder.Entity<Models.ClientKpiMetrics>()
+                .Property(ckm => ckm.FilingTimelinessAverage)
+                .HasPrecision(8, 2);
+
+            modelBuilder.Entity<Models.ClientKpiMetrics>()
+                .Property(ckm => ckm.DocumentReadinessRate)
+                .HasPrecision(5, 2);
+
+            modelBuilder.Entity<Models.ClientKpiMetrics>()
+                .Property(ckm => ckm.EngagementScore)
+                .HasPrecision(5, 2);
+
+            // KpiAlert configuration
+            modelBuilder.Entity<Models.KpiAlert>()
+                .HasOne(ka => ka.KpiSnapshot)
+                .WithMany()
+                .HasForeignKey(ka => ka.KpiSnapshotId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.KpiAlert>()
+                .HasOne(ka => ka.Client)
+                .WithMany()
+                .HasForeignKey(ka => ka.ClientId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.KpiAlert>()
+                .HasOne(ka => ka.ResolvedByUser)
+                .WithMany()
+                .HasForeignKey(ka => ka.ResolvedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.KpiAlert>()
+                .Property(ka => ka.ThresholdValue)
+                .HasPrecision(8, 2);
+
+            modelBuilder.Entity<Models.KpiAlert>()
+                .Property(ka => ka.ActualValue)
+                .HasPrecision(8, 2);
+
+            // KPI system indexes
+            modelBuilder.Entity<Models.KpiSnapshot>()
+                .HasIndex(ks => ks.SnapshotDate)
+                .HasDatabaseName("IX_KpiSnapshot_SnapshotDate");
+
+            modelBuilder.Entity<Models.KpiSnapshot>()
+                .HasIndex(ks => ks.CreatedAt)
+                .HasDatabaseName("IX_KpiSnapshot_CreatedAt");
+
+            modelBuilder.Entity<Models.ClientKpiMetrics>()
+                .HasIndex(ckm => new { ckm.ClientId, ckm.KpiSnapshotId })
+                .HasDatabaseName("IX_ClientKpiMetrics_Client_Snapshot");
+
+            modelBuilder.Entity<Models.KpiAlert>()
+                .HasIndex(ka => ka.AlertType)
+                .HasDatabaseName("IX_KpiAlert_AlertType");
+
+            modelBuilder.Entity<Models.KpiAlert>()
+                .HasIndex(ka => ka.Severity)
+                .HasDatabaseName("IX_KpiAlert_Severity");
+
+            modelBuilder.Entity<Models.KpiAlert>()
+                .HasIndex(ka => ka.IsResolved)
+                .HasDatabaseName("IX_KpiAlert_IsResolved");
+
+            modelBuilder.Entity<Models.KpiAlert>()
+                .HasIndex(ka => ka.CreatedAt)
+                .HasDatabaseName("IX_KpiAlert_CreatedAt");
+        }
+
+        private void ConfigureCaseManagementSystem(ModelBuilder modelBuilder)
+        {
+            // CaseIssue configuration
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasOne(ci => ci.Client)
+                .WithMany()
+                .HasForeignKey(ci => ci.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasOne(ci => ci.AssignedToUser)
+                .WithMany()
+                .HasForeignKey(ci => ci.AssignedToUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasOne(ci => ci.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(ci => ci.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasOne(ci => ci.ResolvedByUser)
+                .WithMany()
+                .HasForeignKey(ci => ci.ResolvedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasOne(ci => ci.LastUpdatedByUser)
+                .WithMany()
+                .HasForeignKey(ci => ci.LastUpdatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasOne(ci => ci.RelatedTaxFiling)
+                .WithMany()
+                .HasForeignKey(ci => ci.RelatedTaxFilingId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasOne(ci => ci.RelatedPayment)
+                .WithMany()
+                .HasForeignKey(ci => ci.RelatedPaymentId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasOne(ci => ci.RelatedDocument)
+                .WithMany()
+                .HasForeignKey(ci => ci.RelatedDocumentId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // CaseComment configuration
+            modelBuilder.Entity<Models.CaseComment>()
+                .HasOne(cc => cc.CaseIssue)
+                .WithMany(ci => ci.Comments)
+                .HasForeignKey(cc => cc.CaseIssueId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.CaseComment>()
+                .HasOne(cc => cc.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(cc => cc.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // CaseAttachment configuration
+            modelBuilder.Entity<Models.CaseAttachment>()
+                .HasOne(ca => ca.CaseIssue)
+                .WithMany(ci => ci.Attachments)
+                .HasForeignKey(ca => ca.CaseIssueId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.CaseAttachment>()
+                .HasOne(ca => ca.UploadedByUser)
+                .WithMany()
+                .HasForeignKey(ca => ca.UploadedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Case Management indexes
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasIndex(ci => ci.CaseNumber)
+                .IsUnique()
+                .HasDatabaseName("IX_CaseIssue_CaseNumber");
+
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasIndex(ci => ci.Status)
+                .HasDatabaseName("IX_CaseIssue_Status");
+
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasIndex(ci => ci.Priority)
+                .HasDatabaseName("IX_CaseIssue_Priority");
+
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasIndex(ci => ci.CreatedAt)
+                .HasDatabaseName("IX_CaseIssue_CreatedAt");
+
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasIndex(ci => new { ci.ClientId, ci.Status })
+                .HasDatabaseName("IX_CaseIssue_Client_Status");
+
+            modelBuilder.Entity<Models.CaseIssue>()
+                .HasIndex(ci => ci.AssignedToUserId)
+                .HasDatabaseName("IX_CaseIssue_AssignedTo");
+
+            modelBuilder.Entity<Models.CaseComment>()
+                .HasIndex(cc => cc.CreatedAt)
+                .HasDatabaseName("IX_CaseComment_CreatedAt");
+
+            modelBuilder.Entity<Models.CaseAttachment>()
+                .HasIndex(ca => ca.UploadedAt)
+                .HasDatabaseName("IX_CaseAttachment_UploadedAt");
+        }
+
+        private void ConfigureComplianceHistorySystem(ModelBuilder modelBuilder)
+        {
+            // ComplianceHistory configuration
+            modelBuilder.Entity<Models.ComplianceHistory>()
+                .HasOne(ch => ch.Client)
+                .WithMany()
+                .HasForeignKey(ch => ch.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.ComplianceHistory>()
+                .HasOne(ch => ch.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(ch => ch.CreatedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.ComplianceHistory>()
+                .HasOne(ch => ch.UpdatedByUser)
+                .WithMany()
+                .HasForeignKey(ch => ch.UpdatedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Decimal precision configuration
+            modelBuilder.Entity<Models.ComplianceHistory>()
+                .Property(ch => ch.AmountDue)
+                .HasPrecision(18, 2);
+
+            modelBuilder.Entity<Models.ComplianceHistory>()
+                .Property(ch => ch.AmountPaid)
+                .HasPrecision(18, 2);
+
+            modelBuilder.Entity<Models.ComplianceHistory>()
+                .Property(ch => ch.PenaltyAmount)
+                .HasPrecision(18, 2);
+
+            modelBuilder.Entity<Models.ComplianceHistory>()
+                .Property(ch => ch.InterestAmount)
+                .HasPrecision(18, 2);
+
+            modelBuilder.Entity<Models.ComplianceHistory>()
+                .Property(ch => ch.ComplianceScore)
+                .HasPrecision(5, 2);
+
+            // ComplianceHistoryEvent configuration
+            modelBuilder.Entity<Models.ComplianceHistoryEvent>()
+                .HasOne(che => che.ComplianceHistory)
+                .WithMany(ch => ch.Events)
+                .HasForeignKey(che => che.ComplianceHistoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.ComplianceHistoryEvent>()
+                .HasOne(che => che.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(che => che.CreatedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.ComplianceHistoryEvent>()
+                .HasOne(che => che.RelatedTaxFiling)
+                .WithMany()
+                .HasForeignKey(che => che.RelatedTaxFilingId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.ComplianceHistoryEvent>()
+                .HasOne(che => che.RelatedPayment)
+                .WithMany()
+                .HasForeignKey(che => che.RelatedPaymentId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Models.ComplianceHistoryEvent>()
+                .HasOne(che => che.RelatedDocument)
+                .WithMany()
+                .HasForeignKey(che => che.RelatedDocumentId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Decimal precision for events
+            modelBuilder.Entity<Models.ComplianceHistoryEvent>()
+                .Property(che => che.Amount)
+                .HasPrecision(18, 2);
+
+            modelBuilder.Entity<Models.ComplianceHistoryEvent>()
+                .Property(che => che.PenaltyAmount)
+                .HasPrecision(18, 2);
+
+            // Compliance History indexes
+            modelBuilder.Entity<Models.ComplianceHistory>()
+                .HasIndex(ch => new { ch.ClientId, ch.TaxYear, ch.TaxType })
+                .IsUnique()
+                .HasDatabaseName("IX_ComplianceHistory_Client_TaxYear_TaxType");
+
+            modelBuilder.Entity<Models.ComplianceHistory>()
+                .HasIndex(ch => ch.RecordDate)
+                .HasDatabaseName("IX_ComplianceHistory_RecordDate");
+
+            modelBuilder.Entity<Models.ComplianceHistory>()
+                .HasIndex(ch => ch.ComplianceScore)
+                .HasDatabaseName("IX_ComplianceHistory_ComplianceScore");
+
+            modelBuilder.Entity<Models.ComplianceHistory>()
+                .HasIndex(ch => ch.RiskLevel)
+                .HasDatabaseName("IX_ComplianceHistory_RiskLevel");
+
+            modelBuilder.Entity<Models.ComplianceHistory>()
+                .HasIndex(ch => ch.Status)
+                .HasDatabaseName("IX_ComplianceHistory_Status");
+
+            modelBuilder.Entity<Models.ComplianceHistoryEvent>()
+                .HasIndex(che => che.EventDate)
+                .HasDatabaseName("IX_ComplianceHistoryEvent_EventDate");
+
+            modelBuilder.Entity<Models.ComplianceHistoryEvent>()
+                .HasIndex(che => che.EventType)
+                .HasDatabaseName("IX_ComplianceHistoryEvent_EventType");
         }
     }
 }

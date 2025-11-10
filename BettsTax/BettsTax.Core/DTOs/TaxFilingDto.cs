@@ -31,6 +31,9 @@ namespace BettsTax.Core.DTOs
         public int DaysUntilDue => (DueDate.Date - DateTime.UtcNow.Date).Days;
         public decimal TotalPaid => Payments.Where(p => p.Status == PaymentStatus.Approved).Sum(p => p.Amount);
         public decimal Balance => TaxLiability - TotalPaid;
+        // Withholding-specific (optional)
+        public string? WithholdingTaxSubtype { get; set; }
+        public bool? IsResident { get; set; }
     }
 
     public class CreateTaxFilingDto
@@ -41,6 +44,15 @@ namespace BettsTax.Core.DTOs
         public DateTime DueDate { get; set; }
         public decimal TaxLiability { get; set; }
         public string? FilingReference { get; set; }
+        // Extended (optional)
+        public string? FilingPeriod { get; set; }
+        public decimal? TaxableAmount { get; set; }
+        public decimal? PenaltyAmount { get; set; }
+        public decimal? InterestAmount { get; set; }
+        public string? AdditionalData { get; set; }
+        // Withholding-specific (optional)
+        public string? WithholdingTaxSubtype { get; set; }
+        public bool? IsResident { get; set; }
     }
 
     public class UpdateTaxFilingDto
@@ -51,6 +63,15 @@ namespace BettsTax.Core.DTOs
         public decimal? TaxLiability { get; set; }
         public string? FilingReference { get; set; }
         public string? ReviewComments { get; set; }
+        // Extended (optional)
+        public string? FilingPeriod { get; set; }
+        public decimal? TaxableAmount { get; set; }
+        public decimal? PenaltyAmount { get; set; }
+        public decimal? InterestAmount { get; set; }
+        public string? AdditionalData { get; set; }
+        // Withholding-specific (optional)
+        public string? WithholdingTaxSubtype { get; set; }
+        public bool? IsResident { get; set; }
     }
 
     public class ReviewTaxFilingDto

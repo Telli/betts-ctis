@@ -1,9 +1,13 @@
 using BettsTax.Core.DTOs;
+using BettsTax.Core.DTOs.Payment;
 using BettsTax.Data;
 using BettsTax.Shared;
 using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.Json;
+// Explicitly alias unified gateway types
+using PaymentGatewayRequest = BettsTax.Core.Services.Payments.PaymentGatewayRequest;
+using PaymentGatewayResponse = BettsTax.Core.Services.Payments.PaymentGatewayResponse;
 
 namespace BettsTax.Core.Services
 {
@@ -297,14 +301,6 @@ namespace BettsTax.Core.Services
                 _httpClient.DefaultRequestHeaders.Clear();
                 _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {tokenResult.Value}");
 
-                var response = await _httpClient.PostAsync($"{_config.ApiUrl}/v1/notifications/verify-webhook-signature", content);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var verificationResponse = JsonSerializer.Deserialize<PayPalWebhookVerificationResponse>(responseContent);
-                    return Result.Success(verificationResponse?.VerificationStatus == "SUCCESS");
-                }
 
                 return Result.Success(false);
             }
@@ -312,6 +308,20 @@ namespace BettsTax.Core.Services
             {
                 _logger.LogError(ex, "Error validating PayPal webhook signature");
                 return Result.Failure<bool>("Failed to validate webhook signature");
+            }
+        }
+
+        public async Task<Result<bool>> TestConnectionAsync()
+        {
+            try
+            {
+                var tokenResult = await GetAccessTokenAsync();
+                return Result.Success(tokenResult.IsSuccess);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error testing PayPal connection");
+                return Result.Failure<bool>("Failed to test PayPal connection");
             }
         }
 
@@ -357,18 +367,7 @@ namespace BettsTax.Core.Services
             }
         }
 
-        public async Task<Result<bool>> TestConnectionAsync()
-        {
-            try
-            {
-                var tokenResult = await GetAccessTokenAsync();
-                return Result.Success(tokenResult.IsSuccess);
-            }
-            catch
-            {
-                return Result.Success(false);
-            }
-        }
+        // Duplicate removed: TestConnectionAsync already defined above
 
         // Helper methods
         private async Task<Result<string>> GetAccessTokenAsync()

@@ -1,6 +1,7 @@
 using BettsTax.Core.DTOs;
 using BettsTax.Data;
 using BettsTax.Shared;
+using BettsTax.Core.Services.Payments;
 using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.Json;
@@ -29,7 +30,7 @@ namespace BettsTax.Core.Services
         {
             try
             {
-                var phoneNumber = FormatPhoneNumber(request.CustomerPhone);
+                var phoneNumber = FormatPhoneNumber(request.CustomerPhone ?? string.Empty);
                 
                 // Validate Africell SL phone number (77, 78, 79, 88)
                 if (!IsValidAfricellPhoneNumber(phoneNumber))
@@ -68,19 +69,19 @@ namespace BettsTax.Core.Services
                     
                     return Result.Success(new PaymentGatewayResponse
                     {
-                        Success = apiResponse.Status == "SUCCESS",
-                        TransactionId = apiResponse.TransactionId,
-                        ProviderReference = apiResponse.AfricellReference,
-                        Status = MapAfricellStatusToTransactionStatus(apiResponse.Status),
-                        StatusMessage = apiResponse.Message,
-                        Amount = apiResponse.Amount,
-                        Fee = apiResponse.Fee,
+                        Success = apiResponse?.Status == "SUCCESS",
+                        TransactionId = apiResponse?.TransactionId,
+                        ProviderReference = apiResponse?.AfricellReference,
+                        Status = MapAfricellStatusToTransactionStatus(apiResponse?.Status ?? string.Empty),
+                        StatusMessage = apiResponse?.Message,
+                        Amount = apiResponse?.Amount,
+                        Fee = apiResponse?.Fee,
                         ExpiryDate = DateTime.UtcNow.AddMinutes(10), // Africell Money 10-minute timeout
                         AdditionalData = new Dictionary<string, object>
                         {
-                            ["africell_reference"] = apiResponse.AfricellReference ?? "",
-                            ["payment_code"] = apiResponse.PaymentCode ?? "",
-                            ["ussd_string"] = apiResponse.UssdString ?? ""
+                            ["africell_reference"] = apiResponse?.AfricellReference ?? string.Empty,
+                            ["payment_code"] = apiResponse?.PaymentCode ?? string.Empty,
+                            ["ussd_string"] = apiResponse?.UssdString ?? string.Empty
                         }
                     });
                 }
@@ -113,6 +114,11 @@ namespace BettsTax.Core.Services
                 if (response.IsSuccessStatusCode)
                 {
                     var statusResponse = JsonSerializer.Deserialize<AfricellMoneyStatusResponse>(responseContent);
+                    
+                    if (statusResponse == null)
+                    {
+                        return Result.Failure<PaymentGatewayResponse>("Failed to parse status response from Africell");
+                    }
                     
                     return Result.Success(new PaymentGatewayResponse
                     {
@@ -168,6 +174,11 @@ namespace BettsTax.Core.Services
                 {
                     var refundResponse = JsonSerializer.Deserialize<AfricellMoneyRefundResponse>(responseContent);
                     
+                    if (refundResponse == null)
+                    {
+                        return Result.Failure<PaymentGatewayResponse>("Failed to parse refund response from Africell");
+                    }
+                    
                     return Result.Success(new PaymentGatewayResponse
                     {
                         Success = refundResponse.Status == "REFUNDED",
@@ -193,35 +204,35 @@ namespace BettsTax.Core.Services
             }
         }
 
-        public override async Task<Result<bool>> ValidateWebhookSignatureAsync(string payload, string signature)
+        public override Task<Result<bool>> ValidateWebhookSignatureAsync(string payload, string signature)
         {
             try
             {
                 if (string.IsNullOrEmpty(_config.WebhookSecret))
-                    return Result.Failure<bool>("Webhook secret not configured");
+                    return Task.FromResult(Result.Failure<bool>("Webhook secret not configured"));
 
                 // Africell Money webhook signature validation
                 var computedSignature = ComputeHmacSha1(_config.WebhookSecret, payload);
                 var isValid = string.Equals(signature, computedSignature, StringComparison.OrdinalIgnoreCase);
                 
-                return Result.Success(isValid);
+                return Task.FromResult(Result.Success(isValid));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error validating Africell Money webhook signature");
-                return Result.Failure<bool>("Failed to validate webhook signature");
+                return Task.FromResult(Result.Failure<bool>("Failed to validate webhook signature"));
             }
         }
 
-        public override async Task<Result<PaymentGatewayResponse>> ProcessWebhookAsync(string webhookData)
+        public override Task<Result<PaymentGatewayResponse>> ProcessWebhookAsync(string webhookData)
         {
             try
             {
                 var webhook = JsonSerializer.Deserialize<AfricellMoneyWebhook>(webhookData);
                 if (webhook == null)
-                    return Result.Failure<PaymentGatewayResponse>("Invalid webhook data");
+                    return Task.FromResult(Result.Failure<PaymentGatewayResponse>("Invalid webhook data"));
 
-                return Result.Success(new PaymentGatewayResponse
+                return Task.FromResult(Result.Success(new PaymentGatewayResponse
                 {
                     Success = webhook.Status == "COMPLETED",
                     TransactionId = webhook.TransactionId,
@@ -230,19 +241,19 @@ namespace BettsTax.Core.Services
                     StatusMessage = webhook.Message,
                     Amount = webhook.Amount,
                     Fee = webhook.Fee
-                });
+                }));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing Africell Money webhook");
-                return Result.Failure<PaymentGatewayResponse>("Failed to process webhook");
+                return Task.FromResult(Result.Failure<PaymentGatewayResponse>("Failed to process webhook"));
             }
         }
 
-        public override async Task<Result<bool>> ValidatePhoneNumberAsync(string phoneNumber)
+        public override Task<Result<bool>> ValidatePhoneNumberAsync(string phoneNumber)
         {
             var formatted = FormatPhoneNumber(phoneNumber);
-            return Result.Success(IsValidAfricellPhoneNumber(formatted));
+            return Task.FromResult(Result.Success(IsValidAfricellPhoneNumber(formatted)));
         }
 
         public override async Task<Result<decimal>> GetBalanceAsync()
@@ -258,6 +269,12 @@ namespace BettsTax.Core.Services
                 if (response.IsSuccessStatusCode)
                 {
                     var balanceResponse = JsonSerializer.Deserialize<AfricellMoneyBalanceResponse>(responseContent);
+                    
+                    if (balanceResponse == null)
+                    {
+                        return Result.Failure<decimal>("Failed to parse balance response from Africell");
+                    }
+                    
                     return Result.Success(balanceResponse.Balance);
                 }
 
@@ -289,6 +306,11 @@ namespace BettsTax.Core.Services
                 if (response.IsSuccessStatusCode)
                 {
                     var accountResponse = JsonSerializer.Deserialize<AfricellMoneyAccountResponse>(responseContent);
+                    
+                    if (accountResponse == null)
+                    {
+                        return Result.Failure<MobileMoneyAccountDto>("Failed to parse account response from Africell");
+                    }
                     
                     return Result.Success(new MobileMoneyAccountDto
                     {

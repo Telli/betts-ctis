@@ -1,6 +1,6 @@
 namespace BettsTax.Data
 {
-    public enum DocumentCategory { TaxReturn, FinancialStatement, Receipt, Invoice, Other }
+    public enum DocumentCategory { TaxReturn, FinancialStatement, Receipt, Invoice, PaymentEvidence, BankStatement, Other }
 
     public class Document
     {
@@ -13,11 +13,14 @@ namespace BettsTax.Data
         public string ContentType { get; set; } = string.Empty;
         public long Size { get; set; }
         public DocumentCategory Category { get; set; } = DocumentCategory.Other;
+        public string DocumentType { get; set; } = string.Empty; // Added for compatibility
+        public DocumentStatus Status { get; set; } = DocumentStatus.Pending; // Added for compatibility
         public string Description { get; set; } = string.Empty;
         public string StoragePath { get; set; } = string.Empty;
         public string? UploadedById { get; set; }
         public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
         public bool IsDeleted { get; set; } = false;
+        public int CurrentVersionNumber { get; set; } = 0;
 
         // Associate delegation fields
         public string? UploadedByAssociateId { get; set; }
@@ -31,8 +34,10 @@ namespace BettsTax.Data
         public TaxFiling? TaxFiling { get; set; }
         public ApplicationUser? UploadedBy { get; set; }
         public List<DocumentShare> SharedWith { get; set; } = new();
+        public List<DocumentVersion> Versions { get; set; } = new();
         
         // Verification tracking
         public DocumentVerification? DocumentVerification { get; set; }
     }
 }
+

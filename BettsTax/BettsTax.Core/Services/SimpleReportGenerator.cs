@@ -16,8 +16,7 @@ public class SimpleReportGenerator : IReportGenerator
     public SimpleReportGenerator(ILogger<SimpleReportGenerator> logger)
     {
         _logger = logger;
-        // Set EPPlus license context for non-commercial use
-        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+        // Note: EPPlus license should be set at application startup in Program.cs
     }
 
     public async Task<byte[]> GeneratePdfReportAsync(ReportDataDto data, string templateName)

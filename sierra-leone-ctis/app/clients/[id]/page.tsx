@@ -48,18 +48,32 @@ export default function ClientDetailPage() {
     }
   }, [clientId, toast]);
 
-  const getStatusBadge = (status: string | undefined) => {
-    if (!status) return null;
+  const getStatusBadge = (status: string | number | undefined) => {
+    if (status === undefined || status === null) return null;
     
-    const variants = {
+    // Map numeric status values to string labels
+    const statusMap: Record<number, string> = {
+      0: "active",
+      1: "inactive",
+      2: "suspended"
+    };
+
+    const statusText = typeof status === 'number' 
+      ? (statusMap[status] || 'unknown')
+      : status.toLowerCase();
+    
+    const variants: Record<string, string> = {
+      active: "bg-green-100 text-green-800",
       compliant: "bg-green-100 text-green-800",
       pending: "bg-amber-100 text-amber-800",
       warning: "bg-orange-100 text-orange-800",
+      inactive: "bg-gray-100 text-gray-800",
+      suspended: "bg-red-100 text-red-800",
       overdue: "bg-red-100 text-red-800",
     };
 
-    const style = variants[status as keyof typeof variants] || "bg-gray-100 text-gray-800";
-    const label = status.charAt(0).toUpperCase() + status.slice(1);
+    const style = variants[statusText] || "bg-gray-100 text-gray-800";
+    const label = statusText.charAt(0).toUpperCase() + statusText.slice(1);
 
     return <Badge className={style}>{label}</Badge>;
   };

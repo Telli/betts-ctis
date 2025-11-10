@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -42,6 +42,7 @@ interface ClientPaymentFormProps {
 export default function ClientPaymentForm({ onSuccess, initialData }: ClientPaymentFormProps) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
+  const [filingOptions, setFilingOptions] = useState<Array<{ id: string; label: string }>>([])
 
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
@@ -54,6 +55,22 @@ export default function ClientPaymentForm({ onSuccess, initialData }: ClientPaym
     },
   })
 
+  useEffect(() => {
+    const loadFilings = async () => {
+      try {
+        const res = await ClientPortalService.getTaxFilings(1, 50)
+        const options = (res.items || []).map(f => ({
+          id: String(f.taxFilingId),
+          label: `${f.taxType} ${f.taxYear}`
+        }))
+        setFilingOptions(options)
+      } catch (e) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Failed to load tax filings' })
+      }
+    }
+    loadFilings()
+  }, [toast])
+
   const onSubmit = async (data: PaymentFormData) => {
     try {
       setLoading(true)
@@ -61,7 +78,7 @@ export default function ClientPaymentForm({ onSuccess, initialData }: ClientPaym
       const createData: CreateClientPaymentDto = {
         taxFilingId: data.taxFilingId ? parseInt(data.taxFilingId) : undefined,
         amount: data.amount,
-        method: data.method,
+        paymentMethod: data.method,
         paymentReference: data.paymentReference,
         paymentDate: data.paymentDate.toISOString(),
       }
@@ -207,9 +224,9 @@ export default function ClientPaymentForm({ onSuccess, initialData }: ClientPaym
                 </FormControl>
                 <SelectContent>
                   <SelectItem value="">No specific filing</SelectItem>
-                  {/* TODO: Load user's tax filings when ClientPortalService is ready */}
-                  <SelectItem value="1">Income Tax 2024</SelectItem>
-                  <SelectItem value="2">GST Q1 2024</SelectItem>
+                  {filingOptions.map(opt => (
+                    <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <FormMessage />

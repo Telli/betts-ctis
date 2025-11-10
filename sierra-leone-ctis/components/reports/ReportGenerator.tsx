@@ -36,6 +36,7 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { reportService, GenerateReportRequest, ReportRequest, ReportTemplate } from '@/lib/services/report-service';
+import ClientSearchSelect from '@/components/client-search-select';
 
 const reportGenerationSchema = z.object({
   reportType: z.string().min(1, 'Report type is required'),
@@ -53,7 +54,24 @@ const reportGenerationSchema = z.object({
 
 type ReportGenerationFormData = z.infer<typeof reportGenerationSchema>;
 
-const reportTypes = [
+const reportTypes: Array<{
+  value: string;
+  label: string;
+  description: string;
+  icon: any;
+  category: string;
+  estimatedDuration: number;
+  features: string[];
+  formats: string[];
+  requiredFields: string[];
+  parameters: Array<{
+    name: string;
+    type: string;
+    label: string;
+    default?: any;
+    options?: string[];
+  }>;
+}> = [
   {
     value: 'TaxCompliance',
     label: 'Tax Compliance Report',
@@ -63,7 +81,7 @@ const reportTypes = [
     estimatedDuration: 180,
     features: ['Compliance scoring', 'Deadline tracking', 'Penalty analysis', 'Risk assessment'],
     formats: ['PDF', 'Excel'],
-    requiredFields: ['clientId'],
+    requiredFields: ['clientId'] as string[],
     parameters: [
       { name: 'includeHistory', type: 'boolean', label: 'Include Historical Data', default: false },
       { name: 'riskAssessment', type: 'boolean', label: 'Include Risk Assessment', default: true },
@@ -156,12 +174,14 @@ interface ReportGeneratorProps {
   onReportGenerated?: (report: ReportRequest) => void;
   templates?: ReportTemplate[];
   initialType?: string;
+  initialParameters?: Record<string, any>;
 }
 
 export default function ReportGenerator({ 
   onReportGenerated, 
   templates = [], 
-  initialType 
+  initialType,
+  initialParameters
 }: ReportGeneratorProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -194,9 +214,12 @@ export default function ReportGenerator({
         }
         return acc;
       }, {} as Record<string, any>);
-      form.setValue('parameters', defaultParams);
+
+      // Merge in any initialParameters passed from a template selection
+      const merged = { ...defaultParams, ...(initialParameters || {}) };
+      form.setValue('parameters', merged);
     }
-  }, [selectedType, form]);
+  }, [selectedType, form, initialParameters]);
 
   const onSubmit = async (data: ReportGenerationFormData) => {
     if (!selectedType) return;
@@ -473,20 +496,13 @@ export default function ReportGenerator({
               {selectedType.requiredFields.includes('clientId') && (
                 <div className="space-y-2">
                   <Label htmlFor="clientId">Client (Optional)</Label>
-                  <Select
+                  <ClientSearchSelect
                     value={form.watch('clientId') || ''}
-                    onValueChange={(value) => form.setValue('clientId', value || undefined)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select client (leave empty for all clients)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">All Clients</SelectItem>
-                      <SelectItem value="1">Sample Client 1</SelectItem>
-                      <SelectItem value="2">Sample Client 2</SelectItem>
-                      <SelectItem value="3">Sample Client 3</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    onChange={(value) => form.setValue('clientId', value || undefined)}
+                    placeholder="Select client (leave empty for all clients)"
+                    allowEmpty
+                    emptyLabel="All Clients"
+                  />
                 </div>
               )}
 

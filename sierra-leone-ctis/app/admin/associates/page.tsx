@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -28,12 +29,12 @@ import {
 } from 'lucide-react';
 import { 
   AssociatePermissionService, 
-  ClientDelegationService,
   type AssociateDto, 
   type AssociateClientPermissionDto,
   type GrantPermissionRequest,
   AssociatePermissionLevel
 } from '@/lib/services';
+import AdminAssociateService, { type ClientOverviewDto } from '@/lib/services/admin-associate-service';
 
 const grantPermissionSchema = z.object({
   associateId: z.string().min(1, 'Associate is required'),
@@ -53,6 +54,9 @@ export default function AssociateManagementPage() {
   const [selectedAssociate, setSelectedAssociate] = useState<string | null>(null);
   const [isGrantDialogOpen, setIsGrantDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [associateSearch, setAssociateSearch] = useState('');
+  const [clientSearch, setClientSearch] = useState('');
+  const [clientResults, setClientResults] = useState<ClientOverviewDto[]>([]);
   const { toast } = useToast();
 
   const grantForm = useForm<GrantPermissionFormData>({
@@ -71,11 +75,28 @@ export default function AssociateManagementPage() {
     loadData();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (search?: string) => {
     try {
       setIsLoading(true);
-      const associatesResponse = await ClientDelegationService.getAvailableAssociates();
-      setAssociates(associatesResponse.data);
+      const associatesResponse = await AdminAssociateService.getAssociates(search, 1, 20);
+      // Map AdminAssociateDto -> AssociateDto used by UI
+      const mapped: AssociateDto[] = (associatesResponse.data || []).map(a => {
+        const parts = (a.fullName || '').trim().split(' ');
+        const firstName = parts[0] || a.fullName || '';
+        const lastName = parts.slice(1).join(' ');
+        return {
+          id: a.userId,
+          firstName,
+          lastName,
+          email: a.email,
+          phoneNumber: undefined,
+          isActive: a.isActive,
+          registrationDate: new Date().toISOString(),
+          clientCount: a.assignedClientsCount,
+          permissionCount: undefined,
+        } as AssociateDto;
+      });
+      setAssociates(mapped);
       
       // Don't load all permissions initially - only when selecting an associate
       setPermissions([]);
@@ -88,6 +109,19 @@ export default function AssociateManagementPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const searchClientsForGrant = async () => {
+    try {
+      const res = await AdminAssociateService.searchClients(clientSearch || '', 1, 10);
+      setClientResults(res.data || []);
+    } catch (e: any) {
+      toast({ title: 'Client search failed', description: e?.message || 'Unable to search clients', variant: 'destructive' });
+    }
+  };
+
+  const executeAssociateSearch = async () => {
+    await loadData(associateSearch);
   };
 
   const loadAssociatePermissions = async (associateId: string) => {
@@ -218,6 +252,17 @@ export default function AssociateManagementPage() {
           <Users className="h-6 w-6" />
           <h1 className="text-3xl font-bold">Associate Management</h1>
         </div>
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder="Search associates by name or email"
+            value={associateSearch}
+            onChange={(e) => setAssociateSearch(e.target.value)}
+            className="w-64"
+          />
+          <Button variant="outline" onClick={executeAssociateSearch}>
+            Search
+          </Button>
+        </div>
         
         <Dialog open={isGrantDialogOpen} onOpenChange={setIsGrantDialogOpen}>
           <DialogTrigger asChild>
@@ -258,13 +303,31 @@ export default function AssociateManagementPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="clientId">Client ID</Label>
-                <Input
-                  id="clientId"
-                  type="number"
-                  placeholder="Enter client ID"
-                  {...grantForm.register('clientId', { valueAsNumber: true })}
-                />
+                <Label htmlFor="clientSearch">Client</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="clientSearch"
+                    placeholder="Search clients by name"
+                    value={clientSearch}
+                    onChange={(e) => setClientSearch(e.target.value)}
+                  />
+                  <Button type="button" variant="outline" onClick={searchClientsForGrant}>Search</Button>
+                </div>
+                <Select 
+                  value={grantForm.watch('clientId')?.toString()}
+                  onValueChange={(value) => grantForm.setValue('clientId', parseInt(value))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select client" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clientResults.map((c) => (
+                      <SelectItem key={c.clientId} value={c.clientId.toString()}>
+                        {c.businessName} (ID: {c.clientId})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {grantForm.formState.errors.clientId && (
                   <p className="text-sm text-red-600">{grantForm.formState.errors.clientId.message}</p>
                 )}
@@ -452,6 +515,11 @@ export default function AssociateManagementPage() {
                       <Eye className="mr-1 h-3 w-3" />
                       View
                     </Button>
+                    <Link href={`/admin/associates/${associate.id}`}>
+                      <Button size="sm" variant="secondary">
+                        Details
+                      </Button>
+                    </Link>
                   </div>
                 </CardContent>
               </Card>

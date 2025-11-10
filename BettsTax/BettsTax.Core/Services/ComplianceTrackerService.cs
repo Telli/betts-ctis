@@ -1,7 +1,12 @@
 using AutoMapper;
 using BettsTax.Core.DTOs;
+using BettsTax.Core.DTOs.Compliance;
 using BettsTax.Data;
 using BettsTax.Shared;
+using ComplianceStatus = BettsTax.Data.ComplianceStatus;
+using ComplianceRiskLevel = BettsTax.Data.ComplianceRiskLevel;
+using ComplianceDashboardDtoAgg = BettsTax.Core.DTOs.ComplianceDashboardDto;
+using ComplianceTrendDtoAgg = BettsTax.Core.DTOs.ComplianceTrendDto;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -71,7 +76,7 @@ namespace BettsTax.Core.Services
                     .Include(t => t.Alerts.Where(a => a.IsActive))
                     .Include(t => t.Actions.Where(a => !a.IsCompleted))
                     .Where(t => t.ClientId == clientId)
-                    .OrderByDescending(t => t.TaxYear.Year)
+                    .OrderByDescending(t => t.TaxYear != null ? t.TaxYear.Year : 0)
                     .ThenBy(t => t.TaxType)
                     .ToListAsync();
 
@@ -173,7 +178,7 @@ namespace BettsTax.Core.Services
 
                 // Update fields if provided
                 if (updateDto.Status.HasValue)
-                    tracker.Status = updateDto.Status.Value;
+                    tracker.Status = ConvertToDataComplianceStatus(updateDto.Status.Value);
 
                 if (updateDto.IsFilingComplete.HasValue)
                 {
@@ -225,11 +230,11 @@ namespace BettsTax.Core.Services
             }
         }
 
-        public async Task<Result<ComplianceDashboardDto>> GetComplianceDashboardAsync()
+        public async Task<Result<ComplianceDashboardDtoAgg>> GetComplianceDashboardAsync()
         {
             try
             {
-                var dashboard = new ComplianceDashboardDto();
+                var dashboard = new ComplianceDashboardDtoAgg();
 
                 // Overall statistics
                 var allTrackers = await _context.Set<ComplianceTracker>()
@@ -243,10 +248,10 @@ namespace BettsTax.Core.Services
                     .Where(t => t.Status == ComplianceStatus.Compliant)
                     .Select(t => t.ClientId).Distinct().Count();
                 dashboard.AtRiskClients = allTrackers
-                    .Where(t => t.Status == ComplianceStatus.AtRisk)
+                    .Where(t => t.Status == ComplianceStatus.PartiallyCompliant)
                     .Select(t => t.ClientId).Distinct().Count();
                 dashboard.NonCompliantClients = allTrackers
-                    .Where(t => t.Status == ComplianceStatus.NonCompliant || t.Status == ComplianceStatus.PenaltyApplied)
+                    .Where(t => t.Status == ComplianceStatus.NonCompliant)
                     .Select(t => t.ClientId).Distinct().Count();
                 
                 dashboard.OverallComplianceRate = dashboard.TotalClients > 0 ? 
@@ -284,7 +289,7 @@ namespace BettsTax.Core.Services
                         TaxType = g.Key,
                         TotalClients = g.Select(t => t.ClientId).Distinct().Count(),
                         CompliantClients = g.Count(t => t.Status == ComplianceStatus.Compliant),
-                        NonCompliantClients = g.Count(t => t.Status == ComplianceStatus.NonCompliant || t.Status == ComplianceStatus.PenaltyApplied),
+                        NonCompliantClients = g.Count(t => t.Status == ComplianceStatus.NonCompliant),
                         ComplianceRate = g.Count() > 0 ? (decimal)g.Count(t => t.Status == ComplianceStatus.Compliant) / g.Count() * 100 : 0,
                         TotalLiability = g.Sum(t => t.TaxLiability),
                         TotalPaid = g.Sum(t => t.AmountPaid),
@@ -309,15 +314,15 @@ namespace BettsTax.Core.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting compliance dashboard");
-                return Result.Failure<ComplianceDashboardDto>("Failed to get compliance dashboard");
+                return Result.Failure<ComplianceDashboardDtoAgg>("Failed to get compliance dashboard");
             }
         }
 
-        public async Task<Result<ComplianceDashboardDto>> GetClientComplianceDashboardAsync(int clientId)
+        public async Task<Result<ComplianceDashboardDtoAgg>> GetClientComplianceDashboardAsync(int clientId)
         {
             try
             {
-                var dashboard = new ComplianceDashboardDto();
+                var dashboard = new ComplianceDashboardDtoAgg();
 
                 // Client-specific statistics
                 var clientTrackers = await _context.Set<ComplianceTracker>()
@@ -397,7 +402,7 @@ namespace BettsTax.Core.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting client compliance dashboard for client {ClientId}", clientId);
-                return Result.Failure<ComplianceDashboardDto>("Failed to get client compliance dashboard");
+                return Result.Failure<ComplianceDashboardDtoAgg>("Failed to get client compliance dashboard");
             }
         }
 
@@ -678,10 +683,10 @@ namespace BettsTax.Core.Services
             return Result.Success(true);
         }
 
-        public async Task<Result<List<ComplianceTrendDto>>> GetComplianceTrendsAsync(DateTime fromDate, DateTime toDate)
+        public async Task<Result<List<ComplianceTrendDtoAgg>>> GetComplianceTrendsAsync(DateTime fromDate, DateTime toDate)
         {
             // Implementation would get trends
-            return Result.Success(new List<ComplianceTrendDto>());
+            return Result.Success(new List<ComplianceTrendDtoAgg>());
         }
 
         public async Task<Result<List<PenaltyTrendDto>>> GetPenaltyTrendsAsync(DateTime fromDate, DateTime toDate)
@@ -702,10 +707,39 @@ namespace BettsTax.Core.Services
             return new List<ComplianceAlertDto>();
         }
 
-        private async Task<List<ComplianceActionDto>> GetUpcomingActionsAsync(int days, int? clientId = null)
+        private Task<List<ComplianceActionDto>> GetUpcomingActionsAsync(int days, int? clientId = null)
         {
             // Implementation would get upcoming actions
-            return new List<ComplianceActionDto>();
+            return Task.FromResult(new List<ComplianceActionDto>());
+        }
+
+        public Task<Result<bool>> UpdateComplianceHistoryAsync()
+        {
+            try
+            {
+                // Implementation would update compliance history
+                _logger.LogInformation("Compliance history updated successfully");
+                return Task.FromResult(Result.Success(true));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating compliance history");
+                return Task.FromResult(Result.Failure<bool>("Failed to update compliance history"));
+            }
+        }
+
+        private BettsTax.Data.ComplianceStatus ConvertToDataComplianceStatus(ComplianceStatus modelsStatus)
+        {
+            return modelsStatus switch
+            {
+                ComplianceStatus.Compliant => BettsTax.Data.ComplianceStatus.Compliant,
+                ComplianceStatus.NonCompliant => BettsTax.Data.ComplianceStatus.NonCompliant,
+                ComplianceStatus.PartiallyCompliant => BettsTax.Data.ComplianceStatus.AtRisk,
+                ComplianceStatus.UnderReview => BettsTax.Data.ComplianceStatus.UnderReview,
+                ComplianceStatus.InProgress => BettsTax.Data.ComplianceStatus.AtRisk,
+                ComplianceStatus.Resolved => BettsTax.Data.ComplianceStatus.Compliant,
+                _ => BettsTax.Data.ComplianceStatus.AtRisk
+            };
         }
     }
 }

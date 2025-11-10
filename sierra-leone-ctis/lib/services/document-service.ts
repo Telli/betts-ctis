@@ -2,7 +2,7 @@
  * Enhanced Document service for the BettsTax backend
  */
 
-import { apiClient } from '../api-client';
+import { apiClient, getToken } from '../api-client';
 
 /**
  * Create empty document data for new users or when API is unavailable
@@ -63,12 +63,15 @@ export interface DocumentStats {
   byStatus: Record<string, number>;
 }
 
+export type DocumentUploadCategory = 'tax-return' | 'financial-statement' | 'supporting-document' | 'receipt' | 'correspondence' | 'invoice' | 'payment-evidence' | 'bank-statement'
+
 export interface DocumentUploadRequest {
   file: File;
-  category: 'tax-return' | 'financial-statement' | 'supporting-document' | 'receipt' | 'correspondence';
+  category: DocumentUploadCategory;
   description?: string;
   tags?: string[];
   taxYearId?: number;
+  taxFilingId?: number;
 }
 
 export const DocumentService = {
@@ -78,30 +81,127 @@ export const DocumentService = {
   upload: async (clientId: number, uploadRequest: DocumentUploadRequest): Promise<DocumentDto> => {
     const formData = new FormData();
     formData.append('file', uploadRequest.file);
-    formData.append('category', uploadRequest.category);
-    
-    if (uploadRequest.description) {
-      formData.append('description', uploadRequest.description);
-    }
-    
-    if (uploadRequest.tags && uploadRequest.tags.length > 0) {
-      formData.append('tags', JSON.stringify(uploadRequest.tags));
-    }
-    
-    if (uploadRequest.taxYearId) {
-      formData.append('taxYearId', uploadRequest.taxYearId.toString());
-    }
+
+    // Map frontend category to backend DocumentCategory enum
+    const categoryMap: Record<string, string> = {
+      'tax-return': 'TaxReturn',
+      'financial-statement': 'FinancialStatement',
+      'receipt': 'Receipt',
+      'invoice': 'Invoice',
+      'payment-evidence': 'PaymentEvidence',
+      'bank-statement': 'BankStatement',
+      'supporting-document': 'Other',
+      'correspondence': 'Other',
+    };
+
+    const serverCategory = categoryMap[uploadRequest.category] || 'Other';
+
+    // Backend expects PascalCase keys due to DTO binder
+    formData.append('ClientId', clientId.toString());
+    if (uploadRequest.taxYearId) formData.append('TaxYearId', uploadRequest.taxYearId.toString());
+    if (uploadRequest.taxFilingId) formData.append('TaxFilingId', uploadRequest.taxFilingId.toString());
+    formData.append('Category', serverCategory);
+    if (uploadRequest.description) formData.append('Description', uploadRequest.description);
 
     const response = await apiClient.post<{ success: boolean; data: DocumentDto }>(
-      `/api/clients/${clientId}/documents`,
+      `/api/documents/upload`,
       formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      }
+      { isFormData: true }
     );
     return response.data.data;
+  },
+
+  /**
+   * Upload a document with progress callback (client-side only)
+   */
+  uploadWithProgress: async (
+    clientId: number,
+    uploadRequest: DocumentUploadRequest,
+    onProgress: (percent: number) => void
+  ): Promise<DocumentDto> => {
+    const formData = new FormData();
+    formData.append('file', uploadRequest.file);
+
+    const categoryMap: Record<string, string> = {
+      'tax-return': 'TaxReturn',
+      'financial-statement': 'FinancialStatement',
+      'receipt': 'Receipt',
+      'invoice': 'Invoice',
+      'payment-evidence': 'PaymentEvidence',
+      'bank-statement': 'BankStatement',
+      'supporting-document': 'Other',
+      'correspondence': 'Other',
+    };
+
+    const serverCategory = categoryMap[uploadRequest.category] || 'Other';
+    formData.append('ClientId', clientId.toString());
+    if (uploadRequest.taxYearId) formData.append('TaxYearId', uploadRequest.taxYearId.toString());
+    if (uploadRequest.taxFilingId) formData.append('TaxFilingId', uploadRequest.taxFilingId.toString());
+    formData.append('Category', serverCategory);
+    if (uploadRequest.description) formData.append('Description', uploadRequest.description);
+
+    const RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+    const buildAbsoluteUrl = (endpoint: string): string => {
+      try {
+        const base = RAW_API_BASE_URL;
+        if (base.startsWith('http://') || base.startsWith('https://')) {
+          return new URL(endpoint, base.endsWith('/') ? base : base + '/').toString();
+        }
+        if (typeof window !== 'undefined') {
+          const originBase = new URL(base, window.location.origin);
+          return new URL(endpoint, originBase.toString().endsWith('/') ? originBase.toString() : originBase.toString() + '/').toString();
+        }
+        return `${base}${endpoint}`;
+      } catch {
+        return `${RAW_API_BASE_URL}${endpoint}`;
+      }
+    };
+
+    const url = buildAbsoluteUrl('/api/documents/upload');
+
+    return await new Promise<DocumentDto>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+      const token = getToken();
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
+      xhr.withCredentials = true;
+      xhr.upload.onprogress = (event: ProgressEvent) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          try { onProgress(percent); } catch {}
+        }
+      };
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState === 4) {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const parsed = JSON.parse(xhr.responseText);
+              resolve(parsed.data as DocumentDto);
+            } catch (e) {
+              // Some backends may return raw DTO
+              try {
+                resolve(JSON.parse(xhr.responseText) as DocumentDto);
+              } catch (err) {
+                reject(err);
+              }
+            }
+          } else if (xhr.status === 401) {
+            reject(new Error('Unauthorized'));
+          } else {
+            try {
+              const err = JSON.parse(xhr.responseText);
+              reject(new Error(err?.message || `Upload failed: ${xhr.status}`));
+            } catch {
+              reject(new Error(`Upload failed: ${xhr.status}`));
+            }
+          }
+        }
+      };
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.send(formData);
+    });
   },
 
   /**
@@ -132,10 +232,30 @@ export const DocumentService = {
    * Get all documents for a client
    */
   getClientDocuments: async (clientId: number): Promise<DocumentDto[]> => {
-    const response = await apiClient.get<{ success: boolean; data: DocumentDto[] }>(
-      `/api/clients/${clientId}/documents`
-    );
-    return response.data.data;
+    // Backend doesn't have client-specific document endpoint yet
+    // Use the generic getDocuments with clientId filter
+    try {
+      return await DocumentService.getDocuments({ clientId });
+    } catch (error) {
+      console.warn('Failed to fetch client documents, returning empty array:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Get documents for a specific tax filing
+   */
+  getDocumentsByFiling: async (taxFilingId: number): Promise<DocumentDto[]> => {
+    try {
+      const response = await apiClient.get<{ success: boolean; data: DocumentDto[] }>(
+        `/api/documents/tax-filing/${taxFilingId}`
+      );
+      // Backend response is wrapped { success, data }
+      return response.data?.data ?? [];
+    } catch (error) {
+      console.warn('Failed to fetch tax filing documents, returning empty array:', error);
+      return [];
+    }
   },
 
   /**
@@ -202,8 +322,32 @@ export const DocumentService = {
    * Download document
    */
   downloadDocument: async (documentId: string): Promise<Blob> => {
-    const response = await apiClient.get(`/api/documents/${documentId}/download`);
+    const response = await apiClient.get<Blob>(
+      `/api/documents/${documentId}/download`,
+      { responseType: 'blob' }
+    );
     return response.data as Blob;
+  },
+
+  /**
+   * Replace the binary file of an existing document
+   */
+  replace: async (
+    documentId: string,
+    request: { file: File; description?: string; taxYearId?: number; taxFilingId?: number }
+  ): Promise<DocumentDto> => {
+    const formData = new FormData();
+    formData.append('file', request.file);
+    if (request.taxYearId) formData.append('TaxYearId', request.taxYearId.toString());
+    if (request.taxFilingId) formData.append('TaxFilingId', request.taxFilingId.toString());
+    if (request.description) formData.append('Description', request.description);
+
+    const response = await apiClient.put<{ success: boolean; data: DocumentDto }>(
+      `/api/documents/${documentId}/replace`,
+      formData,
+      { isFormData: true }
+    );
+    return response.data.data;
   },
 
   /**
@@ -244,24 +388,46 @@ export const DocumentService = {
   /**
    * Get document requirements for a tax type
    */
-  getDocumentRequirements: async (taxType: string, clientCategory: string): Promise<Array<{
+  getDocumentRequirements: async (
+    taxType: string,
+    clientCategory: string
+  ): Promise<Array<{
     category: string;
     required: boolean;
     description: string;
     acceptedFormats: string[];
-    maxSize: number;
+    maxSizeMb: number;
   }>> => {
-    const response = await apiClient.get<{ 
-      success: boolean; 
-      data: Array<{
-        category: string;
-        required: boolean;
-        description: string;
-        acceptedFormats: string[];
-        maxSize: number;
-      }> 
-    }>(`/api/documents/requirements?taxType=${taxType}&clientCategory=${clientCategory}`);
-    return response.data.data;
+    const response = await apiClient.get<Array<Record<string, any>>>(
+      `/api/documentverification/requirements?taxType=${taxType}&category=${clientCategory}`
+    );
+
+    return (response.data || []).map((req) => {
+      const acceptedRaw = req.acceptedFormats ?? req.AcceptedFormats ?? [];
+      const acceptedList = Array.isArray(acceptedRaw)
+        ? acceptedRaw
+        : typeof acceptedRaw === 'string'
+          ? acceptedRaw.split(',').map((f: string) => f.trim()).filter(Boolean)
+          : [];
+      // Ensure dot-prefixed extensions for file inputs
+      const acceptedFormats = acceptedList.map((f: string) => f.startsWith('.') ? f.toLowerCase() : `.${f.toLowerCase()}`);
+
+      const maxSizeCandidate = req.maxSize ?? req.MaxSize ?? req.maxFileSize ?? req.MaxFileSize ?? req.maxFileSizeInBytes ?? req.MaxFileSizeInBytes;
+      let maxSizeMb = 15;
+      if (typeof maxSizeCandidate === 'number') {
+        // Treat large values as bytes and smaller ones as already in MB
+        maxSizeMb = maxSizeCandidate > 1024 ? Math.max(1, Math.round((maxSizeCandidate / 1024 / 1024) * 10) / 10) : maxSizeCandidate;
+      }
+
+      return {
+        // Prefer DocumentType when available, then RequirementCode
+        category: req.documentType ?? req.DocumentType ?? req.requirementCode ?? req.RequirementCode ?? 'supporting-document',
+        required: Boolean(req.isRequired ?? req.IsRequired ?? req.required ?? req.Required),
+        description: req.description ?? req.Description ?? '',
+        acceptedFormats,
+        maxSizeMb,
+      };
+    });
   },
 
   /**

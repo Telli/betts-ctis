@@ -1141,6 +1141,11 @@ namespace BettsTax.Core.Services
                     return Result.Failure("Client not found");
                 }
 
+                if (string.IsNullOrEmpty(client.UserId))
+                {
+                    return Result.Failure("Client user account not linked");
+                }
+
                 var subject = "Documents Required for Tax Filing";
                 var body = $@"Dear {client.User.FirstName} {client.User.LastName},
 
@@ -1156,7 +1161,7 @@ Best regards,
 The Betts Firm Team";
 
                 return await SendSystemMessageAsync(
-                    client.UserId,
+                    client.UserId!,
                     subject,
                     body,
                     MessageCategory.DocumentRequest,
@@ -1184,6 +1189,11 @@ The Betts Firm Team";
                     return Result.Failure("Document or client not found");
                 }
 
+                if (string.IsNullOrEmpty(document.Client.UserId))
+                {
+                    return Result.Failure("Client user account not linked");
+                }
+
                 var subject = $"Document Rejected: {document.OriginalFileName}";
                 var body = $@"Dear {document.Client.User.FirstName} {document.Client.User.LastName},
 
@@ -1198,7 +1208,7 @@ The Betts Firm Team";
 
                 var sendDto = new SendMessageDto
                 {
-                    RecipientId = document.Client.UserId,
+                    RecipientId = document.Client.UserId!,
                     ClientId = document.ClientId,
                     DocumentId = documentId,
                     Subject = subject,
@@ -1248,7 +1258,7 @@ Best regards,
 The Betts Firm Team";
 
                 return await SendSystemMessageAsync(
-                    client.UserId,
+                    client.UserId!,
                     subject,
                     body,
                     MessageCategory.Deadline,
@@ -1277,6 +1287,11 @@ The Betts Firm Team";
                     return Result.Failure("Payment or client not found");
                 }
 
+                if (string.IsNullOrEmpty(payment.TaxFiling.Client.UserId))
+                {
+                    return Result.Failure("Client user account not linked");
+                }
+
                 var subject = $"Payment Confirmation - {payment.PaymentReference}";
                 var body = $@"Dear {payment.TaxFiling.Client.User.FirstName} {payment.TaxFiling.Client.User.LastName},
 
@@ -1296,7 +1311,7 @@ The Betts Firm Team";
 
                 var sendDto = new SendMessageDto
                 {
-                    RecipientId = payment.TaxFiling.Client.UserId,
+                    RecipientId = payment.TaxFiling.Client.UserId!,
                     ClientId = payment.TaxFiling.ClientId,
                     TaxFilingId = payment.TaxFilingId,
                     Subject = subject,

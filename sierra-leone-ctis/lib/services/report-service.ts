@@ -53,9 +53,103 @@ export interface ReportStatistics {
 }
 
 class ReportService {
-  private baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+  private baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'
 
-  // Get all reports for the current user
+  // Backend enums (numeric) to UI strings and vice versa
+  private reportStatusToString(status: number): ReportRequest['status'] {
+    switch (status) {
+      case 0: return 'Pending'
+      case 1: return 'Processing'
+      case 2: return 'Completed'
+      case 3: return 'Failed'
+      case 4: return 'Cancelled'
+      default: return 'Pending'
+    }
+  }
+
+  private reportTypeToString(type: number): string {
+    // See BettsTax.Data/Enums.cs ReportType
+    switch (type) {
+      case 1: return 'TaxFiling'
+      case 2: return 'PaymentHistory'
+      case 3: return 'Compliance'
+      case 4: return 'ClientActivity'
+      case 5: return 'FinancialSummary'
+      case 6: return 'ComplianceAnalytics'
+      case 7: return 'DocumentSubmission'
+      case 8: return 'TaxCalendar'
+      case 9: return 'ClientComplianceOverview'
+      case 10: return 'Revenue'
+      case 11: return 'CaseManagement'
+      case 12: return 'EnhancedClientActivity'
+      default: return 'Unknown'
+    }
+  }
+
+  private reportTypeToEnum(reportType: string): number | null {
+    const map: Record<string, number> = {
+      // Core backend types
+      TaxFiling: 1,
+      PaymentHistory: 2,
+      Compliance: 3,
+      ClientActivity: 4,
+      FinancialSummary: 5,
+      ComplianceAnalytics: 6,
+      DocumentSubmission: 7,
+      TaxCalendar: 8,
+      ClientComplianceOverview: 9,
+      Revenue: 10,
+      CaseManagement: 11,
+      EnhancedClientActivity: 12,
+      // UI convenience aliases
+      TaxCompliance: 3, // map to Compliance
+      KPISummary: 10, // map to Revenue (closest available)
+      PenaltyAnalysis: 3, // penalties are part of compliance domain
+      AuditTrail: 4, // closest fit is client activity/audit-like
+      TaxSummary: 1, // map to TaxFiling summary
+      ComplianceStatus: 3,
+      ClientPortfolio: 9,
+      MonthlyReconciliation: 10
+    }
+    return map[reportType] ?? null
+  }
+
+  private formatToEnum(format?: string): number {
+    switch (format) {
+      case 'PDF': return 1
+      case 'Excel': return 2
+      case 'CSV': return 3
+      default: return 1
+    }
+  }
+
+  private buildTitleFromDto(dto: any): string {
+    const type = this.reportTypeToString(dto.type)
+    const ts = dto.requestedAt ? new Date(dto.requestedAt).toLocaleString() : new Date().toLocaleString()
+    return `${type} Report - ${ts}`
+  }
+
+  private mapDtoToUi(dto: any): ReportRequest {
+    return {
+      id: dto.requestId,
+      reportType: this.reportTypeToString(dto.type),
+      title: this.buildTitleFromDto(dto),
+      description: '',
+      status: this.reportStatusToString(dto.status),
+      progress: dto.status === 1 ? (dto.progress ?? 0) : (dto.status === 2 ? 100 : 0),
+      createdAt: dto.requestedAt,
+      completedAt: dto.completedAt,
+      downloadUrl: dto.downloadUrl,
+      parameters: dto.parameters ?? {},
+      fileSize: dto.fileSizeBytes,
+      estimatedDuration: undefined,
+      errorMessage: dto.errorMessage,
+      userId: dto.requestedByUserId,
+      clientId: dto.parameters?.clientId
+    }
+  }
+
+  // Get all reports for the current user (uses backend history endpoint)
   async getReports(filters?: {
     status?: string
     type?: string
@@ -64,18 +158,32 @@ class ReportService {
     dateTo?: string
     page?: number
     pageSize?: number
-  }): Promise<ApiResponse<ReportRequest[]>> {
+    search?: string
+    sortBy?: string
+    sortDir?: 'asc' | 'desc'
+  }): Promise<import('../types/api').PaginatedResponse<ReportRequest>> {
     try {
-      const params = new URLSearchParams()
-      
-      if (filters) {
-        Object.entries(filters).forEach(([key, value]) => {
-          if (value) params.append(key, value.toString())
-        })
-      }
+      const page = filters?.page ?? 1
+      const pageSize = filters?.pageSize ?? 100
+      const params: string[] = [
+        `pageSize=${encodeURIComponent(pageSize)}`,
+        `pageNumber=${encodeURIComponent(page)}`
+      ]
 
-      const url = `${this.baseUrl}/api/reports${params.toString() ? `?${params.toString()}` : ''}`
-      
+      if (filters?.status) params.push(`status=${encodeURIComponent(filters.status)}`)
+      if (filters?.type) {
+        // Prefer numeric enum for compatibility; fallback to string
+        const typeEnum = this.reportTypeToEnum(filters.type)
+        params.push(`type=${encodeURIComponent(typeEnum ?? filters.type)}`)
+      }
+      if (filters?.dateFrom) params.push(`fromDate=${encodeURIComponent(filters.dateFrom)}`)
+      if (filters?.dateTo) params.push(`toDate=${encodeURIComponent(filters.dateTo)}`)
+      if (filters?.search) params.push(`search=${encodeURIComponent(filters.search)}`)
+      if (filters?.sortBy) params.push(`sortBy=${encodeURIComponent(filters.sortBy)}`)
+      if (filters?.sortDir) params.push(`sortDir=${encodeURIComponent(filters.sortDir)}`)
+
+      const url = `${this.baseUrl}/api/Reports/history?${params.join('&')}`
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -88,18 +196,44 @@ class ReportService {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
-      const data = await response.json()
+  const payload = await response.json()
+      const items = Array.isArray(payload?.reports) ? payload.reports : (Array.isArray(payload?.Reports) ? payload.Reports : [])
+      const mapped: ReportRequest[] = items.map((dto: any) => this.mapDtoToUi(dto))
+
+      const totalCount = (payload?.totalCount ?? payload?.TotalCount ?? mapped.length) as number
+      const pageNumber = (payload?.pageNumber ?? payload?.PageNumber ?? page) as number
+      const pageSizeVal = (payload?.pageSize ?? payload?.PageSize ?? pageSize) as number
+      const totalPages = Math.max(1, Math.ceil(totalCount / Math.max(1, pageSizeVal)))
+      const hasNext = pageNumber < totalPages
+      const hasPrevious = pageNumber > 1
+
       return {
         success: true,
-        data: data || [],
-        message: 'Reports retrieved successfully'
+        data: mapped,
+        message: 'Reports retrieved successfully',
+        pagination: {
+          page: pageNumber,
+          pageSize: pageSizeVal,
+          totalPages,
+          totalItems: totalCount,
+          hasNext,
+          hasPrevious
+        }
       }
     } catch (error) {
       console.error('Error fetching reports:', error)
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred',
-        data: []
+        data: [],
+        pagination: {
+          page: filters?.page ?? 1,
+          pageSize: filters?.pageSize ?? 100,
+          totalPages: 1,
+          totalItems: 0,
+          hasNext: false,
+          hasPrevious: false
+        }
       }
     }
   }
@@ -107,7 +241,7 @@ class ReportService {
   // Get a specific report by ID
   async getReport(reportId: string): Promise<ApiResponse<ReportRequest>> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/reports/${reportId}`, {
+      const response = await fetch(`${this.baseUrl}/api/Reports/status/${encodeURIComponent(reportId)}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -122,7 +256,7 @@ class ReportService {
       const data = await response.json()
       return {
         success: true,
-        data: data,
+        data: this.mapDtoToUi(data),
         message: 'Report retrieved successfully'
       }
     } catch (error) {
@@ -137,25 +271,64 @@ class ReportService {
   // Generate a new report
   async generateReport(request: GenerateReportRequest): Promise<ApiResponse<ReportRequest>> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/reports/generate`, {
+      const typeEnum = this.reportTypeToEnum(request.reportType)
+      if (typeEnum === null) {
+        throw new Error(`Unsupported report type: ${request.reportType}`)
+      }
+
+      // Map parameters to backend expectations
+      const params: Record<string, any> = { ...request.parameters }
+      if (params.dateFrom && !params.fromDate) params.fromDate = params.dateFrom
+      if (params.dateTo && !params.toDate) params.toDate = params.dateTo
+      delete params.dateFrom
+      delete params.dateTo
+
+      const body = {
+        type: typeEnum,
+        format: this.formatToEnum(params.format),
+        parameters: params
+      }
+
+      const response = await fetch(`${this.baseUrl}/api/Reports/queue`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify(request)
+        body: JSON.stringify(body)
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`)
+        let errorMessage = `HTTP error! status: ${response.status}`
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData?.message || errorMessage
+        } catch {}
+        throw new Error(errorMessage)
       }
 
       const data = await response.json()
+      const now = new Date().toISOString()
+      const uiReport: ReportRequest = {
+        id: data.requestId || data.RequestId,
+        reportType: request.reportType,
+        title: request.parameters?.title || `${request.reportType} Report - ${new Date().toLocaleString()}`,
+        description: request.parameters?.description || '',
+        status: 'Pending',
+        progress: 0,
+        createdAt: now,
+        completedAt: undefined,
+        downloadUrl: undefined,
+        parameters: params,
+        fileSize: undefined,
+        estimatedDuration: undefined,
+        errorMessage: undefined,
+        userId: ''
+      }
       return {
         success: true,
-        data: data,
-        message: 'Report generation started successfully'
+        data: uiReport,
+        message: 'Report generation queued successfully'
       }
     } catch (error) {
       console.error('Error generating report:', error)
@@ -169,7 +342,7 @@ class ReportService {
   // Download a completed report
   async downloadReport(reportId: string): Promise<Blob | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/reports/${reportId}/download`, {
+      const response = await fetch(`${this.baseUrl}/api/Reports/download/${encodeURIComponent(reportId)}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -190,22 +363,23 @@ class ReportService {
   // Cancel a processing report
   async cancelReport(reportId: string): Promise<ApiResponse<void>> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/reports/${reportId}/cancel`, {
+      const response = await fetch(`${this.baseUrl}/api/Reports/cancel/${encodeURIComponent(reportId)}` , {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        let errorMessage = `HTTP error! status: ${response.status}`
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData?.message || errorMessage
+        } catch {}
+        throw new Error(errorMessage)
       }
 
-      return {
-        success: true,
-        message: 'Report cancelled successfully'
-      }
+      return { success: true, message: 'Report cancelled successfully' }
     } catch (error) {
       console.error('Error cancelling report:', error)
       return {
@@ -218,7 +392,7 @@ class ReportService {
   // Delete a report
   async deleteReport(reportId: string): Promise<ApiResponse<void>> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/reports/${reportId}`, {
+      const response = await fetch(`${this.baseUrl}/api/Reports/${encodeURIComponent(reportId)}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -245,10 +419,9 @@ class ReportService {
   // Get report templates
   async getTemplates(): Promise<ApiResponse<ReportTemplate[]>> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/reports/templates`, {
+      const response = await fetch(`${this.baseUrl}/api/Reports/templates`, {
         method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       })
@@ -258,11 +431,7 @@ class ReportService {
       }
 
       const data = await response.json()
-      return {
-        success: true,
-        data: data,
-        message: 'Templates retrieved successfully'
-      }
+      return { success: true, data, message: 'Templates retrieved' }
     } catch (error) {
       console.error('Error fetching templates:', error)
       return {
@@ -276,13 +445,21 @@ class ReportService {
   // Save a report template
   async saveTemplate(template: Omit<ReportTemplate, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<ReportTemplate>> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/reports/templates`, {
+      const payload = {
+        name: template.name,
+        description: template.description,
+        reportType: template.reportType,
+        parameters: template.parameters,
+        isDefault: template.isDefault ?? false
+      }
+
+      const response = await fetch(`${this.baseUrl}/api/Reports/templates`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify(template)
+        body: JSON.stringify(payload)
       })
 
       if (!response.ok) {
@@ -290,13 +467,72 @@ class ReportService {
       }
 
       const data = await response.json()
-      return {
-        success: true,
-        data: data,
-        message: 'Template saved successfully'
-      }
+      return { success: true, data, message: 'Template saved' }
     } catch (error) {
       console.error('Error saving template:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      }
+    }
+  }
+
+  // Update a report template
+  async updateTemplate(templateId: string, template: Partial<Omit<ReportTemplate, 'id' | 'createdAt' | 'updatedAt'>>): Promise<ApiResponse<ReportTemplate>> {
+    try {
+      const payload: any = {}
+      if (template.name !== undefined) payload.name = template.name
+      if (template.description !== undefined) payload.description = template.description
+      if (template.reportType !== undefined) payload.reportType = template.reportType
+      if (template.parameters !== undefined) payload.parameters = template.parameters
+      if (template.isDefault !== undefined) payload.isDefault = template.isDefault
+
+      const response = await fetch(`${this.baseUrl}/api/Reports/templates/${encodeURIComponent(templateId)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(payload)
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      return { success: true, data, message: 'Template updated' }
+    } catch (error) {
+      console.error('Error updating template:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      }
+    }
+  }
+
+  // Delete a report template
+  async deleteTemplate(templateId: string): Promise<ApiResponse<void>> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/Reports/templates/${encodeURIComponent(templateId)}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      })
+
+      if (!response.ok) {
+        let errorMessage = `HTTP error! status: ${response.status}`
+        try {
+          const err = await response.json()
+          errorMessage = err?.message || errorMessage
+        } catch {}
+        throw new Error(errorMessage)
+      }
+
+      return { success: true, message: 'Template deleted' }
+    } catch (error) {
+      console.error('Error deleting template:', error)
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -307,30 +543,35 @@ class ReportService {
   // Get report statistics
   async getStatistics(dateFrom?: string, dateTo?: string): Promise<ApiResponse<ReportStatistics>> {
     try {
-      const params = new URLSearchParams()
-      if (dateFrom) params.append('dateFrom', dateFrom)
-      if (dateTo) params.append('dateTo', dateTo)
+      // No dedicated endpoint; derive from history
+      const history = await this.getReports({})
+      if (!history.success || !history.data) throw new Error(history.error || 'Failed to load reports')
+      const reports = history.data
 
-      const url = `${this.baseUrl}/api/reports/statistics${params.toString() ? `?${params.toString()}` : ''}`
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      })
+      const totalReports = reports.length
+      const completedReports = reports.filter(r => r.status === 'Completed').length
+      const failedReports = reports.filter(r => r.status === 'Failed').length
+      const processingReports = reports.filter(r => r.status === 'Processing').length
+      const completed = reports.filter(r => r.status === 'Completed' && r.completedAt)
+      const averageGenerationTime = completed.length
+        ? Math.round(completed.reduce((acc, r) => acc + (new Date(r.completedAt!).getTime() - new Date(r.createdAt).getTime()), 0) / completed.length / 1000)
+        : 0
+      const typeCounts: Record<string, number> = {}
+      for (const r of reports) typeCounts[r.reportType] = (typeCounts[r.reportType] || 0) + 1
+      const mostPopularTypes = Object.entries(typeCounts).map(([type, count]) => ({ type, count })).sort((a,b) => b.count - a.count).slice(0, 5)
+      const recentActivity = reports.slice(0, 10)
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+      const stats: ReportStatistics = {
+        totalReports,
+        completedReports,
+        failedReports,
+        processingReports,
+        averageGenerationTime,
+        mostPopularTypes,
+        recentActivity
       }
 
-      const data = await response.json()
-      return {
-        success: true,
-        data: data || null,
-        message: 'Statistics retrieved successfully'
-      }
+      return { success: true, data: stats, message: 'Statistics derived successfully' }
     } catch (error) {
       console.error('Error fetching statistics:', error)
       return {
@@ -341,27 +582,32 @@ class ReportService {
   }
 
   // Preview a report template
-  async previewTemplate(templateId: string, parameters: Record<string, any>): Promise<ApiResponse<string>> {
+  async previewTemplate(templateId: string, parameters: Record<string, any>, options?: { format?: 'PDF' | 'Excel' | 'CSV' }): Promise<ApiResponse<{ url: string; contentType: string }>> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/reports/templates/${templateId}/preview`, {
+      const query = options?.format ? `?format=${encodeURIComponent(options.format)}` : ''
+      const response = await fetch(`${this.baseUrl}/api/Reports/templates/${encodeURIComponent(templateId)}/preview${query}` , {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ parameters })
+        body: JSON.stringify(parameters ?? {})
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        let errorMessage = `HTTP error! status: ${response.status}`
+        try {
+          const err = await response.json()
+          errorMessage = err?.message || errorMessage
+        } catch {}
+        throw new Error(errorMessage)
       }
 
-      const data = await response.json()
-      return {
-        success: true,
-        data: data.previewUrl,
-        message: 'Preview generated successfully'
-      }
+      // The API returns a file stream; to preview easily, convert to a Blob URL
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const contentType = blob.type || response.headers.get('Content-Type') || 'application/octet-stream'
+      return { success: true, data: { url, contentType }, message: 'Preview generated' }
     } catch (error) {
       console.error('Error generating preview:', error)
       return {

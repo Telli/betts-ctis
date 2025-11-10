@@ -11,5 +11,6 @@ namespace BettsTax.Core.Services
         // SMS and Email notification methods
         Task<bool> SendSmsAsync(string phoneNumber, string message);
         Task<bool> SendEmailAsync(string email, string subject, string body);
+        Task<bool> SendNotificationAsync(string userId, string message, string notificationType);
     }
 }

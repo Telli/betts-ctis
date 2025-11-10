@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using ModelsComplianceAlert = BettsTax.Data.Models.ComplianceAlert;
 using ComplianceAlertType = BettsTax.Data.ComplianceAlertType;
 using DeadlinePriority = BettsTax.Data.DeadlinePriority;
+using ComplianceRiskLevel = BettsTax.Data.ComplianceRiskLevel;
 
 namespace BettsTax.Core.Services;
 

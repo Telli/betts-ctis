@@ -25,7 +25,7 @@ import {
   DollarSign,
   ArrowUpDown,
   Import,
-  Export
+  Upload
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -344,7 +344,7 @@ export default function GstCalculatorForm({
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base flex items-center gap-2">
-                        <Export className="h-4 w-4 text-green-600" />
+                        <Upload className="h-4 w-4 text-green-600" />
                         Export Activities
                       </CardTitle>
                     </CardHeader>

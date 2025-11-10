@@ -38,7 +38,13 @@ public enum ReportType
     Compliance = 3,
     ClientActivity = 4,
     FinancialSummary = 5,
-    ComplianceAnalytics = 6
+    ComplianceAnalytics = 6,
+    DocumentSubmission = 7,
+    TaxCalendar = 8,
+    ClientComplianceOverview = 9,
+    Revenue = 10,
+    CaseManagement = 11,
+    EnhancedClientActivity = 12
 }
 
 public enum ReportFormat
@@ -116,8 +122,49 @@ public enum ComplianceAlertType
     DocumentationMissing = 8,
     ReviewRequired = 9,
     ExtensionRequested = 10,
-    SystemAlert = 11
+    SystemAlert = 11,
+    GstRegistration = 12
 }
 public enum CompliancePriority { Low = 0, Medium = 1, High = 2, Critical = 3 }
 public enum ComplianceActionStatus { Open = 0, InProgress = 1, Completed = 2, Cancelled = 3, Overdue = 4 }
 public enum ComplianceRiskImpact { Minimal = 0, Low = 1, Medium = 2, High = 3, Severe = 4 }
+
+// Phase 3 Enhanced Workflow Automation System Enums
+public enum WorkflowInstanceStatus
+{
+    NotStarted = 0,
+    Running = 1,
+    WaitingForApproval = 2,
+    Paused = 3,
+    Completed = 4,
+    Failed = 5,
+    Cancelled = 6
+}
+
+public enum WorkflowStepInstanceStatus
+{
+    NotStarted = 0,
+    Running = 1,
+    WaitingForApproval = 2,
+    Completed = 3,
+    Failed = 4,
+    Skipped = 5,
+    Cancelled = 6
+}
+
+public enum WorkflowTriggerType
+{
+    Manual = 0,
+    Event = 1,
+    Schedule = 2,
+    Webhook = 3,
+    FileWatch = 4
+}
+
+public enum WorkflowApprovalStatus
+{
+    Pending = 0,
+    Approved = 1,
+    Rejected = 2,
+    Cancelled = 3
+}

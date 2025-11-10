@@ -23,16 +23,11 @@ export function ClientForm({ clientId, isEditMode = false }: ClientFormProps) {
     email: "",
     phoneNumber: "",
     address: "",
-    clientType: "Limited Company",
-    taxpayerCategory: "Medium Taxpayer",
+    clientType: 2, // Corporation = 2
+    taxpayerCategory: 1, // Medium = 1
     annualTurnover: 0,
     tin: "",
-    status: "pending",
-    // Legacy compatibility
-    name: "",
-    type: "Limited Company",
-    category: "Medium Taxpayer",
-    contact: ""
+    status: 0 // 0 = Active (matches backend enum)
   });
   const [isLoading, setIsLoading] = useState(false);
   const [loadingClient, setLoadingClient] = useState(isEditMode);
@@ -67,7 +62,17 @@ export function ClientForm({ clientId, isEditMode = false }: ClientFormProps) {
   };
 
   const handleSelectChange = (name: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    // Convert to number for enum fields
+    const enumFields = ['status', 'clientType', 'taxpayerCategory'];
+    const parsedValue = enumFields.includes(name) ? parseInt(value, 10) : value;
+    setFormData((prev) => ({ ...prev, [name]: parsedValue }));
+  };
+
+  const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    // Allow empty string for better UX, convert to number only if value exists
+    const numValue = value === '' ? '' : parseFloat(value) || 0;
+    setFormData((prev) => ({ ...prev, [name]: numValue }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -75,14 +80,28 @@ export function ClientForm({ clientId, isEditMode = false }: ClientFormProps) {
     setIsLoading(true);
 
     try {
+      // Prepare payload - ensure we're sending the correct field names and types
+      const payload: ClientDto = {
+        ...formData,
+        clientNumber: formData.clientNumber || `CLN-${Date.now()}`,
+        // Ensure enum fields are numbers, not strings
+        clientType: typeof formData.clientType === 'string' ? parseInt(formData.clientType) : formData.clientType,
+        taxpayerCategory: typeof formData.taxpayerCategory === 'string' ? parseInt(formData.taxpayerCategory) : formData.taxpayerCategory,
+        status: typeof formData.status === 'string' ? parseInt(formData.status) : formData.status,
+        // Ensure annualTurnover is a number
+        annualTurnover: typeof formData.annualTurnover === 'string' ? parseFloat(formData.annualTurnover) || 0 : formData.annualTurnover,
+      };
+
+      console.log('Sending payload:', payload);
+
       if (isEditMode && clientId) {
-        await ClientService.update(clientId, formData);
+        await ClientService.update(clientId, payload);
         toast({
           title: "Success",
           description: "Client updated successfully.",
         });
       } else {
-        await ClientService.create(formData);
+        await ClientService.create(payload);
         toast({
           title: "Success",
           description: "Client created successfully.",
@@ -90,6 +109,7 @@ export function ClientForm({ clientId, isEditMode = false }: ClientFormProps) {
       }
       router.push("/clients");
     } catch (error: any) {
+      console.error('Client save error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to save client. Please try again.",
@@ -118,11 +138,11 @@ export function ClientForm({ clientId, isEditMode = false }: ClientFormProps) {
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Client Name</Label>
+            <Label htmlFor="businessName">Business Name</Label>
             <Input
-              id="name"
-              name="name"
-              value={formData.name}
+              id="businessName"
+              name="businessName"
+              value={formData.businessName}
               onChange={handleChange}
               placeholder="Enter company or individual name"
               required
@@ -132,40 +152,39 @@ export function ClientForm({ clientId, isEditMode = false }: ClientFormProps) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="type">Client Type</Label>
+              <Label htmlFor="clientType">Client Type</Label>
               <Select
-                value={formData.type}
-                onValueChange={(value) => handleSelectChange("type", value)}
+                value={String(formData.clientType)}
+                onValueChange={(value) => handleSelectChange("clientType", value)}
                 disabled={isLoading}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select client type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Corporation">Corporation</SelectItem>
-                  <SelectItem value="Limited Company">Limited Company</SelectItem>
-                  <SelectItem value="Partnership">Partnership</SelectItem>
-                  <SelectItem value="Sole Proprietor">Sole Proprietor</SelectItem>
-                  <SelectItem value="Individual">Individual</SelectItem>
+                  <SelectItem value="0">Individual</SelectItem>
+                  <SelectItem value="1">Partnership</SelectItem>
+                  <SelectItem value="2">Corporation</SelectItem>
+                  <SelectItem value="3">NGO</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="category">Taxpayer Category</Label>
+              <Label htmlFor="taxpayerCategory">Taxpayer Category</Label>
               <Select
-                value={formData.category}
-                onValueChange={(value) => handleSelectChange("category", value)}
+                value={String(formData.taxpayerCategory)}
+                onValueChange={(value) => handleSelectChange("taxpayerCategory", value)}
                 disabled={isLoading}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Large Taxpayer">Large Taxpayer</SelectItem>
-                  <SelectItem value="Medium Taxpayer">Medium Taxpayer</SelectItem>
-                  <SelectItem value="Small Taxpayer">Small Taxpayer</SelectItem>
-                  <SelectItem value="Micro Taxpayer">Micro Taxpayer</SelectItem>
+                  <SelectItem value="0">Large Taxpayer</SelectItem>
+                  <SelectItem value="1">Medium Taxpayer</SelectItem>
+                  <SelectItem value="2">Small Taxpayer</SelectItem>
+                  <SelectItem value="3">Micro Taxpayer</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -177,20 +196,19 @@ export function ClientForm({ clientId, isEditMode = false }: ClientFormProps) {
               <Input
                 id="tin"
                 name="tin"
-                value={formData.tin}
+                value={formData.tin || ""}
                 onChange={handleChange}
                 placeholder="e.g. TIN-123-2024"
-                required
                 disabled={isLoading}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="contact">Primary Contact</Label>
+              <Label htmlFor="contactPerson">Primary Contact</Label>
               <Input
-                id="contact"
-                name="contact"
-                value={formData.contact}
+                id="contactPerson"
+                name="contactPerson"
+                value={formData.contactPerson}
                 onChange={handleChange}
                 placeholder="Contact person name"
                 required
@@ -199,11 +217,69 @@ export function ClientForm({ clientId, isEditMode = false }: ClientFormProps) {
             </div>
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="email@example.com"
+                required
+                disabled={isLoading}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="phoneNumber">Phone Number</Label>
+              <Input
+                id="phoneNumber"
+                name="phoneNumber"
+                value={formData.phoneNumber}
+                onChange={handleChange}
+                placeholder="+232-XX-XXX-XXX"
+                required
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="address">Address</Label>
+            <Input
+              id="address"
+              name="address"
+              value={formData.address}
+              onChange={handleChange}
+              placeholder="Full business address"
+              required
+              disabled={isLoading}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="annualTurnover">Annual Turnover (SLE)</Label>
+            <Input
+              id="annualTurnover"
+              name="annualTurnover"
+              type="number"
+              step="0.01"
+              min="0"
+              value={formData.annualTurnover === 0 ? '' : formData.annualTurnover}
+              onChange={handleNumberChange}
+              placeholder="Enter annual turnover"
+              required
+              disabled={isLoading}
+            />
+          </div>
+
           {isEditMode && (
             <div className="space-y-2">
               <Label htmlFor="status">Status</Label>
               <Select
-                value={formData.status || "pending"}
+                value={String(formData.status)}
                 onValueChange={(value) => handleSelectChange("status", value)}
                 disabled={isLoading}
               >
@@ -211,10 +287,9 @@ export function ClientForm({ clientId, isEditMode = false }: ClientFormProps) {
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="compliant">Compliant</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="warning">Warning</SelectItem>
-                  <SelectItem value="overdue">Overdue</SelectItem>
+                  <SelectItem value="0">Active</SelectItem>
+                  <SelectItem value="1">Inactive</SelectItem>
+                  <SelectItem value="2">Suspended</SelectItem>
                 </SelectContent>
               </Select>
             </div>

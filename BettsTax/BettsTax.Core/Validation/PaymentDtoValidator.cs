@@ -63,8 +63,30 @@ namespace BettsTax.Core.Validation
             RuleFor(x => x.RejectionReason)
                 .NotEmpty()
                 .WithMessage("Rejection reason is required")
-                .MaximumLength(500)
+                    .MaximumLength(200)
                 .WithMessage("Rejection reason cannot exceed 500 characters");
         }
     }
+
+        public class ReconcilePaymentDtoValidator : AbstractValidator<ReconcilePaymentDto>
+        {
+            public ReconcilePaymentDtoValidator()
+            {
+                RuleFor(x => x.ReconciliationReference)
+                    .MaximumLength(100).When(x => !string.IsNullOrEmpty(x.ReconciliationReference));
+
+                RuleFor(x => x.BankStatementReference)
+                    .MaximumLength(100).When(x => !string.IsNullOrEmpty(x.BankStatementReference));
+            }
+        }
+
+        public class UploadPaymentEvidenceDtoValidator : AbstractValidator<UploadPaymentEvidenceDto>
+        {
+            public UploadPaymentEvidenceDtoValidator()
+            {
+                RuleFor(x => x.ClientId).GreaterThan(0);
+                RuleFor(x => x.Description).NotEmpty().MaximumLength(500);
+                RuleFor(x => x.Category).IsInEnum();
+            }
+        }
 }

@@ -55,6 +55,20 @@ namespace BettsTax.Core.Services
                 return;
             }
 
+            // Check for 10-year exemption (150+ employees, $7.5M+ investment) - evaluate higher tier first
+            if (request.EmployeeCount >= 150 && request.InvestmentAmount >= 7_500_000)
+            {
+                result.EmploymentBasedExemption = new EmploymentBasedExemption
+                {
+                    IsEligible = true,
+                    ExemptionYears = 10,
+                    ExemptionType = "Full Corporate Income Tax Exemption",
+                    Requirements = "150+ full-time employees, $7.5M+ investment, 20%+ local ownership",
+                    EstimatedAnnualSavings = request.EstimatedCorporateTax // Full exemption
+                };
+                return;
+            }
+
             // Check for 5-year exemption (100+ employees, $5M+ investment)
             if (request.EmployeeCount >= 100 && request.InvestmentAmount >= 5_000_000)
             {
@@ -64,20 +78,6 @@ namespace BettsTax.Core.Services
                     ExemptionYears = 5,
                     ExemptionType = "Full Corporate Income Tax Exemption",
                     Requirements = "100+ full-time employees, $5M+ investment, 20%+ local ownership",
-                    EstimatedAnnualSavings = request.EstimatedCorporateTax // Full exemption
-                };
-                return;
-            }
-
-            // Check for 10-year exemption (150+ employees, $7.5M+ investment)
-            if (request.EmployeeCount >= 150 && request.InvestmentAmount >= 7_500_000)
-            {
-                result.EmploymentBasedExemption = new EmploymentBasedExemption
-                {
-                    IsEligible = true,
-                    ExemptionYears = 10,
-                    ExemptionType = "Full Corporate Income Tax Exemption",
-                    Requirements = "150+ full-time employees, $7.5M+ investment, 20%+ local ownership",
                     EstimatedAnnualSavings = request.EstimatedCorporateTax // Full exemption
                 };
                 return;
@@ -137,7 +137,10 @@ namespace BettsTax.Core.Services
                     {
                         meetsLandRequirement ? $"Cultivating {request.CultivatedLandHectares} hectares" : null,
                         meetsLivestockRequirement ? $"Managing {request.LivestockCount} livestock" : null
-                    }.Where(x => x != null).ToArray()
+                    }
+                    .Where(x => x != null)
+                    .Select(x => x!)
+                    .ToArray()
                 };
             }
             else
@@ -238,6 +241,20 @@ namespace BettsTax.Core.Services
                     Requirements = "Existing business expanding with minimum $5M investment",
                     EstimatedSavings = estimatedSavings,
                     QualifyingItems = new[] { "Plants and machinery for expansion" }
+                });
+            }
+
+            // Employment-linked duty-free path: companies qualifying for employment-based exemption also receive duty-free imports
+            if (result.EmploymentBasedExemption?.IsEligible == true)
+            {
+                decimal estimatedSavings = request.MachineryImportValue * 0.20m;
+                dutyFreeProvisions.Add(new DutyFreeProvision
+                {
+                    Type = "Employment-Linked Duty-Free Import",
+                    DurationYears = 3,
+                    Requirements = "Qualified for employment-based corporate tax exemption (Finance Act 2025)",
+                    EstimatedSavings = estimatedSavings,
+                    QualifyingItems = new[] { "Plants and machinery" }
                 });
             }
 

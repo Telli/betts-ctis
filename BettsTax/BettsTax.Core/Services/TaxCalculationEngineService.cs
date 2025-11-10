@@ -16,13 +16,16 @@ public class TaxCalculationEngineService : ITaxCalculationEngineService
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<TaxCalculationEngineService> _logger;
+    private readonly ISystemSettingService _settingService;
 
     public TaxCalculationEngineService(
         ApplicationDbContext context,
-        ILogger<TaxCalculationEngineService> logger)
+        ILogger<TaxCalculationEngineService> logger,
+        ISystemSettingService settingService)
     {
         _context = context;
         _logger = logger;
+        _settingService = settingService;
     }
 
     #region Income Tax Calculations
@@ -209,10 +212,21 @@ public class TaxCalculationEngineService : ITaxCalculationEngineService
 
             if (rate == null)
             {
-                // Finance Act 2025 default GST rate
+                // Use configured GST rate when no DB rate is found (default 15%)
+                var configuredGst = 15m;
+                try
+                {
+                    var settingValue = await _settingService.GetSettingAsync<decimal?>("Tax.GST.RatePercent");
+                    if (settingValue.HasValue && settingValue.Value >= 0)
+                    {
+                        configuredGst = settingValue.Value;
+                    }
+                }
+                catch { /* ignore and use default */ }
+
                 return new GstRateDto
                 {
-                    Rate = isExport ? 0 : 15, // 15% standard rate, 0% for exports
+                    Rate = isExport ? 0 : configuredGst,
                     Description = isExport ? "Zero-rated exports" : "Standard GST rate",
                     EffectiveDate = new DateTime(taxYear, 1, 1)
                 };
@@ -1105,12 +1119,14 @@ public class TaxCalculationEngineService : ITaxCalculationEngineService
 
             foreach (var filing in lateFilings)
             {
-                var daysLate = (filing.FilingDate - filing.DueDate).Days;
+                var lateDays = filing.DueDate.HasValue 
+                    ? (filing.FilingDate - filing.DueDate.Value).Days 
+                    : 0;
                 issues.Add(new TaxComplianceIssueDto
                 {
                     IssueType = "Late Filing",
-                    Description = $"{filing.TaxType} return filed {daysLate} days late",
-                    Severity = daysLate > 30 ? "Critical" : "Medium",
+                    Description = $"{filing.TaxType} return filed {lateDays} days late",
+                    Severity = lateDays > 30 ? "Critical" : "Medium",
                     RecommendedAction = "Ensure future filings are submitted on time",
                     Deadline = null
                 });

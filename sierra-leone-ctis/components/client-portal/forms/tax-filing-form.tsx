@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { ClientPortalService, CreateClientTaxFilingDto } from '@/lib/services/client-portal-service'
+import { TaxFilingService, TaxType as BackendTaxType } from '@/lib/services/tax-filing-service'
 
 enum TaxType {
   IncomeTax = 'IncomeTax',
@@ -44,6 +45,7 @@ export default function ClientTaxFilingForm({ onSuccess, initialData }: ClientTa
   const [loading, setLoading] = useState(false)
   const [calculatingLiability, setCalculatingLiability] = useState(false)
   const [taxableAmount, setTaxableAmount] = useState<number>(0)
+  const [clientId, setClientId] = useState<number | null>(null)
 
   const form = useForm<TaxFilingFormData>({
     resolver: zodResolver(taxFilingSchema),
@@ -55,6 +57,18 @@ export default function ClientTaxFilingForm({ onSuccess, initialData }: ClientTa
       filingReference: initialData?.filingReference || '',
     },
   })
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const profile = await ClientPortalService.getProfile()
+        setClientId(profile.clientId)
+      } catch (e) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Failed to load profile for calculation' })
+      }
+    }
+    loadProfile()
+  }, [toast])
 
   // Calculate tax liability (will need to integrate with ClientPortalService)
   const calculateTaxLiability = async () => {
@@ -72,18 +86,18 @@ export default function ClientTaxFilingForm({ onSuccess, initialData }: ClientTa
 
     try {
       setCalculatingLiability(true)
-      // TODO: Integrate with ClientPortalService when backend is ready
-      // For now, simulate calculation
-      const simulatedLiability = taxableAmount * 0.3 // 30% tax rate simulation
-      form.setValue('taxLiability', simulatedLiability)
-      
-      toast({
-        title: 'Tax Liability Calculated',
-        description: `Tax liability: ${simulatedLiability.toLocaleString('en-US', {
-          style: 'currency',
-          currency: 'SLE'
-        })} (30% rate)`,
+      if (!clientId) {
+        throw new Error('Missing client context')
+      }
+      const result = await TaxFilingService.calculateTaxLiability({
+        clientId,
+        taxType: taxType as unknown as BackendTaxType,
+        taxYear,
+        taxableAmount,
       })
+      const liability = result?.data?.taxLiability ?? result?.data?.breakdown?.total ?? 0
+      form.setValue('taxLiability', liability)
+      toast({ title: 'Tax Liability Calculated', description: `Tax liability: Le ${liability.toLocaleString()}` })
     } catch (error) {
       console.error('Error calculating tax liability:', error)
       toast({

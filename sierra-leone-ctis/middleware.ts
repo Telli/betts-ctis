@@ -18,7 +18,9 @@ export function middleware(request: NextRequest) {
     '/analytics',
     '/notifications',
     '/profile', 
-    '/settings'
+    '/settings',
+    '/admin/workflow-automation',
+    '/admin/workflows'
   ];
 
   // Define client portal routes that require client role
@@ -90,8 +92,14 @@ export function middleware(request: NextRequest) {
     }
   }
   
-  // Role-based redirection for public routes and homepage
-  if (token && (publicRoutes.includes(path) || path === '/')) {
+  // Authenticated users hitting root ('/') go straight to admin dashboard
+  if (token && path === '/') {
+    const url = new URL('/dashboard', request.url);
+    return NextResponse.redirect(url);
+  }
+
+  // Role-based redirection for public routes (e.g., /login)
+  if (token && publicRoutes.includes(path)) {
     const payload = decodeToken(token);
     if (payload && payload.role) {
       const userRole = payload.role;

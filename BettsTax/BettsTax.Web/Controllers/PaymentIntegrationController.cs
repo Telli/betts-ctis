@@ -369,6 +369,33 @@ namespace BettsTax.Web.Controllers
             }
         }
 
+        /// <summary>
+        /// Salone Payment Switch webhook endpoint (pain.002 status updates)
+        /// </summary>
+        [HttpPost("webhook/salone-switch")]
+        [AllowAnonymous]
+        public async Task<IActionResult> SaloneSwitchWebhook([FromServices] PaymentWebhookProcessor processor)
+        {
+            try
+            {
+                using var reader = new StreamReader(Request.Body);
+                var payload = await reader.ReadToEndAsync();
+
+                // Collect headers into dictionary for hashing / signature validation
+                var headers = Request.Headers.ToDictionary(h => h.Key, h => (string?)h.Value.FirstOrDefault());
+
+                var ok = await processor.ProcessAsync(PaymentProvider.SalonePaymentSwitch.ToString(), payload, headers, HttpContext.RequestAborted);
+                if (ok)
+                    return Ok();
+                return BadRequest();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing Salone Payment Switch webhook");
+                return StatusCode(500);
+            }
+        }
+
         #endregion
     }
 

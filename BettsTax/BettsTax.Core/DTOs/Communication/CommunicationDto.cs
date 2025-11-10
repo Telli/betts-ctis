@@ -1,4 +1,8 @@
+using System.ComponentModel.DataAnnotations;
+using BettsTax.Data;
 using BettsTax.Data.Models;
+using NotificationType = BettsTax.Data.Models.NotificationType;
+using NotificationStatus = BettsTax.Data.Models.NotificationStatus;
 
 namespace BettsTax.Core.DTOs.Communication;
 
@@ -176,19 +180,29 @@ public class ChatRoomDto
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
-    public ChatRoomType Type { get; set; }
+    public string Type { get; set; } = string.Empty;
     public bool IsActive { get; set; }
     public string? CreatedBy { get; set; }
     public string? CreatedByName { get; set; }
     public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public DateTime? LastActivityAt { get; set; }
     public int MaxParticipants { get; set; }
     public int CurrentParticipants { get; set; }
+    public int MessageCount { get; set; }
     public string? WelcomeMessage { get; set; }
     public string? Rules { get; set; }
+    public int? ClientId { get; set; }
+    public string? ClientName { get; set; }
+    public string? TaxYear { get; set; }
+    public string? TaxType { get; set; }
+    public string? Topic { get; set; }
+    public string UserRole { get; set; } = string.Empty;
+    public DateTime? LastSeenAt { get; set; }
+    public int UnreadCount { get; set; }
     public List<ChatRoomParticipantDto> Participants { get; set; } = new();
     public List<ChatMessageDto> RecentMessages { get; set; } = new();
     public bool IsParticipant { get; set; }
-    public ChatRoomRole? UserRole { get; set; }
 }
 
 public class CreateChatRoomDto
@@ -227,14 +241,22 @@ public class ChatMessageDto
     public string SenderName { get; set; } = string.Empty;
     public string? SenderAvatar { get; set; }
     public string Content { get; set; } = string.Empty;
-    public ChatMessageType Type { get; set; }
+    public string Type { get; set; } = string.Empty;
     public DateTime SentAt { get; set; }
     public DateTime? EditedAt { get; set; }
     public bool IsDeleted { get; set; }
+    public bool IsInternal { get; set; }
+    public bool IsPinned { get; set; }
+    public bool IsImportant { get; set; }
     public int? ReplyToMessageId { get; set; }
     public ChatMessageDto? ReplyToMessage { get; set; }
     public List<AttachmentDto> Attachments { get; set; } = new();
     public List<string> Mentions { get; set; } = new();
+    public int? RelatedTaxFilingId { get; set; }
+    public int? RelatedPaymentId { get; set; }
+    public int? RelatedDocumentId { get; set; }
+    public string? TaxYear { get; set; }
+    public string? TaxType { get; set; }
 }
 
 public class CreateChatMessageDto
@@ -326,4 +348,86 @@ public class ConversationTypeStats
     public string TypeName { get; set; } = string.Empty;
     public int Count { get; set; }
     public decimal Percentage { get; set; }
+}
+
+public class ChatParticipantDto
+{
+    public string UserId { get; set; } = string.Empty;
+    public string UserName { get; set; } = string.Empty;
+    public string? UserAvatar { get; set; }
+    public string Role { get; set; } = string.Empty;
+    public DateTime JoinedAt { get; set; }
+    public DateTime? LastSeenAt { get; set; }
+    public bool IsOnline { get; set; }
+}
+
+public class ChatSearchDto
+{
+    public string? Query { get; set; }
+    public int? RoomId { get; set; }
+    public string? SenderId { get; set; }
+    public DateTime? FromDate { get; set; }
+    public DateTime? ToDate { get; set; }
+    public bool? IsInternal { get; set; }
+    public bool? IsImportant { get; set; }
+    public string? TaxYear { get; set; }
+    public TaxType? TaxType { get; set; }
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public string SortBy { get; set; } = "SentAt";
+    public string SortDirection { get; set; } = "desc";
+}
+
+public class ChatAuditLogDto
+{
+    public int Id { get; set; }
+    public int MessageId { get; set; }
+    public string Action { get; set; } = string.Empty; // Created, Edited, Deleted
+    public string UserId { get; set; } = string.Empty;
+    public string UserName { get; set; } = string.Empty;
+    public DateTime Timestamp { get; set; }
+    public string? OldContent { get; set; }
+    public string? NewContent { get; set; }
+    public string? Reason { get; set; }
+}
+
+public class ChatAnalyticsDto
+{
+    public string Period { get; set; } = string.Empty;
+    public int TotalMessages { get; set; }
+    public int TotalRooms { get; set; }
+    public int ActiveUsers { get; set; }
+    public decimal AverageResponseTime { get; set; } // in minutes
+    public decimal AverageMessagesPerRoom { get; set; }
+    public List<ChatVolumeStats> VolumeStats { get; set; } = new();
+    public List<ChatUserStats> UserStats { get; set; } = new();
+    public List<ChatRoomStats> RoomStats { get; set; } = new();
+}
+
+public class ChatVolumeStats
+{
+    public DateTime Date { get; set; }
+    public int MessageCount { get; set; }
+    public int ActiveUsers { get; set; }
+    public int ActiveRooms { get; set; }
+}
+
+public class ChatUserStats
+{
+    public string UserId { get; set; } = string.Empty;
+    public string UserName { get; set; } = string.Empty;
+    public int MessagesSent { get; set; }
+    public int RoomsParticipated { get; set; }
+    public decimal AverageResponseTime { get; set; }
+    public DateTime LastActive { get; set; }
+}
+
+public class ChatRoomStats
+{
+    public int RoomId { get; set; }
+    public string RoomName { get; set; } = string.Empty;
+    public int MessageCount { get; set; }
+    public int ParticipantCount { get; set; }
+    public decimal AverageResponseTime { get; set; }
+    public DateTime LastActivity { get; set; }
 }

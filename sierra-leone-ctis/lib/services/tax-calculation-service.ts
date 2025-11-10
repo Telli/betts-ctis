@@ -160,6 +160,29 @@ export interface PenaltyBreakdownItem {
   calculation: string;
 }
 
+// Withholding Tax (Sierra Leone)
+export type WithholdingTaxType =
+  | 'Dividends'
+  | 'ManagementFees'
+  | 'ProfessionalFees'
+  | 'LotteryWinnings'
+  | 'Royalties'
+  | 'Interest'
+  | 'Rent'
+  | 'Commissions'
+
+export interface WithholdingTaxCalculationRequest {
+  amount: number;
+  withholdingTaxType: WithholdingTaxType;
+  isResident?: boolean;
+}
+
+export interface WithholdingTaxCalculationResponse {
+  WithholdingTaxAmount?: number; // PascalCase (if naming policy is unchanged)
+  withholdingTaxAmount?: number; // camelCase (default System.Text.Json policy)
+  Currency?: string;
+}
+
 export interface ComprehensiveAssessmentRequest {
   clientId: number;
   taxYear: number;
@@ -269,6 +292,26 @@ export const TaxCalculationService = {
     } catch (error: any) {
       console.error('Error calculating income tax:', error);
       throw new Error(error.response?.data?.message || 'Failed to calculate income tax');
+    }
+  },
+
+  // Withholding Tax (via TaxCalculationController)
+  calculateWithholdingTax: async (
+    request: WithholdingTaxCalculationRequest
+  ): Promise<WithholdingTaxCalculationResponse> => {
+    try {
+      const response = await apiClient.post<WithholdingTaxCalculationResponse>(
+        '/api/TaxCalculation/withholding-tax',
+        {
+          amount: request.amount,
+          withholdingTaxType: request.withholdingTaxType,
+          isResident: request.isResident ?? true,
+        }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Error calculating withholding tax:', error);
+      throw new Error(error.response?.data?.message || 'Failed to calculate withholding tax');
     }
   },
 

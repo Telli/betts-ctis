@@ -51,6 +51,19 @@ namespace BettsTax.Web.Controllers
         [HttpPost]
         public async Task<IActionResult> Create(ClientDto dto)
         {
+            // Log the incoming request for debugging
+            var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ClientsController>>();
+            logger.LogInformation("Creating client with data: {@ClientDto}", dto);
+            
+            if (!ModelState.IsValid)
+            {
+                logger.LogWarning("Model validation failed: {@Errors}", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage));
+                return BadRequest(new { 
+                    message = "Validation failed", 
+                    errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList() 
+                });
+            }
+            
             var created = await _service.CreateAsync(dto);
             return CreatedAtAction(nameof(GetById), new { id = created.ClientId }, created);
         }

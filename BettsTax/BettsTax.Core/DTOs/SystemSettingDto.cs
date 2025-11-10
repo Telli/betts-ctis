@@ -55,4 +55,27 @@ namespace BettsTax.Core.DTOs
         public string Subject { get; set; } = "Test Email from The Betts Firm";
         public string Body { get; set; } = "This is a test email to verify your email configuration.";
     }
+
+    public class TaxSettingsDto
+    {
+        // Annual turnover threshold (SLE) at which GST registration is required
+        [Range(0, double.MaxValue)]
+        public decimal GstRegistrationThreshold { get; set; } = 0m;
+
+        // GST standard rate percent (e.g., 15 = 15%)
+        [Range(0, 100)]
+        public decimal GstRatePercent { get; set; } = 15m;
+
+        // Annual interest rate for late payments (percent)
+        [Range(0, 100)]
+        public decimal AnnualInterestRatePercent { get; set; } = 15m;
+
+        // Minimum tax for companies (percent of turnover)
+        [Range(0, 100)]
+        public decimal IncomeMinimumTaxRatePercent { get; set; } = 0.5m;
+
+        // Minimum Alternate Tax (percent of turnover)
+        [Range(0, 100)]
+        public decimal IncomeMatRatePercent { get; set; } = 3m;
+    }
 }

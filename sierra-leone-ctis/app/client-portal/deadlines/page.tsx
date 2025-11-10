@@ -5,6 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useToast } from '@/components/ui/use-toast'
+import { ClientPortalService } from '@/lib/services/client-portal-service'
 import { 
   Calendar as CalendarIcon, 
   Clock, 
@@ -35,71 +38,52 @@ export default function ClientDeadlinesPage() {
   const [deadlines, setDeadlines] = useState<Deadline[]>([])
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
-    // Mock data - replace with actual API call
-    const mockDeadlines: Deadline[] = [
-      {
-        id: '1',
-        title: 'GST Return Filing',
-        type: 'tax-filing',
-        description: 'Q4 2024 GST Return submission',
-        dueDate: new Date(2025, 0, 31),
-        status: 'due-soon',
-        priority: 'high',
-        category: 'GST',
-        reminderSet: true
-      },
-      {
-        id: '2',
-        title: 'Income Tax Payment',
-        type: 'payment',
-        description: '2024 Annual Income Tax payment',
-        dueDate: new Date(2025, 2, 31),
-        status: 'upcoming',
-        priority: 'high',
-        category: 'Income Tax',
-        amount: 150000,
-        reminderSet: true
-      },
-      {
-        id: '3',
-        title: 'Payroll Tax Filing',
-        type: 'tax-filing',
-        description: 'January 2025 Payroll Tax Return',
-        dueDate: new Date(2025, 1, 15),
-        status: 'upcoming',
-        priority: 'medium',
-        category: 'Payroll Tax',
-        reminderSet: false
-      },
-      {
-        id: '4',
-        title: 'Annual Accounts Submission',
-        type: 'document',
-        description: 'Submit audited annual accounts',
-        dueDate: new Date(2025, 3, 30),
-        status: 'upcoming',
-        priority: 'medium',
-        category: 'Compliance',
-        reminderSet: true
-      },
-      {
-        id: '5',
-        title: 'Excise Duty Payment',
-        type: 'payment',
-        description: 'Monthly excise duty payment',
-        dueDate: new Date(2025, 1, 5),
-        status: 'upcoming',
-        priority: 'medium',
-        category: 'Excise Duty',
-        amount: 25000,
-        reminderSet: true
+    const load = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await ClientPortalService.getDeadlines(60)
+        const mapped: Deadline[] = (data || []).map((d: any) => {
+          const days = typeof d.daysRemaining === 'number' ? d.daysRemaining : 9999
+          let status: Deadline['status'] = 'upcoming'
+          if (days < 0) status = 'overdue'
+          else if (days <= 7) status = 'due-soon'
+
+          const t = (d.type || '').toString().toLowerCase()
+          const type: Deadline['type'] = t.includes('payment')
+            ? 'payment'
+            : t.includes('document')
+              ? 'document'
+              : (t.includes('tax') || t.includes('filing'))
+                ? 'tax-filing'
+                : 'compliance'
+
+          return {
+            id: String(d.id ?? crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)),
+            title: d.title || 'Deadline',
+            type,
+            description: d.description || '',
+            dueDate: d.dueDate ? new Date(d.dueDate) : new Date(),
+            status,
+            priority: d.isUrgent ? 'high' : 'medium',
+            category: d.type || 'General',
+            reminderSet: Boolean(d.isUrgent),
+          } as Deadline
+        })
+        setDeadlines(mapped)
+      } catch (e: any) {
+        setDeadlines([])
+        setError('Failed to load deadlines')
+        toast({ variant: 'destructive', title: 'Error', description: 'Failed to load deadlines' })
+      } finally {
+        setLoading(false)
       }
-    ]
-    
-    setDeadlines(mockDeadlines)
-    setLoading(false)
+    }
+    load()
   }, [])
 
   const getStatusIcon = (status: string) => {
@@ -178,6 +162,11 @@ export default function ClientDeadlinesPage() {
 
   return (
     <div className="space-y-6">
+      {error && (
+        <Alert>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">My Deadlines</h1>

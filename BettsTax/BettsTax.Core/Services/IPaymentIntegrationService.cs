@@ -1,6 +1,9 @@
 using BettsTax.Core.DTOs;
 using BettsTax.Data;
 using BettsTax.Shared;
+using BettsTax.Core.Services.Payments; // For unified gateway types
+using PaymentGatewayRequest = BettsTax.Core.Services.Payments.PaymentGatewayRequest;
+using PaymentGatewayResponse = BettsTax.Core.Services.Payments.PaymentGatewayResponse;
 
 namespace BettsTax.Core.Services
 {
@@ -43,6 +46,10 @@ namespace BettsTax.Core.Services
         Task<Result<bool>> RetryFailedPaymentAsync(int transactionId);
         Task<Result<int>> ProcessPendingPaymentsAsync();
         Task<Result<bool>> RefundPaymentAsync(int transactionId, decimal? partialAmount = null, string reason = "");
+
+        // Reconciliation and retry operations
+        Task<Result<int>> ReconcilePendingPaymentsAsync();
+        Task<Result<int>> ProcessPaymentRetriesAsync();
     }
 
     public interface IPaymentGatewayProvider
@@ -71,8 +78,8 @@ namespace BettsTax.Core.Services
         Task<Result<PaymentGatewayResponse>> InitiateBankTransferAsync(BankTransferRequest request);
     }
 
-    // Payment gateway request/response models
-    public class PaymentGatewayRequest
+    // Legacy BankTransferRequest (not yet implemented by a provider) kept for backwards compatibility.
+    public class BankTransferRequest
     {
         public string TransactionReference { get; set; } = string.Empty;
         public decimal Amount { get; set; }
@@ -84,26 +91,7 @@ namespace BettsTax.Core.Services
         public string? CallbackUrl { get; set; }
         public string? ReturnUrl { get; set; }
         public Dictionary<string, object> AdditionalData { get; set; } = new();
-    }
-
-    public class PaymentGatewayResponse
-    {
-        public bool Success { get; set; }
-        public string? TransactionId { get; set; }
-        public string? ProviderReference { get; set; }
-        public PaymentTransactionStatus Status { get; set; }
-        public string? StatusMessage { get; set; }
-        public decimal? Amount { get; set; }
-        public decimal? Fee { get; set; }
-        public string? PaymentUrl { get; set; }
-        public DateTime? ExpiryDate { get; set; }
-        public string? ErrorCode { get; set; }
-        public string? ErrorMessage { get; set; }
-        public Dictionary<string, object> AdditionalData { get; set; } = new();
-    }
-
-    public class BankTransferRequest : PaymentGatewayRequest
-    {
+        // Bank-specific
         public string BankCode { get; set; } = string.Empty;
         public string AccountNumber { get; set; } = string.Empty;
         public string AccountName { get; set; } = string.Empty;

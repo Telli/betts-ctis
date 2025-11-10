@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using BettsTax.Core.DTOs;
 using BettsTax.Core.Services;
 using BettsTax.Web.Filters;
+using System.Globalization;
 using System.Security.Claims;
 
 namespace BettsTax.Web.Controllers
@@ -161,6 +162,99 @@ namespace BettsTax.Web.Controllers
             {
                 _logger.LogError(ex, "Error retrieving settings for category {Category}", category);
                 return StatusCode(500, new { message = "Failed to retrieve settings" });
+            }
+        }
+
+        /// <summary>
+        /// Get tax settings (GST registration threshold, etc.)
+        /// </summary>
+        [HttpGet("tax")]
+        public async Task<ActionResult<TaxSettingsDto>> GetTaxSettings()
+        {
+            try
+            {
+                var threshold = await _settingService.GetSettingAsync<decimal>("Tax.GST.RegistrationThreshold");
+                var gstRate = await _settingService.GetSettingAsync<decimal>("Tax.GST.RatePercent");
+                var annualInterest = await _settingService.GetSettingAsync<decimal>("Tax.AnnualInterestRatePercent");
+                var minTaxRate = await _settingService.GetSettingAsync<decimal>("Tax.Income.MinimumTaxRatePercent");
+                var matRate = await _settingService.GetSettingAsync<decimal>("Tax.Income.MATRatePercent");
+                var dto = new TaxSettingsDto
+                {
+                    GstRegistrationThreshold = ((decimal?)threshold) ?? 0m,
+                    GstRatePercent = ((decimal?)gstRate) ?? 15m,
+                    AnnualInterestRatePercent = ((decimal?)annualInterest) ?? 15m,
+                    IncomeMinimumTaxRatePercent = ((decimal?)minTaxRate) ?? 0.5m,
+                    IncomeMatRatePercent = ((decimal?)matRate) ?? 3m
+                };
+                return Ok(dto);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving tax settings");
+                return StatusCode(500, new { message = "Failed to retrieve tax settings" });
+            }
+        }
+
+        /// <summary>
+        /// Update tax settings
+        /// </summary>
+        [HttpPost("tax")]
+        public async Task<ActionResult> UpdateTaxSettings([FromBody] TaxSettingsDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized("Unable to identify current user");
+                }
+
+                await _settingService.SetSettingAsync(
+                    key: "Tax.GST.RegistrationThreshold",
+                    value: dto.GstRegistrationThreshold.ToString(CultureInfo.InvariantCulture),
+                    userId: userId,
+                    description: "Annual turnover threshold for GST registration (SLE)",
+                    category: "Tax");
+
+                await _settingService.SetSettingAsync(
+                    key: "Tax.GST.RatePercent",
+                    value: dto.GstRatePercent.ToString(CultureInfo.InvariantCulture),
+                    userId: userId,
+                    description: "GST standard rate (percent)",
+                    category: "Tax");
+
+                await _settingService.SetSettingAsync(
+                    key: "Tax.AnnualInterestRatePercent",
+                    value: dto.AnnualInterestRatePercent.ToString(CultureInfo.InvariantCulture),
+                    userId: userId,
+                    description: "Annual interest rate for late payments (percent)",
+                    category: "Tax");
+
+                await _settingService.SetSettingAsync(
+                    key: "Tax.Income.MinimumTaxRatePercent",
+                    value: dto.IncomeMinimumTaxRatePercent.ToString(CultureInfo.InvariantCulture),
+                    userId: userId,
+                    description: "Income Tax minimum tax rate for companies (percent of turnover)",
+                    category: "Tax");
+
+                await _settingService.SetSettingAsync(
+                    key: "Tax.Income.MATRatePercent",
+                    value: dto.IncomeMatRatePercent.ToString(CultureInfo.InvariantCulture),
+                    userId: userId,
+                    description: "Minimum Alternate Tax rate (percent of turnover)",
+                    category: "Tax");
+
+                return Ok(new { message = "Tax settings updated successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating tax settings");
+                return StatusCode(500, new { message = "Failed to update tax settings" });
             }
         }
 

@@ -9,12 +9,13 @@ using System.Text.Json;
 
 namespace BettsTax.Core.Services;
 
-public class ReportService : IReportService
+public partial class ReportService : BettsTax.Core.Services.Interfaces.IReportService
 {
     private readonly ApplicationDbContext _context;
     private readonly IReportTemplateService _templateService;
     private readonly IReportGenerator _reportGenerator;
     private readonly IScheduler _scheduler;
+    private readonly IReportRateLimitService _rateLimitService;
     private readonly ILogger<ReportService> _logger;
 
     public ReportService(
@@ -22,12 +23,14 @@ public class ReportService : IReportService
         IReportTemplateService templateService,
         IReportGenerator reportGenerator,
         IScheduler scheduler,
+        IReportRateLimitService rateLimitService,
         ILogger<ReportService> logger)
     {
         _context = context;
         _templateService = templateService;
         _reportGenerator = reportGenerator;
         _scheduler = scheduler;
+        _rateLimitService = rateLimitService;
         _logger = logger;
     }
 
@@ -35,9 +38,21 @@ public class ReportService : IReportService
     {
         try
         {
+            // Check rate limiting
+            if (!await _rateLimitService.CanGenerateReportAsync(userId, request.Type.ToString()))
+            {
+                var remainingQuota = await _rateLimitService.GetRemainingQuotaAsync(userId, request.Type.ToString());
+                var timeUntilReset = await _rateLimitService.GetTimeUntilResetAsync(userId, request.Type.ToString());
+
+                throw new InvalidOperationException(
+                    $"Rate limit exceeded for report type {request.Type}. " +
+                    $"Remaining quota: {remainingQuota}. " +
+                    $"Reset in: {timeUntilReset?.TotalMinutes:F0} minutes.");
+            }
+
             var requestId = Guid.NewGuid().ToString();
             var user = await _context.Users.FindAsync(userId);
-            
+
             var reportRequest = new ReportRequest
             {
                 RequestId = requestId,
@@ -73,7 +88,10 @@ public class ReportService : IReportService
 
             await _scheduler.ScheduleJob(job, trigger);
 
-            _logger.LogInformation("Queued report generation for request {RequestId} by user {UserId}", requestId, userId);
+            // Record the report generation for rate limiting
+            await _rateLimitService.RecordReportGenerationAsync(userId, request.Type.ToString());
+
+            _logger.LogInformation("Report generation queued with ID: {RequestId}", requestId);
             return requestId;
         }
         catch (Exception ex)
@@ -153,6 +171,151 @@ public class ReportService : IReportService
         }
     }
 
+    public async Task<List<ReportRequestDto>> GetUserReportsAsync(string userId, ReportHistoryFilter filter, int pageSize = 20, int pageNumber = 1)
+    {
+        try
+        {
+            var query = _context.ReportRequests.AsQueryable();
+
+            query = query.Where(rr => rr.RequestedByUserId == userId);
+
+            if (filter.Status.HasValue)
+            {
+                query = query.Where(rr => rr.Status == filter.Status.Value);
+            }
+
+            if (filter.Type.HasValue)
+            {
+                query = query.Where(rr => rr.Type == filter.Type.Value);
+            }
+
+            if (filter.FromDate.HasValue)
+            {
+                query = query.Where(rr => rr.RequestedAt >= filter.FromDate.Value);
+            }
+
+            if (filter.ToDate.HasValue)
+            {
+                query = query.Where(rr => rr.RequestedAt <= filter.ToDate.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(filter.Search))
+            {
+                var term = filter.Search.Trim().ToLower();
+                query = query.Where(rr =>
+                    (rr.RequestedByUserName != null && rr.RequestedByUserName.ToLower().Contains(term)) ||
+                    (rr.ErrorMessage != null && rr.ErrorMessage.ToLower().Contains(term)) ||
+                    (rr.DownloadUrl != null && rr.DownloadUrl.ToLower().Contains(term)) ||
+                    (rr.FileName != null && rr.FileName.ToLower().Contains(term))
+                );
+            }
+
+            // Sorting
+            var sortBy = (filter.SortBy ?? "requestedAt").ToLower();
+            var sortDir = (filter.SortDir ?? "desc").ToLower();
+            var desc = sortDir == "desc";
+
+            query = (sortBy) switch
+            {
+                "completedat" => desc ? query.OrderByDescending(rr => rr.CompletedAt) : query.OrderBy(rr => rr.CompletedAt),
+                "status" => desc ? query.OrderByDescending(rr => rr.Status) : query.OrderBy(rr => rr.Status),
+                "type" => desc ? query.OrderByDescending(rr => rr.Type) : query.OrderBy(rr => rr.Type),
+                "filesize" => desc ? query.OrderByDescending(rr => rr.FileSizeBytes) : query.OrderBy(rr => rr.FileSizeBytes),
+                _ => desc ? query.OrderByDescending(rr => rr.RequestedAt) : query.OrderBy(rr => rr.RequestedAt)
+            };
+
+            var reports = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(rr => new ReportRequestDto
+                {
+                    Id = rr.Id,
+                    RequestId = rr.RequestId,
+                    Type = rr.Type,
+                    Format = rr.Format,
+                    Parameters = JsonSerializer.Deserialize<Dictionary<string, object>>(rr.Parameters, (JsonSerializerOptions?)null) ?? new(),
+                    RequestedByUserId = rr.RequestedByUserId,
+                    RequestedByUserName = rr.RequestedByUserName,
+                    Status = rr.Status,
+                    RequestedAt = rr.RequestedAt,
+                    CompletedAt = rr.CompletedAt,
+                    DownloadUrl = rr.DownloadUrl,
+                    ErrorMessage = rr.ErrorMessage,
+                    FileSizeBytes = rr.FileSizeBytes
+                })
+                .ToListAsync();
+
+            return reports;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving filtered reports for user {UserId}", userId);
+            throw;
+        }
+    }
+
+    public async Task<int> GetUserReportCountAsync(string userId)
+    {
+        try
+        {
+            return await _context.ReportRequests
+                .Where(rr => rr.RequestedByUserId == userId)
+                .CountAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error counting reports for user {UserId}", userId);
+            throw;
+        }
+    }
+
+    public async Task<int> GetUserReportCountAsync(string userId, ReportHistoryFilter filter)
+    {
+        try
+        {
+            var query = _context.ReportRequests.AsQueryable();
+            query = query.Where(rr => rr.RequestedByUserId == userId);
+
+            if (filter.Status.HasValue)
+            {
+                query = query.Where(rr => rr.Status == filter.Status.Value);
+            }
+
+            if (filter.Type.HasValue)
+            {
+                query = query.Where(rr => rr.Type == filter.Type.Value);
+            }
+
+            if (filter.FromDate.HasValue)
+            {
+                query = query.Where(rr => rr.RequestedAt >= filter.FromDate.Value);
+            }
+
+            if (filter.ToDate.HasValue)
+            {
+                query = query.Where(rr => rr.RequestedAt <= filter.ToDate.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(filter.Search))
+            {
+                var term = filter.Search.Trim().ToLower();
+                query = query.Where(rr =>
+                    (rr.RequestedByUserName != null && rr.RequestedByUserName.ToLower().Contains(term)) ||
+                    (rr.ErrorMessage != null && rr.ErrorMessage.ToLower().Contains(term)) ||
+                    (rr.DownloadUrl != null && rr.DownloadUrl.ToLower().Contains(term)) ||
+                    (rr.FileName != null && rr.FileName.ToLower().Contains(term))
+                );
+            }
+
+            return await query.CountAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error counting filtered reports for user {UserId}", userId);
+            throw;
+        }
+    }
+
     public async Task<byte[]?> GetReportFileAsync(string requestId, string userId)
     {
         try
@@ -222,7 +385,7 @@ public class ReportService : IReportService
         try
         {
             var reportData = await _templateService.GetTaxFilingReportDataAsync(clientId, taxYear);
-            
+
             return format switch
             {
                 ReportFormat.PDF => await _reportGenerator.GeneratePdfReportAsync(reportData, "taxfiling"),
@@ -243,7 +406,7 @@ public class ReportService : IReportService
         try
         {
             var reportData = await _templateService.GetPaymentHistoryReportDataAsync(clientId, fromDate, toDate);
-            
+
             return format switch
             {
                 ReportFormat.PDF => await _reportGenerator.GeneratePdfReportAsync(reportData, "paymenthistory"),
@@ -264,7 +427,7 @@ public class ReportService : IReportService
         try
         {
             var reportData = await _templateService.GetComplianceReportDataAsync(clientId, fromDate, toDate);
-            
+
             return format switch
             {
                 ReportFormat.PDF => await _reportGenerator.GeneratePdfReportAsync(reportData, "compliance"),
@@ -285,7 +448,7 @@ public class ReportService : IReportService
         try
         {
             var reportData = await _templateService.GetClientActivityReportDataAsync(fromDate, toDate);
-            
+
             return format switch
             {
                 ReportFormat.PDF => await _reportGenerator.GeneratePdfReportAsync(reportData, "clientactivity"),
@@ -331,6 +494,39 @@ public class ReportService : IReportService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating financial summary report");
+            throw;
+        }
+    }
+
+    // Mark a queued report as cancelled (used by controller cancel endpoint)
+    public async Task<bool> MarkReportCancelledAsync(string requestId)
+    {
+        try
+        {
+            var reportRequest = await _context.ReportRequests
+                .FirstOrDefaultAsync(rr => rr.RequestId == requestId);
+
+            if (reportRequest == null)
+                return false;
+
+            // Do not overwrite terminal states
+            if (reportRequest.Status == ReportStatus.Completed || reportRequest.Status == ReportStatus.Failed)
+                return false;
+
+            // If already cancelled, treat as success
+            if (reportRequest.Status == ReportStatus.Cancelled)
+                return true;
+
+            reportRequest.Status = ReportStatus.Cancelled;
+            reportRequest.CompletedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Report {RequestId} marked as cancelled", requestId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error marking report {RequestId} as cancelled", requestId);
             throw;
         }
     }
@@ -392,7 +588,7 @@ public class ReportGenerationJob : IJob
             var fileName = GenerateFileName(reportRequest);
             var filePath = Path.Combine("Reports", fileName);
             Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
-            
+
             await File.WriteAllBytesAsync(filePath, reportData);
 
             // Update report request with completion details
@@ -404,7 +600,7 @@ public class ReportGenerationJob : IJob
 
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Completed report generation for request {RequestId}, file size: {FileSize} bytes", 
+            _logger.LogInformation("Completed report generation for request {RequestId}, file size: {FileSize} bytes",
                 requestId, reportData.Length);
         }
         catch (Exception ex)
@@ -414,7 +610,7 @@ public class ReportGenerationJob : IJob
             // Update request with error status
             var reportRequest = await _context.ReportRequests
                 .FirstOrDefaultAsync(rr => rr.RequestId == requestId);
-            
+
             if (reportRequest != null)
             {
                 reportRequest.Status = ReportStatus.Failed;
@@ -434,21 +630,21 @@ public class ReportGenerationJob : IJob
             ReportType.TaxFiling => await _templateService.GetTaxFilingReportDataAsync(
                 GetIntParameter(parameters, "clientId"),
                 GetIntParameter(parameters, "taxYear")),
-            
+
             ReportType.PaymentHistory => await _templateService.GetPaymentHistoryReportDataAsync(
                 GetIntParameter(parameters, "clientId"),
                 GetDateParameter(parameters, "fromDate"),
                 GetDateParameter(parameters, "toDate")),
-            
+
             ReportType.Compliance => await _templateService.GetComplianceReportDataAsync(
                 GetIntParameter(parameters, "clientId"),
                 GetDateParameter(parameters, "fromDate"),
                 GetDateParameter(parameters, "toDate")),
-            
+
             ReportType.ClientActivity => await _templateService.GetClientActivityReportDataAsync(
                 GetDateParameter(parameters, "fromDate"),
                 GetDateParameter(parameters, "toDate")),
-            
+
             _ => throw new ArgumentException($"Unsupported report type: {request.Type}")
         };
 
@@ -501,4 +697,133 @@ public class ReportGenerationJob : IJob
         }
         throw new ArgumentException($"Missing or invalid date parameter: {key}");
     }
+
+    // New report generation methods
+    public async Task<byte[]> GenerateDocumentSubmissionReportAsync(int clientId, DateTime fromDate, DateTime toDate, ReportFormat format)
+    {
+        try
+        {
+            var reportData = await _templateService.GetDocumentSubmissionReportDataAsync(clientId, fromDate, toDate);
+
+            return format switch
+            {
+                ReportFormat.PDF => await _reportGenerator.GeneratePdfReportAsync(reportData, "DocumentSubmissionReport"),
+                ReportFormat.Excel => await _reportGenerator.GenerateExcelReportAsync(reportData, "DocumentSubmissionReport"),
+                ReportFormat.CSV => await _reportGenerator.GenerateCsvReportAsync(reportData, "DocumentSubmissionReport"),
+                _ => throw new ArgumentException($"Unsupported report format: {format}")
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating document submission report for client {ClientId}", clientId);
+            throw;
+        }
+    }
+
+    public async Task<byte[]> GenerateTaxCalendarReportAsync(int? clientId, int taxYear, ReportFormat format)
+    {
+        try
+        {
+            var reportData = await _templateService.GetTaxCalendarReportDataAsync(clientId, taxYear);
+
+            return format switch
+            {
+                ReportFormat.PDF => await _reportGenerator.GeneratePdfReportAsync(reportData, "TaxCalendarReport"),
+                ReportFormat.Excel => await _reportGenerator.GenerateExcelReportAsync(reportData, "TaxCalendarReport"),
+                ReportFormat.CSV => await _reportGenerator.GenerateCsvReportAsync(reportData, "TaxCalendarReport"),
+                _ => throw new ArgumentException($"Unsupported report format: {format}")
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating tax calendar report for client {ClientId}, year {TaxYear}", clientId, taxYear);
+            throw;
+        }
+    }
+
+    public async Task<byte[]> GenerateClientComplianceOverviewReportAsync(DateTime fromDate, DateTime toDate, ReportFormat format)
+    {
+        try
+        {
+            var reportData = await _templateService.GetClientComplianceOverviewReportDataAsync(fromDate, toDate);
+
+            return format switch
+            {
+                ReportFormat.PDF => await _reportGenerator.GeneratePdfReportAsync(reportData, "ClientComplianceOverviewReport"),
+                ReportFormat.Excel => await _reportGenerator.GenerateExcelReportAsync(reportData, "ClientComplianceOverviewReport"),
+                ReportFormat.CSV => await _reportGenerator.GenerateCsvReportAsync(reportData, "ClientComplianceOverviewReport"),
+                _ => throw new ArgumentException($"Unsupported report format: {format}")
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating client compliance overview report");
+            throw;
+        }
+    }
+
+    public async Task<byte[]> GenerateRevenueReportAsync(DateTime fromDate, DateTime toDate, ReportFormat format)
+    {
+        try
+        {
+            var reportData = await _templateService.GetRevenueReportDataAsync(fromDate, toDate);
+
+            return format switch
+            {
+                ReportFormat.PDF => await _reportGenerator.GeneratePdfReportAsync(reportData, "RevenueReport"),
+                ReportFormat.Excel => await _reportGenerator.GenerateExcelReportAsync(reportData, "RevenueReport"),
+                ReportFormat.CSV => await _reportGenerator.GenerateCsvReportAsync(reportData, "RevenueReport"),
+                _ => throw new ArgumentException($"Unsupported report format: {format}")
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating revenue report");
+            throw;
+        }
+    }
+
+    public async Task<byte[]> GenerateCaseManagementReportAsync(DateTime fromDate, DateTime toDate, ReportFormat format)
+    {
+        try
+        {
+            var reportData = await _templateService.GetCaseManagementReportDataAsync(fromDate, toDate);
+
+            return format switch
+            {
+                ReportFormat.PDF => await _reportGenerator.GeneratePdfReportAsync(reportData, "CaseManagementReport"),
+                ReportFormat.Excel => await _reportGenerator.GenerateExcelReportAsync(reportData, "CaseManagementReport"),
+                ReportFormat.CSV => await _reportGenerator.GenerateCsvReportAsync(reportData, "CaseManagementReport"),
+                _ => throw new ArgumentException($"Unsupported report format: {format}")
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating case management report");
+            throw;
+        }
+    }
+
+    public async Task<byte[]> GenerateEnhancedClientActivityReportAsync(DateTime fromDate, DateTime toDate, string? clientFilter, string? activityTypeFilter, ReportFormat format)
+    {
+        try
+        {
+            var reportData = await _templateService.GetEnhancedClientActivityReportDataAsync(fromDate, toDate, clientFilter, activityTypeFilter);
+
+            return format switch
+            {
+                ReportFormat.PDF => await _reportGenerator.GeneratePdfReportAsync(reportData, "EnhancedClientActivityReport"),
+                ReportFormat.Excel => await _reportGenerator.GenerateExcelReportAsync(reportData, "EnhancedClientActivityReport"),
+                ReportFormat.CSV => await _reportGenerator.GenerateCsvReportAsync(reportData, "EnhancedClientActivityReport"),
+                _ => throw new ArgumentException($"Unsupported report format: {format}")
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating enhanced client activity report");
+            throw;
+        }
+    }
+
+
 }

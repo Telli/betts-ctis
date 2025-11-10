@@ -15,6 +15,7 @@ namespace BettsTax.Core.DTOs
         public DocumentCategory Category { get; set; }
         public string Description { get; set; } = string.Empty;
         public DateTime UploadedAt { get; set; }
+        public int CurrentVersionNumber { get; set; }
         
         // For backward compatibility with tests
         public string FileName => OriginalFileName;

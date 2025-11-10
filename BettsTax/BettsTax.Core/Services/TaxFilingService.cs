@@ -13,17 +13,20 @@ namespace BettsTax.Core.Services
         private readonly IMapper _mapper;
         private readonly ILogger<TaxFilingService> _logger;
         private readonly IAuditService _auditService;
+        private readonly ISierraLeoneTaxCalculationService _taxCalculationService;
 
         public TaxFilingService(
             ApplicationDbContext context,
             IMapper mapper,
             ILogger<TaxFilingService> logger,
-            IAuditService auditService)
+            IAuditService auditService,
+            ISierraLeoneTaxCalculationService taxCalculationService)
         {
             _context = context;
             _mapper = mapper;
             _logger = logger;
             _auditService = auditService;
+            _taxCalculationService = taxCalculationService;
         }
 
         public async Task<PagedResult<TaxFilingDto>> GetTaxFilingsAsync(
@@ -129,7 +132,16 @@ namespace BettsTax.Core.Services
                 TaxLiability = createDto.TaxLiability,
                 FilingReference = filingReference,
                 CreatedDate = DateTime.UtcNow,
-                UpdatedDate = DateTime.UtcNow
+                UpdatedDate = DateTime.UtcNow,
+                // Extended mapping
+                FilingPeriod = string.IsNullOrWhiteSpace(createDto.FilingPeriod) ? string.Empty : createDto.FilingPeriod!,
+                TaxableAmount = createDto.TaxableAmount ?? 0,
+                PenaltyAmount = createDto.PenaltyAmount,
+                InterestAmount = createDto.InterestAmount,
+                AdditionalData = string.IsNullOrWhiteSpace(createDto.AdditionalData) ? null : createDto.AdditionalData,
+                // Withholding-specific
+                WithholdingTaxSubtype = string.IsNullOrWhiteSpace(createDto.WithholdingTaxSubtype) ? null : createDto.WithholdingTaxSubtype,
+                IsResident = createDto.IsResident
             };
 
             _context.TaxFilings.Add(taxFiling);
@@ -163,7 +175,12 @@ namespace BettsTax.Core.Services
                 taxFiling.DueDate,
                 taxFiling.TaxLiability,
                 taxFiling.FilingReference,
-                taxFiling.ReviewComments
+                taxFiling.ReviewComments,
+                taxFiling.FilingPeriod,
+                taxFiling.TaxableAmount,
+                taxFiling.PenaltyAmount,
+                taxFiling.InterestAmount,
+                taxFiling.AdditionalData
             };
 
             // Update fields
@@ -179,6 +196,22 @@ namespace BettsTax.Core.Services
                 taxFiling.FilingReference = updateDto.FilingReference;
             if (updateDto.ReviewComments != null)
                 taxFiling.ReviewComments = updateDto.ReviewComments;
+            // Extended mapping
+            if (!string.IsNullOrWhiteSpace(updateDto.FilingPeriod))
+                taxFiling.FilingPeriod = updateDto.FilingPeriod!;
+            if (updateDto.TaxableAmount.HasValue)
+                taxFiling.TaxableAmount = updateDto.TaxableAmount.Value;
+            if (updateDto.PenaltyAmount.HasValue)
+                taxFiling.PenaltyAmount = updateDto.PenaltyAmount.Value;
+            if (updateDto.InterestAmount.HasValue)
+                taxFiling.InterestAmount = updateDto.InterestAmount.Value;
+            if (updateDto.AdditionalData != null)
+                taxFiling.AdditionalData = updateDto.AdditionalData;
+            // Withholding-specific
+            if (!string.IsNullOrWhiteSpace(updateDto.WithholdingTaxSubtype))
+                taxFiling.WithholdingTaxSubtype = updateDto.WithholdingTaxSubtype;
+            if (updateDto.IsResident.HasValue)
+                taxFiling.IsResident = updateDto.IsResident.Value;
 
             taxFiling.UpdatedDate = DateTime.UtcNow;
 
@@ -293,17 +326,16 @@ namespace BettsTax.Core.Services
             if (client == null)
                 throw new InvalidOperationException("Client not found");
 
-            // Use Sierra Leone-compliant tax calculation service
-            var taxCalculationLogger = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => builder.AddConsole())
-                .CreateLogger<SierraLeoneTaxCalculationService>();
-            var taxCalculationService = new SierraLeoneTaxCalculationService(taxCalculationLogger);
-            
             // Calculate tax liability with proper Sierra Leone tax rates
             return taxType switch
             {
-                TaxType.IncomeTax => taxCalculationService.CalculateIncomeTax(taxableAmount, client.TaxpayerCategory, isIndividual),
-                TaxType.GST => taxCalculationService.CalculateGST(taxableAmount),
-                TaxType.PayrollTax => taxCalculationService.CalculatePAYE(taxableAmount),
+                TaxType.IncomeTax => _taxCalculationService.CalculateIncomeTax(taxableAmount, client.TaxpayerCategory, isIndividual),
+                TaxType.PersonalIncomeTax => _taxCalculationService.CalculateIncomeTax(taxableAmount, client.TaxpayerCategory, true),
+                TaxType.CorporateIncomeTax => _taxCalculationService.CalculateIncomeTax(taxableAmount, client.TaxpayerCategory, false),
+                TaxType.GST => _taxCalculationService.CalculateGST(taxableAmount),
+                TaxType.PayrollTax => _taxCalculationService.CalculatePAYE(taxableAmount),
+                TaxType.PAYE => _taxCalculationService.CalculatePAYE(taxableAmount),
+                TaxType.WithholdingTax => _taxCalculationService.CalculateWithholdingTax(taxableAmount, WithholdingTaxType.ProfessionalFees),
                 TaxType.ExciseDuty => CalculateExciseDuty(taxableAmount), // Keep existing simple calculation for now
                 _ => throw new NotSupportedException($"Tax type {taxType} not supported")
             };
@@ -326,12 +358,7 @@ namespace BettsTax.Core.Services
             if (client == null)
                 throw new InvalidOperationException("Client not found");
 
-            // Use Sierra Leone-compliant tax calculation service
-            var taxCalculationLogger = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => builder.AddConsole())
-                .CreateLogger<SierraLeoneTaxCalculationService>();
-            var taxCalculationService = new SierraLeoneTaxCalculationService(taxCalculationLogger);
-            
-            return taxCalculationService.CalculateTotalTaxLiability(
+            return _taxCalculationService.CalculateTotalTaxLiability(
                 taxableAmount,
                 taxType,
                 client.TaxpayerCategory,
@@ -349,6 +376,10 @@ namespace BettsTax.Core.Services
                 TaxType.GST => "GST",
                 TaxType.PayrollTax => "PT",
                 TaxType.ExciseDuty => "ED",
+                TaxType.PAYE => "PAYE",
+                TaxType.WithholdingTax => "WHT",
+                TaxType.PersonalIncomeTax => "PIT",
+                TaxType.CorporateIncomeTax => "CIT",
                 _ => "TX"
             };
 
@@ -427,7 +458,10 @@ namespace BettsTax.Core.Services
                     CreatedByAssociateId = associateId,
                     IsCreatedOnBehalf = true,
                     OnBehalfActionDate = DateTime.UtcNow,
-                    FilingDate = DateTime.UtcNow
+                    FilingDate = DateTime.UtcNow,
+                    // Withholding-specific
+                    WithholdingTaxSubtype = string.IsNullOrWhiteSpace(createDto.WithholdingTaxSubtype) ? null : createDto.WithholdingTaxSubtype,
+                    IsResident = createDto.IsResident
                 };
 
                 _context.TaxFilings.Add(taxFiling);
@@ -479,6 +513,22 @@ namespace BettsTax.Core.Services
                     taxFiling.FilingReference = updateDto.FilingReference;
                 if (!string.IsNullOrEmpty(updateDto.ReviewComments))
                     taxFiling.ReviewComments = updateDto.ReviewComments;
+                // Extended mapping
+                if (!string.IsNullOrWhiteSpace(updateDto.FilingPeriod))
+                    taxFiling.FilingPeriod = updateDto.FilingPeriod!;
+                if (updateDto.TaxableAmount.HasValue)
+                    taxFiling.TaxableAmount = updateDto.TaxableAmount.Value;
+                if (updateDto.PenaltyAmount.HasValue)
+                    taxFiling.PenaltyAmount = updateDto.PenaltyAmount.Value;
+                if (updateDto.InterestAmount.HasValue)
+                    taxFiling.InterestAmount = updateDto.InterestAmount.Value;
+                if (updateDto.AdditionalData != null)
+                    taxFiling.AdditionalData = updateDto.AdditionalData;
+                // Withholding-specific
+                if (!string.IsNullOrWhiteSpace(updateDto.WithholdingTaxSubtype))
+                    taxFiling.WithholdingTaxSubtype = updateDto.WithholdingTaxSubtype;
+                if (updateDto.IsResident.HasValue)
+                    taxFiling.IsResident = updateDto.IsResident.Value;
                     
                 taxFiling.UpdatedDate = DateTime.UtcNow;
                 taxFiling.LastModifiedByAssociateId = associateId;

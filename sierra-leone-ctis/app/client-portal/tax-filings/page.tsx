@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useToast } from '@/components/ui/use-toast'
 import { 
   FileText, 
   Calendar, 
@@ -21,6 +23,7 @@ import {
 import { format } from 'date-fns'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import ClientTaxFilingForm from '@/components/client-portal/forms/tax-filing-form'
+import { ClientPortalService } from '@/lib/services/client-portal-service'
 
 interface TaxFiling {
   id: string
@@ -44,70 +47,54 @@ export default function ClientTaxFilingsPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('current')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
-    // Mock data - replace with actual API call
-    const mockFilings: TaxFiling[] = [
-      {
-        id: '1',
-        taxType: 'Income Tax',
-        taxYear: 2024,
-        status: 'filed',
-        submittedDate: new Date(2024, 2, 15),
-        dueDate: new Date(2024, 2, 31),
-        filedDate: new Date(2024, 2, 20),
-        taxLiability: 150000,
-        amountPaid: 150000,
-        outstandingBalance: 0,
-        documents: ['Annual Accounts', 'Tax Computation', 'Payment Receipt'],
-        notes: 'Filed successfully with full payment',
-        completionPercentage: 100
-      },
-      {
-        id: '2',
-        taxType: 'GST',
-        taxYear: 2024,
-        status: 'under-review',
-        submittedDate: new Date(2025, 0, 25),
-        dueDate: new Date(2025, 0, 31),
-        taxLiability: 75000,
-        amountPaid: 50000,
-        outstandingBalance: 25000,
-        documents: ['GST Return', 'Supporting Documents'],
-        reviewComments: 'Requires additional supporting documentation for input tax claims',
-        completionPercentage: 85
-      },
-      {
-        id: '3',
-        taxType: 'Payroll Tax',
-        taxYear: 2024,
-        status: 'draft',
-        dueDate: new Date(2025, 1, 15),
-        taxLiability: 45000,
-        amountPaid: 0,
-        outstandingBalance: 45000,
-        documents: ['Payroll Register'],
-        notes: 'Draft prepared, pending final review',
-        completionPercentage: 60
-      },
-      {
-        id: '4',
-        taxType: 'Income Tax',
-        taxYear: 2023,
-        status: 'filed',
-        submittedDate: new Date(2023, 2, 20),
-        dueDate: new Date(2023, 2, 31),
-        filedDate: new Date(2023, 2, 25),
-        taxLiability: 125000,
-        amountPaid: 125000,
-        outstandingBalance: 0,
-        documents: ['Annual Accounts', 'Tax Computation', 'Payment Receipt'],
-        completionPercentage: 100
+    const load = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const res = await ClientPortalService.getTaxFilings(1, 100)
+        const mapped: TaxFiling[] = (res.items || []).map((f) => {
+          const mapStatus = (s: string): TaxFiling['status'] => {
+            const n = (s || '').toLowerCase()
+            if (n === 'draft') return 'draft'
+            if (n === 'submitted') return 'submitted'
+            if (n === 'underreview' || n === 'under-review') return 'under-review'
+            if (n === 'approved') return 'approved'
+            if (n === 'filed') return 'filed'
+            if (n === 'overdue') return 'overdue'
+            return 'draft'
+          }
+          const status = mapStatus(String(f.status))
+          const completion = status === 'filed' ? 100 : status === 'approved' ? 95 : status === 'under-review' ? 85 : status === 'submitted' ? 75 : 60
+          return {
+            id: String(f.taxFilingId),
+            taxType: f.taxType,
+            taxYear: f.taxYear,
+            status,
+            submittedDate: undefined,
+            dueDate: f.dueDate ? new Date(f.dueDate) : new Date(),
+            filedDate: f.filingDate ? new Date(f.filingDate) : undefined,
+            taxLiability: f.taxLiability,
+            amountPaid: 0,
+            outstandingBalance: Math.max(0, (f.taxLiability || 0) - 0),
+            documents: [],
+            reviewComments: undefined,
+            completionPercentage: completion,
+          } as TaxFiling
+        })
+        setFilings(mapped)
+      } catch (e: any) {
+        setError('Failed to load tax filings')
+        setFilings([])
+        toast({ variant: 'destructive', title: 'Error', description: 'Failed to load tax filings' })
+      } finally {
+        setLoading(false)
       }
-    ]
-    
-    setFilings(mockFilings)
-    setLoading(false)
+    }
+    load()
   }, [])
 
   const getStatusIcon = (status: string) => {
@@ -171,6 +158,11 @@ export default function ClientTaxFilingsPage() {
 
   return (
     <div className="space-y-6">
+      {error && (
+        <Alert>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">My Tax Filings</h1>
@@ -191,9 +183,29 @@ export default function ClientTaxFilingsPage() {
                 <DialogTitle>Create New Tax Filing</DialogTitle>
               </DialogHeader>
               <ClientTaxFilingForm 
-                onSuccess={() => {
+                onSuccess={async () => {
                   setShowCreateDialog(false)
-                  // Refresh filings list when backend is ready
+                  toast({ title: 'Tax filing created', description: 'Your filing has been created successfully.' })
+                  try {
+                    setLoading(true)
+                    const res = await ClientPortalService.getTaxFilings(1, 100)
+                    const mapped: TaxFiling[] = (res.items || []).map((f) => ({
+                      id: String(f.taxFilingId),
+                      taxType: f.taxType,
+                      taxYear: f.taxYear,
+                      status: 'draft',
+                      dueDate: f.dueDate ? new Date(f.dueDate) : new Date(),
+                      filedDate: f.filingDate ? new Date(f.filingDate) : undefined,
+                      taxLiability: f.taxLiability,
+                      amountPaid: 0,
+                      outstandingBalance: Math.max(0, (f.taxLiability || 0) - 0),
+                      documents: [],
+                      completionPercentage: 60,
+                    }))
+                    setFilings(mapped)
+                  } finally {
+                    setLoading(false)
+                  }
                 }}
               />
             </DialogContent>

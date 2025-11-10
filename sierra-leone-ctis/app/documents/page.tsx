@@ -22,12 +22,16 @@ import {
   File,
   Image,
   FileSpreadsheet,
-  Plus
+  Plus,
+  Grid3x3,
+  List,
+  RefreshCw
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { DocumentService, DocumentDto, DocumentStats } from '@/lib/services/document-service'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import DocumentUploadForm from '@/components/document-upload-form'
+import Link from 'next/link'
+import { PageHeader } from '@/components/page-header'
+import { MetricCard } from '@/components/metric-card'
 
 
 export default function DocumentsPage() {
@@ -39,24 +43,22 @@ export default function DocumentsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterCategory, setFilterCategory] = useState<string>('all')
   const [filterStatus, setFilterStatus] = useState<string>('all')
-  const [showUploadDialog, setShowUploadDialog] = useState(false)
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('table')
 
   const fetchDocumentData = async () => {
     try {
       setLoading(true)
       setError(null)
       
-      const [documentList, documentStats] = await Promise.all([
-        DocumentService.getDocuments({ 
-          status: filterStatus === 'all' ? undefined : filterStatus as any,
-          category: filterCategory === 'all' ? undefined : filterCategory as any,
-          search: searchTerm || undefined
-        }),
-        DocumentService.getDocumentStats()
-      ])
+      const documentList = await DocumentService.getDocuments({ 
+        status: filterStatus === 'all' ? undefined : filterStatus as any,
+        category: filterCategory === 'all' ? undefined : filterCategory as any,
+        search: searchTerm || undefined
+      })
       
       setDocuments(documentList)
-      setStats(documentStats)
+      // Do not call stats endpoint; rely on computed fallback
+      setStats(null)
     } catch (err) {
       console.error('Error fetching document data:', err)
       setError('Failed to load document data. Please try again later.')
@@ -69,10 +71,7 @@ export default function DocumentsPage() {
     fetchDocumentData()
   }, [filterStatus, filterCategory, searchTerm])
 
-  const handleUploadComplete = (uploadedDocuments: any[]) => {
-    setShowUploadDialog(false)
-    fetchDocumentData() // Refresh the document list
-  }
+  // Removed handleUploadComplete - now handled by /new page
 
   const getFileIcon = (contentType: string) => {
     const type = contentType.split('/')[1] || contentType
@@ -191,84 +190,61 @@ export default function DocumentsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Document Management</h1>
-          <p className="text-muted-foreground mt-2">
-            Manage tax documents, financial statements, and supporting files
-          </p>
-        </div>
-        <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
-          <DialogTrigger asChild>
-            <Button className="bg-sierra-blue-600 hover:bg-sierra-blue-700">
-              <Plus className="mr-2 h-4 w-4" />
-              Upload Documents
+    <div className="flex-1 flex flex-col">
+      <PageHeader
+        title="Document Management"
+        breadcrumbs={[{ label: 'Documents' }]}
+        description="Manage tax documents, financial statements, and supporting files"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={fetchDocumentData}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
             </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Upload New Documents</DialogTitle>
-            </DialogHeader>
-            <DocumentUploadForm
-              onUploadComplete={handleUploadComplete}
-              onCancel={() => setShowUploadDialog(false)}
-            />
-          </DialogContent>
-        </Dialog>
-      </div>
+            <Button asChild data-testid="upload-documents-button" className="bg-sierra-blue-600 hover:bg-sierra-blue-700">
+              <Link href="/documents/new">
+                <Plus className="mr-2 h-4 w-4" />
+                Upload Documents
+              </Link>
+            </Button>
+          </div>
+        }
+      />
+      
+      <div className="flex-1 p-6 space-y-6">
 
-      {/* Stats Cards */}
+      {/* Stats Cards with MetricCard */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Documents</CardTitle>
-            <FolderOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{displayStats.total}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Review</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{displayStats.pending}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Verified</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{displayStats.verified}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Rejected</CardTitle>
-            <XCircle className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{displayStats.rejected}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Storage Used</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatFileSize(displayStats.totalSize)}</div>
-          </CardContent>
-        </Card>
+        <MetricCard
+          title="Total Documents"
+          value={displayStats.total}
+          icon={<FolderOpen className="w-4 h-4" />}
+          color="primary"
+        />
+        <MetricCard
+          title="Pending Review"
+          value={displayStats.pending}
+          icon={<Clock className="w-4 h-4" />}
+          color="warning"
+        />
+        <MetricCard
+          title="Verified"
+          value={displayStats.verified}
+          icon={<CheckCircle className="w-4 h-4" />}
+          color="success"
+        />
+        <MetricCard
+          title="Rejected"
+          value={displayStats.rejected}
+          icon={<XCircle className="w-4 h-4" />}
+          color="danger"
+        />
+        <MetricCard
+          title="Storage Used"
+          value={formatFileSize(displayStats.totalSize)}
+          icon={<FileText className="w-4 h-4" />}
+          color="info"
+        />
       </div>
 
       {/* Search and Filter */}
@@ -339,6 +315,22 @@ export default function DocumentsPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>All Documents ({filteredDocuments.length})</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant={viewMode === 'grid' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setViewMode('grid')}
+                  >
+                    <Grid3x3 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === 'table' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setViewMode('table')}
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -347,10 +339,58 @@ export default function DocumentsPage() {
                   <FolderOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No documents found</h3>
                   <p className="text-gray-500 mb-6">Get started by uploading your first document.</p>
-                  <Button onClick={() => setShowUploadDialog(true)} className="bg-sierra-blue-600 hover:bg-sierra-blue-700">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Upload Document
-                  </Button>
+                  <Link href="/documents/new">
+                    <Button className="bg-sierra-blue-600 hover:bg-sierra-blue-700">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Upload Document
+                    </Button>
+                  </Link>
+                </div>
+              ) : viewMode === 'grid' ? (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {filteredDocuments.map((document) => (
+                    <Card key={document.id} className="hover:shadow-lg transition-shadow">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2">
+                            {getFileIcon(document.contentType)}
+                            <CardTitle className="text-sm truncate" title={document.filename}>
+                              {document.filename}
+                            </CardTitle>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Badge className={getStatusColor(document.status)}>
+                            {getStatusIcon(document.status)}
+                            {document.status}
+                          </Badge>
+                          <Badge className={getCategoryColor(document.category)}>
+                            {document.category.replace('-', ' ')}
+                          </Badge>
+                        </div>
+                        {document.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-2">
+                            {document.description}
+                          </p>
+                        )}
+                        <div className="space-y-1 text-xs text-muted-foreground">
+                          <div>{formatFileSize(document.fileSize)}</div>
+                          <div>{format(new Date(document.uploadDate), 'MMM d, yyyy')}</div>
+                          {document.clientName && <div>Client: {document.clientName}</div>}
+                        </div>
+                        <div className="flex gap-2 pt-2">
+                          <Button variant="outline" size="sm" className="flex-1">
+                            <Eye className="h-3 w-3" />
+                          </Button>
+                          <Button variant="outline" size="sm" className="flex-1">
+                            <Download className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -515,6 +555,7 @@ export default function DocumentsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   )
 }
