@@ -96,6 +96,7 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddSingleton<IAuthenticationService, AuthenticationService>();
 builder.Services.AddSingleton<BettsTax.Web.Services.IAuthorizationService, AuthorizationService>();
 builder.Services.AddSingleton<IDeadlineMonitoringService, DeadlineMonitoringService>();
+builder.Services.AddSingleton<IDemoDataService, DemoDataService>();
 
 var app = builder.Build();
 

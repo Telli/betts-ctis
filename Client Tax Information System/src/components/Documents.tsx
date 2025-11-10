@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "./PageHeader";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -13,74 +13,78 @@ import {
 } from "./ui/select";
 import { Search, Upload, FileText, Grid3x3, List, Download, Eye } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { Alert, AlertDescription } from "./ui/alert";
+import { DocumentRecord, fetchDocuments } from "../lib/services/documents";
 
-const mockDocuments = [
-  {
-    id: 1,
-    name: "Financial Statements 2024.pdf",
-    type: "Financial Statement",
-    client: "ABC Corporation",
-    year: 2024,
-    taxType: "Income Tax",
-    version: 2,
-    uploadedBy: "John Doe",
-    uploadDate: "2025-10-01",
-    hash: "a3b2c1d4e5f6...",
-    status: "verified",
-  },
-  {
-    id: 2,
-    name: "Bank Statements Q3.pdf",
-    type: "Bank Statement",
-    client: "XYZ Trading",
-    year: 2025,
-    taxType: "GST",
-    version: 1,
-    uploadedBy: "Jane Smith",
-    uploadDate: "2025-09-28",
-    hash: "f6e5d4c3b2a1...",
-    status: "scanning",
-  },
-  {
-    id: 3,
-    name: "Sales Records Sept.xlsx",
-    type: "Sales Record",
-    client: "Tech Solutions",
-    year: 2025,
-    taxType: "GST",
-    version: 3,
-    uploadedBy: "Mike Brown",
-    uploadDate: "2025-10-02",
-    hash: "b4c5d6e7f8a9...",
-    status: "verified",
-  },
-  {
-    id: 4,
-    name: "Payroll Summary Q3.pdf",
-    type: "Payroll Record",
-    client: "ABC Corporation",
-    year: 2025,
-    taxType: "PAYE",
-    version: 1,
-    uploadedBy: "Sarah Johnson",
-    uploadDate: "2025-09-25",
-    hash: "c5d6e7f8a9b0...",
-    status: "verified",
-  },
-];
+interface DocumentsProps {
+  clientId?: number | null;
+}
 
-export function Documents() {
+export function Documents({ clientId }: DocumentsProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [typeFilter, setTypeFilter] = useState("all");
   const [yearFilter, setYearFilter] = useState("all");
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredDocuments = mockDocuments.filter((doc) => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = typeFilter === "all" || doc.type === typeFilter;
-    const matchesYear = yearFilter === "all" || doc.year.toString() === yearFilter;
-    return matchesSearch && matchesType && matchesYear;
-  });
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDocuments() {
+      setIsLoading(true);
+      try {
+        const data = await fetchDocuments(clientId ?? undefined);
+        if (!cancelled) {
+          setDocuments(data);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load documents.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadDocuments();
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+
+  const uniqueTypes = useMemo(() => {
+    const types = new Set<string>();
+    documents.forEach((doc) => {
+      if (doc.type) {
+        types.add(doc.type);
+      }
+    });
+    return Array.from(types).sort();
+  }, [documents]);
+
+  const uniqueYears = useMemo(() => {
+    const years = new Set<number>();
+    documents.forEach((doc) => {
+      if (typeof doc.year === "number") {
+        years.add(doc.year);
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [documents]);
+
+  const filteredDocuments = useMemo(() => {
+    return documents.filter((doc) => {
+      const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesType = typeFilter === "all" || doc.type === typeFilter;
+      const matchesYear = yearFilter === "all" || doc.year?.toString() === yearFilter;
+      return matchesSearch && matchesType && matchesYear;
+    });
+  }, [documents, searchTerm, typeFilter, yearFilter]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -109,6 +113,12 @@ export function Documents() {
       />
 
       <div className="p-6">
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         {/* Filters */}
         <div className="flex flex-wrap gap-4 mb-6">
           <div className="relative flex-1 min-w-[300px]">
@@ -126,10 +136,11 @@ export function Documents() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="Financial Statement">Financial Statement</SelectItem>
-              <SelectItem value="Bank Statement">Bank Statement</SelectItem>
-              <SelectItem value="Sales Record">Sales Record</SelectItem>
-              <SelectItem value="Payroll Record">Payroll Record</SelectItem>
+                {uniqueTypes.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type}
+                  </SelectItem>
+                ))}
             </SelectContent>
           </Select>
           <Select value={yearFilter} onValueChange={setYearFilter}>
@@ -138,9 +149,11 @@ export function Documents() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Years</SelectItem>
-              <SelectItem value="2025">2025</SelectItem>
-              <SelectItem value="2024">2024</SelectItem>
-              <SelectItem value="2023">2023</SelectItem>
+                {uniqueYears.map((year) => (
+                  <SelectItem key={year} value={String(year)}>
+                    {year}
+                  </SelectItem>
+                ))}
             </SelectContent>
           </Select>
           <div className="flex border border-border rounded-lg">
@@ -163,94 +176,110 @@ export function Documents() {
 
         {/* Grid View */}
         {viewMode === "grid" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredDocuments.map((doc) => (
-              <Card key={doc.id} className="hover:shadow-md transition-shadow cursor-pointer">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <FileText className="w-8 h-8 text-primary" />
-                    {getStatusBadge(doc.status)}
-                  </div>
-                  <h4 className="font-medium mb-2 truncate" title={doc.name}>
-                    {doc.name}
-                  </h4>
-                  <div className="space-y-1 text-sm text-muted-foreground mb-3">
-                    <p>{doc.type}</p>
-                    <p>{doc.client}</p>
-                    <p>Year: {doc.year}</p>
-                    <p className="font-mono text-xs">v{doc.version}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" className="flex-1">
-                      <Eye className="w-3 h-3 mr-1" />
-                      View
-                    </Button>
-                    <Button size="sm" variant="outline" className="flex-1">
-                      <Download className="w-3 h-3 mr-1" />
-                      Download
-                    </Button>
-                  </div>
-                  <div className="mt-3 pt-3 border-t border-border text-xs text-muted-foreground">
-                    <p>Uploaded {doc.uploadDate}</p>
-                    <p>by {doc.uploadedBy}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <>
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading documents...</p>
+            ) : filteredDocuments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No documents match the selected filters.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredDocuments.map((doc) => (
+                  <Card key={doc.id} className="hover:shadow-md transition-shadow cursor-pointer">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <FileText className="w-8 h-8 text-primary" />
+                        {getStatusBadge(doc.status)}
+                      </div>
+                      <h4 className="font-medium mb-2 truncate" title={doc.name}>
+                        {doc.name}
+                      </h4>
+                      <div className="space-y-1 text-sm text-muted-foreground mb-3">
+                        <p>{doc.type || "Not available"}</p>
+                        <p>{doc.client || "Not available"}</p>
+                        <p>Year: {doc.year ?? 0}</p>
+                        <p className="font-mono text-xs">v{doc.version ?? 1}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" className="flex-1">
+                          <Eye className="w-3 h-3 mr-1" />
+                          View
+                        </Button>
+                        <Button size="sm" variant="outline" className="flex-1">
+                          <Download className="w-3 h-3 mr-1" />
+                          Download
+                        </Button>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-border text-xs text-muted-foreground">
+                        <p>Uploaded {doc.uploadDate ? new Date(doc.uploadDate).toLocaleDateString() : "Not available"}</p>
+                        <p>by {doc.uploadedBy || "Not available"}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {/* Table View */}
         {viewMode === "table" && (
-          <div className="border border-border rounded-lg bg-card overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b border-border">
-                <tr>
-                  <th className="text-left p-4 font-medium">Document Name</th>
-                  <th className="text-left p-4 font-medium">Type</th>
-                  <th className="text-left p-4 font-medium">Client</th>
-                  <th className="text-left p-4 font-medium">Year</th>
-                  <th className="text-left p-4 font-medium">Version</th>
-                  <th className="text-left p-4 font-medium">Status</th>
-                  <th className="text-left p-4 font-medium">Uploaded</th>
-                  <th className="text-left p-4 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredDocuments.map((doc) => (
-                  <tr key={doc.id} className="border-b border-border last:border-b-0 hover:bg-accent/50">
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-primary" />
-                        <span className="font-medium">{doc.name}</span>
-                      </div>
-                    </td>
-                    <td className="p-4">{doc.type}</td>
-                    <td className="p-4">{doc.client}</td>
-                    <td className="p-4">{doc.year}</td>
-                    <td className="p-4">
-                      <Badge variant="outline">v{doc.version}</Badge>
-                    </td>
-                    <td className="p-4">{getStatusBadge(doc.status)}</td>
-                    <td className="p-4 text-sm text-muted-foreground">
-                      <p>{doc.uploadDate}</p>
-                      <p className="text-xs">by {doc.uploadedBy}</p>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="ghost">
-                          <Eye className="w-3 h-3" />
-                        </Button>
-                        <Button size="sm" variant="ghost">
-                          <Download className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading documents...</p>
+            ) : filteredDocuments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No documents match the selected filters.</p>
+            ) : (
+              <div className="border border-border rounded-lg bg-card overflow-x-auto">
+                <table className="w-full">
+                  <thead className="border-b border-border">
+                    <tr>
+                      <th className="text-left p-4 font-medium">Document Name</th>
+                      <th className="text-left p-4 font-medium">Type</th>
+                      <th className="text-left p-4 font-medium">Client</th>
+                      <th className="text-left p-4 font-medium">Year</th>
+                      <th className="text-left p-4 font-medium">Version</th>
+                      <th className="text-left p-4 font-medium">Status</th>
+                      <th className="text-left p-4 font-medium">Uploaded</th>
+                      <th className="text-left p-4 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredDocuments.map((doc) => (
+                      <tr key={doc.id} className="border-b border-border last:border-b-0 hover:bg-accent/50">
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-primary" />
+                            <span className="font-medium">{doc.name}</span>
+                          </div>
+                        </td>
+                        <td className="p-4">{doc.type || "Not available"}</td>
+                        <td className="p-4">{doc.client || "Not available"}</td>
+                        <td className="p-4">{doc.year ?? "Not available"}</td>
+                        <td className="p-4">
+                          <Badge variant="outline">v{doc.version ?? 1}</Badge>
+                        </td>
+                        <td className="p-4">{getStatusBadge(doc.status)}</td>
+                        <td className="p-4 text-sm text-muted-foreground">
+                          <p>{doc.uploadDate ? new Date(doc.uploadDate).toLocaleDateString() : "Not available"}</p>
+                          <p className="text-xs">by {doc.uploadedBy || "Not available"}</p>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="ghost">
+                              <Eye className="w-3 h-3" />
+                            </Button>
+                            <Button size="sm" variant="ghost">
+                              <Download className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

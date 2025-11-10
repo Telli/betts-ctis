@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeader } from "./PageHeader";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -24,53 +24,91 @@ import {
 } from "./ui/table";
 import { FileText, Upload, Save, Send, AlertCircle, CheckCircle, FileUp } from "lucide-react";
 import { Alert, AlertDescription } from "./ui/alert";
+import { fetchActiveFiling, FilingWorkspace as FilingWorkspaceData } from "../lib/services/filings";
 
-export function FilingWorkspace() {
+interface FilingWorkspaceProps {
+  clientId?: number | null;
+}
+
+export function FilingWorkspace({ clientId }: FilingWorkspaceProps) {
   const [activeTab, setActiveTab] = useState("form");
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [filing, setFiling] = useState<FilingWorkspaceData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const scheduleData = [
-    { id: 1, description: "Sales Revenue", amount: 250000, taxable: 250000 },
-    { id: 2, description: "Cost of Goods Sold", amount: 150000, taxable: 0 },
-    { id: 3, description: "Operating Expenses", amount: 50000, taxable: 0 },
-  ];
+  useEffect(() => {
+    let cancelled = false;
 
-  const documents = [
-    { id: 1, name: "Financial Statements 2024", version: 2, uploadedBy: "John Doe", date: "2025-10-01" },
-    { id: 2, name: "Bank Statements", version: 1, uploadedBy: "Jane Smith", date: "2025-09-28" },
-    { id: 3, name: "Sales Records", version: 3, uploadedBy: "John Doe", date: "2025-10-02" },
-  ];
+    async function loadFiling() {
+      setIsLoading(true);
+      try {
+        const data = await fetchActiveFiling();
+        if (!cancelled) {
+          if (clientId && data.clientId && data.clientId !== clientId) {
+            setFiling(null);
+            setError("No active filing found for the selected client.");
+          } else {
+            setFiling(data);
+            setError(null);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load filing workspace.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
 
-  const history = [
-    { date: "2025-10-05 14:30", user: "John Doe", action: "Updated form data", changes: "Revenue figures" },
-    { date: "2025-10-04 10:15", user: "Jane Smith", action: "Uploaded document", changes: "Financial Statements v2" },
-    { date: "2025-10-03 16:45", user: "John Doe", action: "Created filing", changes: "GST Return Q3 2025" },
-  ];
+    loadFiling();
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+
+  const scheduleData = filing?.schedule ?? [];
+  const documents = filing?.supportingDocuments ?? [];
+  const history = filing?.history ?? [];
 
   return (
-    <div>
-      <PageHeader
-        title="GST Return - Q3 2025"
-        breadcrumbs={[
-          { label: "Filings", href: "#" },
-          { label: "GST", href: "#" },
-          { label: "Q3 2025" },
-        ]}
-        actions={
-          <div className="flex gap-2">
-            <Button variant="outline">
-              <Save className="w-4 h-4 mr-2" />
-              Save Draft
-            </Button>
-            <Button>
-              <Send className="w-4 h-4 mr-2" />
-              Submit Filing
-            </Button>
-          </div>
-        }
-      />
+      <div>
+        <PageHeader
+          title={filing?.title ?? "Filing Workspace"}
+          breadcrumbs={[
+            { label: "Filings", href: "#" },
+            { label: filing?.taxType ?? "Not available", href: "#" },
+            { label: filing?.selectedTaxPeriod ?? "Current" },
+          ]}
+          actions={
+            <div className="flex gap-2">
+              <Button variant="outline" disabled={isLoading || !filing}>
+                <Save className="w-4 h-4 mr-2" />
+                Save Draft
+              </Button>
+              <Button disabled={isLoading || !filing}>
+                <Send className="w-4 h-4 mr-2" />
+                Submit Filing
+              </Button>
+            </div>
+          }
+        />
 
-      <div className="p-6">
+        <div className="p-6 space-y-6">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading filing workspace...</p>
+          ) : !filing ? (
+            <p className="text-sm text-muted-foreground">No filing data available.</p>
+          ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-6">
             <TabsTrigger value="form">Form</TabsTrigger>
@@ -90,27 +128,31 @@ export function FilingWorkspace() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Tax Period</Label>
-                    <Select defaultValue="q3-2025">
+                      <Select value={filing.selectedTaxPeriod ?? ""} disabled>
                       <SelectTrigger>
-                        <SelectValue />
+                          <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="q3-2025">Q3 2025 (Jul-Sep)</SelectItem>
-                        <SelectItem value="q2-2025">Q2 2025 (Apr-Jun)</SelectItem>
-                        <SelectItem value="q1-2025">Q1 2025 (Jan-Mar)</SelectItem>
+                          {filing.taxPeriodOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Filing Status</Label>
-                    <Select defaultValue="draft">
+                      <Select value={filing.selectedFilingStatus ?? ""} disabled>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="draft">Draft</SelectItem>
-                        <SelectItem value="pending">Pending Review</SelectItem>
-                        <SelectItem value="submitted">Submitted</SelectItem>
+                          {filing.filingStatusOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -126,33 +168,27 @@ export function FilingWorkspace() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Total Sales (SLE)</Label>
-                    <Input type="number" placeholder="0.00" defaultValue="250000" />
+                      <Input type="number" value={filing.totalSales ?? 0} readOnly />
                   </div>
                   <div className="space-y-2">
                     <Label>Taxable Sales (SLE)</Label>
-                    <Input type="number" placeholder="0.00" defaultValue="250000" />
+                      <Input type="number" value={filing.taxableSales ?? 0} readOnly />
                   </div>
                   <div className="space-y-2">
                     <Label>GST Rate (%)</Label>
-                    <Input type="number" placeholder="15" defaultValue="15" disabled />
+                      <Input type="number" value={filing.gstRate ?? 0} readOnly />
                   </div>
                   <div className="space-y-2">
                     <Label>Output Tax (SLE)</Label>
-                    <Input type="number" placeholder="0.00" defaultValue="37500" disabled />
+                      <Input type="number" value={filing.outputTax ?? 0} readOnly />
                   </div>
                   <div className="space-y-2">
                     <Label>Input Tax Credit (SLE)</Label>
-                    <Input type="number" placeholder="0.00" defaultValue="15000" />
+                      <Input type="number" value={filing.inputTaxCredit ?? 0} readOnly />
                   </div>
                   <div className="space-y-2">
                     <Label>Net GST Payable (SLE)</Label>
-                    <Input
-                      type="number"
-                      placeholder="0.00"
-                      defaultValue="22500"
-                      disabled
-                      className="font-semibold"
-                    />
+                      <Input type="number" value={filing.netGstPayable ?? 0} readOnly className="font-semibold" />
                   </div>
                 </div>
               </CardContent>
@@ -165,11 +201,12 @@ export function FilingWorkspace() {
               <CardContent>
                 <div className="space-y-2">
                   <Label>Notes / Comments</Label>
-                  <Textarea
-                    placeholder="Add any additional notes or explanations..."
-                    rows={4}
-                    defaultValue="All sales figures verified against bank statements and invoices."
-                  />
+                    <Textarea
+                      placeholder="Add any additional notes or explanations..."
+                      rows={4}
+                      value={filing.notes ?? ""}
+                      readOnly
+                    />
                 </div>
               </CardContent>
             </Card>
@@ -205,24 +242,32 @@ export function FilingWorkspace() {
                         <TableHead className="w-[100px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
-                    <TableBody>
-                      {scheduleData.map((row) => (
-                        <TableRow key={row.id}>
-                          <TableCell>{row.description}</TableCell>
-                          <TableCell className="text-right font-mono">
-                            {row.amount.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right font-mono">
-                            {row.taxable.toLocaleString()}
-                          </TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm">
-                              Edit
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
+                      <TableBody>
+                        {scheduleData.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-sm text-muted-foreground text-center">
+                              No schedule data available.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          scheduleData.map((row) => (
+                            <TableRow key={row.id}>
+                              <TableCell>{row.description}</TableCell>
+                              <TableCell className="text-right font-mono">
+                                {Math.round(row.amount).toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-right font-mono">
+                                {Math.round(row.taxableAmount).toLocaleString()}
+                              </TableCell>
+                              <TableCell>
+                                <Button variant="ghost" size="sm">
+                                  Edit
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
                   </Table>
                 </div>
               </CardContent>
@@ -239,31 +284,33 @@ export function FilingWorkspace() {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center py-3 border-b">
                     <span className="text-muted-foreground">Total Sales</span>
-                    <span className="font-semibold">SLE 250,000</span>
+                      <span className="font-semibold">SLE {Math.round(filing.totalSales ?? 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center py-3 border-b">
                     <span className="text-muted-foreground">Taxable Sales</span>
-                    <span className="font-semibold">SLE 250,000</span>
+                      <span className="font-semibold">SLE {Math.round(filing.taxableSales ?? 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center py-3 border-b">
                     <span className="text-muted-foreground">GST Rate</span>
-                    <span className="font-semibold">15%</span>
+                      <span className="font-semibold">{filing.gstRate ?? 0}%</span>
                   </div>
                   <div className="flex justify-between items-center py-3 border-b">
                     <span className="text-muted-foreground">Output Tax</span>
-                    <span className="font-semibold">SLE 37,500</span>
+                      <span className="font-semibold">SLE {Math.round(filing.outputTax ?? 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center py-3 border-b">
                     <span className="text-muted-foreground">Input Tax Credit</span>
-                    <span className="font-semibold text-success">- SLE 15,000</span>
+                      <span className="font-semibold text-success">- SLE {Math.round(filing.inputTaxCredit ?? 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center py-3 border-b">
                     <span className="text-muted-foreground">Penalties</span>
-                    <span className="font-semibold">SLE 0</span>
+                      <span className="font-semibold">SLE 0</span>
                   </div>
                   <div className="flex justify-between items-center py-4 bg-primary/5 px-4 rounded-lg">
                     <span className="font-semibold">Total GST Payable</span>
-                    <span className="text-xl font-semibold text-primary">SLE 22,500</span>
+                      <span className="text-xl font-semibold text-primary">
+                        SLE {Math.round(filing.netGstPayable ?? 0).toLocaleString()}
+                      </span>
                   </div>
                 </div>
               </CardContent>
@@ -301,28 +348,38 @@ export function FilingWorkspace() {
                         <TableHead className="w-[100px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
-                    <TableBody>
-                      {documents.map((doc) => (
-                        <TableRow key={doc.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <FileText className="w-4 h-4 text-primary" />
-                              {doc.name}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">v{doc.version}</Badge>
-                          </TableCell>
-                          <TableCell>{doc.uploadedBy}</TableCell>
-                          <TableCell>{doc.date}</TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm">
-                              View
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
+                      <TableBody>
+                        {documents.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-sm text-muted-foreground text-center">
+                              No supporting documents available.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          documents.map((doc) => (
+                            <TableRow key={doc.id}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <FileText className="w-4 h-4 text-primary" />
+                                  {doc.name}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">v{doc.version}</Badge>
+                              </TableCell>
+                              <TableCell>{doc.uploadedBy ?? "Not available"}</TableCell>
+                              <TableCell>
+                                {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : "Not available"}
+                              </TableCell>
+                              <TableCell>
+                                <Button variant="ghost" size="sm">
+                                  View
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
                   </Table>
                 </div>
               </CardContent>
@@ -337,26 +394,33 @@ export function FilingWorkspace() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {history.map((entry, index) => (
-                    <div key={index} className="flex gap-4 pb-4 border-b last:border-b-0">
-                      <div className="w-2 h-2 bg-primary rounded-full mt-2" />
-                      <div className="flex-1">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className="font-medium">{entry.action}</p>
-                            <p className="text-sm text-muted-foreground">{entry.changes}</p>
+                    {history.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No history entries available.</p>
+                    ) : (
+                      history.map((entry, index) => (
+                        <div key={`${entry.timestamp}-${index}`} className="flex gap-4 pb-4 border-b last:border-b-0">
+                          <div className="w-2 h-2 bg-primary rounded-full mt-2" />
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <p className="font-medium">{entry.action}</p>
+                                <p className="text-sm text-muted-foreground">{entry.changes}</p>
+                              </div>
+                              <time className="text-sm text-muted-foreground">
+                                {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : "Not available"}
+                              </time>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1">by {entry.user}</p>
                           </div>
-                          <time className="text-sm text-muted-foreground">{entry.date}</time>
                         </div>
-                        <p className="text-sm text-muted-foreground mt-1">by {entry.user}</p>
-                      </div>
-                    </div>
-                  ))}
+                      ))
+                    )}
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
+          )}
       </div>
     </div>
   );

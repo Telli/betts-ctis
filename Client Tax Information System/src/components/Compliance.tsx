@@ -21,7 +21,11 @@ import {
   fetchUpcomingDeadlines,
 } from "../lib/services/deadlines";
 
-export function Compliance() {
+interface ComplianceProps {
+  clientId?: number | null;
+}
+
+export function Compliance({ clientId }: ComplianceProps) {
   const [upcomingDeadlines, setUpcomingDeadlines] = useState<DeadlineDto[]>([]);
   const [overdueDeadlines, setOverdueDeadlines] = useState<DeadlineDto[]>([]);
   const [deadlineStats, setDeadlineStats] = useState<DeadlineStats | null>(null);
@@ -35,9 +39,9 @@ export function Compliance() {
       setIsLoading(true);
       try {
         const [upcoming, overdue, stats] = await Promise.all([
-          fetchUpcomingDeadlines(),
-          fetchOverdueDeadlines(),
-          fetchDeadlineStats(),
+            fetchUpcomingDeadlines(undefined, clientId ?? undefined),
+            fetchOverdueDeadlines(clientId ?? undefined),
+            fetchDeadlineStats(clientId ?? undefined),
         ]);
 
         if (cancelled) return;
@@ -61,7 +65,7 @@ export function Compliance() {
     return () => {
       cancelled = true;
     };
-  }, []);
+    }, [clientId]);
 
   const complianceStats = useMemo(
     () =>

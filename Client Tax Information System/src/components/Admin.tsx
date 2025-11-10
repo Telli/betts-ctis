@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "./PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
@@ -31,60 +31,79 @@ import {
   DialogFooter,
 } from "./ui/dialog";
 import { Users, Shield, DollarSign, Activity, Plus, Search, Upload } from "lucide-react";
-
-const users = [
-  { id: 1, name: "John Doe", email: "john@bettsfirm.com", role: "Admin", status: "Active" },
-  { id: 2, name: "Jane Smith", email: "jane@bettsfirm.com", role: "Staff", status: "Active" },
-  { id: 3, name: "Mike Brown", email: "mike@bettsfirm.com", role: "Staff", status: "Active" },
-  { id: 4, name: "Sarah Johnson", email: "sarah@abc.com", role: "Client", status: "Active" },
-];
-
-const auditLogs = [
-  {
-    id: 1,
-    timestamp: "2025-10-07 14:30:00",
-    actor: "John Doe",
-    role: "Admin",
-    actingFor: null,
-    action: "Updated GST filing for ABC Corporation",
-    ip: "192.168.1.100",
-  },
-  {
-    id: 2,
-    timestamp: "2025-10-07 12:15:00",
-    actor: "Jane Smith",
-    role: "Staff",
-    actingFor: "XYZ Trading",
-    action: "Uploaded financial statements",
-    ip: "192.168.1.101",
-  },
-  {
-    id: 3,
-    timestamp: "2025-10-07 10:00:00",
-    actor: "Mike Brown",
-    role: "Staff",
-    actingFor: null,
-    action: "Generated compliance report",
-    ip: "192.168.1.102",
-  },
-];
-
-const taxRates = [
-  { type: "Corporate Income Tax (CIT)", rate: 30, applicableTo: "Companies" },
-  { type: "Goods & Services Tax (GST)", rate: 15, applicableTo: "All taxable supplies" },
-  { type: "Minimum Alternative Tax (MAT)", rate: 2, applicableTo: "Gross revenue" },
-  { type: "PAYE", rate: "Progressive", applicableTo: "Employees" },
-];
+import { Alert, AlertDescription } from "./ui/alert";
+import { fetchAdminUsers, fetchAuditLogs, fetchJobStatuses, fetchTaxRates, AdminUser, AuditLogEntry, JobStatus, TaxRate } from "../lib/services/admin";
 
 export function Admin() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
+  const [jobStatuses, setJobStatuses] = useState<JobStatus[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAdminData() {
+      setIsLoading(true);
+      try {
+        const [usersData, logsData, ratesData, jobsData] = await Promise.all([
+          fetchAdminUsers(),
+          fetchAuditLogs(),
+          fetchTaxRates(),
+          fetchJobStatuses(),
+        ]);
+
+        if (!cancelled) {
+          setUsers(usersData);
+          setAuditLogs(logsData);
+          setTaxRates(ratesData);
+          setJobStatuses(jobsData);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load administration data.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadAdminData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredAuditLogs = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return auditLogs.filter((log) => {
+      return (
+        log.actor.toLowerCase().includes(term) ||
+        log.action.toLowerCase().includes(term) ||
+        log.ipAddress.toLowerCase().includes(term) ||
+        (log.actingFor ?? "").toLowerCase().includes(term)
+      );
+    });
+  }, [auditLogs, searchTerm]);
 
   return (
     <div>
       <PageHeader title="Administration" breadcrumbs={[{ label: "Admin" }]} />
 
-      <div className="p-6">
+      <div className="p-6 space-y-6">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         <Tabs defaultValue="users">
           <TabsList className="mb-6">
             <TabsTrigger value="users">
@@ -172,30 +191,46 @@ export function Admin() {
                         <TableHead className="w-[100px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
-                    <TableBody>
-                      {users.map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell className="font-medium">{user.name}</TableCell>
-                          <TableCell>{user.email}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={user.role === "Admin" ? "default" : "outline"}
-                              className={user.role === "Admin" ? "bg-primary" : ""}
-                            >
-                              {user.role}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge className="bg-success">{user.status}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm">
-                              Edit
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
+                      <TableBody>
+                        {isLoading ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-sm text-muted-foreground text-center">
+                              Loading users...
+                            </TableCell>
+                          </TableRow>
+                        ) : users.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-sm text-muted-foreground text-center">
+                              No users found.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          users.map((user) => (
+                            <TableRow key={user.id}>
+                              <TableCell className="font-medium">{user.name}</TableCell>
+                              <TableCell>{user.email}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={user.role === "Admin" ? "default" : "outline"}
+                                  className={user.role === "Admin" ? "bg-primary" : ""}
+                                >
+                                  {user.role}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={user.status === "Active" ? "bg-success" : "bg-warning"}>
+                                  {user.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Button variant="ghost" size="sm">
+                                  Edit
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
                   </Table>
                 </div>
               </CardContent>
@@ -219,22 +254,36 @@ export function Admin() {
                         <TableHead className="w-[100px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
-                    <TableBody>
-                      {taxRates.map((rate, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="font-medium">{rate.type}</TableCell>
-                          <TableCell>
-                            {typeof rate.rate === "number" ? `${rate.rate}%` : rate.rate}
-                          </TableCell>
-                          <TableCell>{rate.applicableTo}</TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm">
-                              Edit
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
+                      <TableBody>
+                        {isLoading ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-sm text-muted-foreground text-center">
+                              Loading tax rates...
+                            </TableCell>
+                          </TableRow>
+                        ) : taxRates.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-sm text-muted-foreground text-center">
+                              No tax rates configured.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          taxRates.map((rate, index) => (
+                            <TableRow key={`${rate.type}-${index}`}>
+                              <TableCell className="font-medium">{rate.type}</TableCell>
+                              <TableCell>
+                                {rate.rate}
+                              </TableCell>
+                              <TableCell>{rate.applicableTo}</TableCell>
+                              <TableCell>
+                                <Button variant="ghost" size="sm">
+                                  Edit
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
                   </Table>
                 </div>
               </CardContent>
@@ -326,24 +375,40 @@ export function Admin() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {auditLogs.map((log) => (
-                        <TableRow key={log.id}>
-                          <TableCell className="font-mono text-sm">{log.timestamp}</TableCell>
-                          <TableCell className="font-medium">{log.actor}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{log.role}</Badge>
+                      {isLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-sm text-muted-foreground text-center">
+                            Loading audit logs...
                           </TableCell>
-                          <TableCell>
-                            {log.actingFor ? (
-                              <Badge className="bg-warning">{log.actingFor}</Badge>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>{log.action}</TableCell>
-                          <TableCell className="font-mono text-sm">{log.ip}</TableCell>
                         </TableRow>
-                      ))}
+                      ) : filteredAuditLogs.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-sm text-muted-foreground text-center">
+                            No audit entries found.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredAuditLogs.map((log) => (
+                          <TableRow key={log.id}>
+                            <TableCell className="font-mono text-sm">
+                              {log.timestamp ? new Date(log.timestamp).toLocaleString() : "Not available"}
+                            </TableCell>
+                            <TableCell className="font-medium">{log.actor}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{log.role}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              {log.actingFor ? (
+                                <Badge className="bg-warning">{log.actingFor}</Badge>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell>{log.action}</TableCell>
+                            <TableCell className="font-mono text-sm">{log.ipAddress}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </div>
@@ -353,37 +418,46 @@ export function Admin() {
 
           {/* Jobs Monitor */}
           <TabsContent value="jobs" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="border-t-4 border-t-primary">
-                <CardContent className="pt-6">
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground mb-2">Reminder Scheduler</p>
-                    <p className="text-2xl font-semibold">Running</p>
-                    <Badge className="mt-2 bg-success">Active</Badge>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="border-t-4 border-t-info">
-                <CardContent className="pt-6">
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground mb-2">KPI Recalculation</p>
-                    <p className="text-2xl font-semibold">Idle</p>
-                    <Badge variant="outline" className="mt-2">
-                      Scheduled
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="border-t-4 border-t-warning">
-                <CardContent className="pt-6">
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground mb-2">File Scanner</p>
-                    <p className="text-2xl font-semibold">Processing</p>
-                    <Badge className="mt-2 bg-warning">12 in queue</Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {isLoading ? (
+                  <Card className="border-t-4 border-t-muted">
+                    <CardContent className="pt-6">
+                      <div className="text-center text-muted-foreground">Loading job statuses...</div>
+                    </CardContent>
+                  </Card>
+                ) : jobStatuses.length === 0 ? (
+                  <Card className="border-t-4 border-t-muted">
+                    <CardContent className="pt-6">
+                      <div className="text-center text-muted-foreground">No job status information available.</div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  jobStatuses.map((job) => (
+                    <Card key={job.name} className="border-t-4 border-t-primary">
+                      <CardContent className="pt-6">
+                        <div className="text-center">
+                          <p className="text-sm text-muted-foreground mb-2">{job.name}</p>
+                          <p className="text-2xl font-semibold">{job.state}</p>
+                          <Badge
+                            className={`mt-2 ${
+                              job.badgeVariant === "warning"
+                                ? "bg-warning"
+                                : job.badgeVariant === "success"
+                                ? "bg-success"
+                                : job.badgeVariant === "outline"
+                                ? ""
+                                : "bg-muted"
+                            }`}
+                            variant={job.badgeVariant === "outline" ? "outline" : "default"}
+                          >
+                            {job.badgeText}
+                          </Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
           </TabsContent>
         </Tabs>
       </div>

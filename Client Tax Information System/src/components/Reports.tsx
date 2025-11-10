@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "./PageHeader";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -13,64 +13,90 @@ import {
 import { Calendar } from "./ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { FileText, Download, Eye, CalendarIcon, FileSpreadsheet } from "lucide-react";
+import { Alert, AlertDescription } from "./ui/alert";
+import { fetchReportFilters, fetchReportTypes, FilterOption, ReportType } from "../lib/services/reports";
 
-const reportTypes = [
-  {
-    id: "tax-filing",
-    name: "Tax Filing Summary",
-    description: "Comprehensive report of all tax filings by period and type",
-    icon: FileText,
-  },
-  {
-    id: "payment-history",
-    name: "Payment History",
-    description: "Detailed history of all tax payments and receipts",
-    icon: FileText,
-  },
-  {
-    id: "compliance",
-    name: "Compliance Report",
-    description: "Client compliance status and deadline adherence",
-    icon: FileText,
-  },
-  {
-    id: "document-submission",
-    name: "Document Submission",
-    description: "Track document submission rates and completeness",
-    icon: FileText,
-  },
-  {
-    id: "tax-calendar",
-    name: "Tax Calendar",
-    description: "Upcoming deadlines and filing requirements",
-    icon: FileText,
-  },
-  {
-    id: "revenue-processed",
-    name: "Revenue Processed",
-    description: "Total revenue processed by tax type and period",
-    icon: FileText,
-  },
-  {
-    id: "activity-logs",
-    name: "Activity Logs",
-    description: "Detailed audit trail of all system activities",
-    icon: FileText,
-  },
-  {
-    id: "case-management",
-    name: "Case Management",
-    description: "Overview of ongoing cases and issues",
-    icon: FileText,
-  },
-];
+interface ReportsProps {
+  clientId?: number | null;
+}
 
-export function Reports() {
+const iconMap: Record<string, typeof FileText> = {
+  FileText,
+};
+
+function resolveIcon(iconKey?: string) {
+  if (!iconKey) return FileText;
+  return iconMap[iconKey] ?? FileText;
+}
+
+export function Reports({ clientId }: ReportsProps) {
   const [selectedReport, setSelectedReport] = useState<string>("");
   const [dateFrom, setDateFrom] = useState<Date>();
   const [dateTo, setDateTo] = useState<Date>();
   const [clientFilter, setClientFilter] = useState("all");
   const [taxTypeFilter, setTaxTypeFilter] = useState("all");
+  const [reportTypes, setReportTypes] = useState<ReportType[]>([]);
+  const [clientOptions, setClientOptions] = useState<FilterOption[]>([{ value: "all", label: "All Clients" }]);
+  const [taxTypeOptions, setTaxTypeOptions] = useState<FilterOption[]>([{ value: "all", label: "All Types" }]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadResources() {
+      setIsLoading(true);
+      try {
+        const [types, filters] = await Promise.all([fetchReportTypes(), fetchReportFilters()]);
+        if (!cancelled) {
+          setReportTypes(types);
+          const clientOpts =
+            filters.clients.length > 0
+              ? filters.clients
+              : [{ value: "all", label: "All Clients" }];
+          const taxOpts =
+            filters.taxTypes.length > 0
+              ? filters.taxTypes
+              : [{ value: "all", label: "All Types" }];
+          setClientOptions(
+            clientOpts.some((option) => option.value === "all")
+              ? clientOpts
+              : [{ value: "all", label: "All Clients" }, ...clientOpts],
+          );
+          setTaxTypeOptions(
+            taxOpts.some((option) => option.value === "all")
+              ? taxOpts
+              : [{ value: "all", label: "All Types" }, ...taxOpts],
+          );
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load report options.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadResources();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (clientId) {
+      const match = clientOptions.find((option) => option.value === String(clientId));
+      if (match) {
+        setClientFilter(match.value);
+      }
+    }
+  }, [clientId, clientOptions]);
+
+  const filteredReportTypes = useMemo(() => reportTypes, [reportTypes]);
 
   return (
     <div>
@@ -79,39 +105,52 @@ export function Reports() {
         breadcrumbs={[{ label: "Reports" }]}
       />
 
-      <div className="p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="p-6">
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading report options...</p>
+          ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Report Selection */}
           <div className="lg:col-span-1">
             <Card>
               <CardHeader>
                 <CardTitle>Select Report</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
-                {reportTypes.map((report) => {
-                  const Icon = report.icon;
-                  return (
-                    <button
-                      key={report.id}
-                      onClick={() => setSelectedReport(report.id)}
-                      className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                        selectedReport === report.id
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:bg-accent"
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <Icon className="w-5 h-5 text-primary mt-0.5" />
-                        <div>
-                          <p className="font-medium">{report.name}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {report.description}
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
+                <CardContent className="space-y-2">
+                  {filteredReportTypes.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No reports available.</p>
+                  ) : (
+                    filteredReportTypes.map((report) => {
+                      const Icon = resolveIcon(report.iconKey);
+                      return (
+                        <button
+                          key={report.id}
+                          onClick={() => setSelectedReport(report.id)}
+                          className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                            selectedReport === report.id
+                              ? "border-primary bg-primary/5"
+                              : "border-border hover:bg-accent"
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <Icon className="w-5 h-5 text-primary mt-0.5" />
+                            <div>
+                              <p className="font-medium">{report.name}</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {report.description}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
               </CardContent>
             </Card>
           </div>
@@ -164,37 +203,38 @@ export function Reports() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Client</Label>
-                    <Select value={clientFilter} onValueChange={setClientFilter}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Clients</SelectItem>
-                        <SelectItem value="abc">ABC Corporation</SelectItem>
-                        <SelectItem value="xyz">XYZ Trading</SelectItem>
-                        <SelectItem value="tech">Tech Solutions</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Client</Label>
+                      <Select value={clientFilter} onValueChange={setClientFilter}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clientOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Tax Type</Label>
+                      <Select value={taxTypeFilter} onValueChange={setTaxTypeFilter}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {taxTypeOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Tax Type</Label>
-                    <Select value={taxTypeFilter} onValueChange={setTaxTypeFilter}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Types</SelectItem>
-                        <SelectItem value="gst">GST</SelectItem>
-                        <SelectItem value="income">Income Tax</SelectItem>
-                        <SelectItem value="paye">PAYE</SelectItem>
-                        <SelectItem value="excise">Excise Duty</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
 
                 <div className="flex gap-3 pt-4">
                   <Button className="flex-1" disabled={!selectedReport}>
@@ -232,6 +272,7 @@ export function Reports() {
               </Card>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>

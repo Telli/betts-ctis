@@ -2,7 +2,7 @@
  * Authentication utilities and API calls
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export interface LoginRequest {
   email: string;
@@ -25,6 +25,13 @@ export interface LoginResponse {
   user?: UserInfo;
   expiresAt?: string;
   refreshTokenExpiresAt?: string;
+}
+
+export interface DemoCredential {
+  email: string;
+  password: string;
+  role: string;
+  description: string;
 }
 
 const USER_KEY = 'user_info';
@@ -238,5 +245,27 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
     console.error('Error getting current user:', error);
     await logout();
     return null;
+  }
+}
+
+export async function fetchDemoCredentials(): Promise<DemoCredential[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/demo-credentials`, {
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = await response.json();
+    if (!payload?.success || !Array.isArray(payload.data)) {
+      return [];
+    }
+
+    return payload.data as DemoCredential[];
+  } catch (error) {
+    console.warn("Unable to load demo credentials", error);
+    return [];
   }
 }

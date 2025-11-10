@@ -26,8 +26,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { Badge } from "./ui/badge";
 import logo from "figma:asset/c09e3416d3f18d5dd7594d245d067b31f50605af.png";
+import { UserInfo } from "../lib/auth";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -35,9 +35,19 @@ interface LayoutProps {
   impersonating?: string | null;
   activeView?: string;
   onNavigate?: (view: string) => void;
+  user?: UserInfo | null;
+  onLogout?: () => void;
 }
 
-export function Layout({ children, userRole = "staff", impersonating = null, activeView = "dashboard", onNavigate }: LayoutProps) {
+export function Layout({
+  children,
+  userRole = "staff",
+  impersonating = null,
+  activeView = "dashboard",
+  onNavigate,
+  user,
+  onLogout,
+}: LayoutProps) {
   const [activeNav, setActiveNav] = useState(activeView);
 
   const staffNavItems = [
@@ -129,35 +139,45 @@ export function Layout({ children, userRole = "staff", impersonating = null, act
           </div>
 
           {/* Right Side */}
-          <div className="flex items-center gap-4">
-            {/* Notifications */}
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="w-5 h-5" />
-              <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 bg-destructive">
-                3
-              </Badge>
-            </Button>
+            <div className="flex items-center gap-4">
+              {/* Notifications */}
+              <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
+                <Bell className="w-5 h-5" />
+              </Button>
 
             {/* User Menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="gap-2">
-                  <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
-                    <User className="w-4 h-4" />
-                  </div>
-                  <span>John Smith</span>
-                  <ChevronDown className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>Profile</DropdownMenuItem>
-                <DropdownMenuItem>Settings</DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>Logout</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="gap-2">
+                    <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <span className="text-sm font-medium leading-tight">
+                      {user?.email ?? "User"}
+                    </span>
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuItem disabled>
+                    <span className="text-xs text-muted-foreground">
+                      Role: {user?.role ?? "N/A"}
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem>Profile</DropdownMenuItem>
+                  <DropdownMenuItem>Settings</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={(event) => {
+                    event.preventDefault();
+                    onLogout?.();
+                  }}
+                  >
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
           </div>
         </header>
 
