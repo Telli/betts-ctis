@@ -10,9 +10,9 @@ public class FilingWorkspaceDto
     public string ClientName { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string TaxType { get; set; } = string.Empty;
-    public IReadOnlyList<SelectionOptionDto> TaxPeriodOptions { get; init; } = Array.Empty<SelectionOptionDto>();
+    public IReadOnlyList<FilterOptionDto> TaxPeriodOptions { get; init; } = Array.Empty<FilterOptionDto>();
     public string SelectedTaxPeriod { get; set; } = string.Empty;
-    public IReadOnlyList<SelectionOptionDto> FilingStatusOptions { get; init; } = Array.Empty<SelectionOptionDto>();
+    public IReadOnlyList<FilterOptionDto> FilingStatusOptions { get; init; } = Array.Empty<FilterOptionDto>();
     public string SelectedFilingStatus { get; set; } = string.Empty;
     public decimal TotalSales { get; set; }
     public decimal TaxableSales { get; set; }
