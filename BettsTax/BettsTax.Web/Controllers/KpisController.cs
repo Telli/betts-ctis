@@ -37,6 +37,10 @@ public class KpisController : ControllerBase
         }
         catch (Exception ex)
         {
+            if (ex is OperationCanceledException || ex is TaskCanceledException)
+            {
+                throw;
+            }
             _logger.LogError(ex, "Failed to retrieve KPI summary");
             return StatusCode(500, new { success = false, message = "Failed to load KPIs" });
         }
