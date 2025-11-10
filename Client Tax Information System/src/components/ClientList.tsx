@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "./PageHeader";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -18,80 +18,68 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Plus, Search, Eye, UserCog, MoreHorizontal } from "lucide-react";
+import { Plus, Search, Eye, UserCog, MoreHorizontal, Loader2, AlertTriangle } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { fetchClients, type Client } from "../lib/services/clients";
+import { Alert, AlertDescription } from "./ui/alert";
 
-const mockClients = [
-  {
-    id: 1,
-    name: "ABC Corporation Ltd",
-    tin: "1234567890",
-    segment: "Corporate",
-    industry: "Manufacturing",
-    status: "Active",
-    complianceScore: 95,
-    assignedTo: "Jane Smith",
-  },
-  {
-    id: 2,
-    name: "XYZ Trading Company",
-    tin: "0987654321",
-    segment: "SME",
-    industry: "Retail",
-    status: "Active",
-    complianceScore: 87,
-    assignedTo: "John Doe",
-  },
-  {
-    id: 3,
-    name: "Tech Solutions Inc",
-    tin: "1122334455",
-    segment: "Corporate",
-    industry: "Technology",
-    status: "Active",
-    complianceScore: 92,
-    assignedTo: "Sarah Johnson",
-  },
-  {
-    id: 4,
-    name: "Global Imports Ltd",
-    tin: "5544332211",
-    segment: "Large Enterprise",
-    industry: "Import/Export",
-    status: "Active",
-    complianceScore: 78,
-    assignedTo: "Mike Brown",
-  },
-  {
-    id: 5,
-    name: "Local Cafe Chain",
-    tin: "9988776655",
-    segment: "SME",
-    industry: "Food & Beverage",
-    status: "At Risk",
-    complianceScore: 65,
-    assignedTo: "Jane Smith",
-  },
-];
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
 
 export function ClientList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [segmentFilter, setSegmentFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [clients, setClients] = useState<Client[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredClients = mockClients.filter((client) => {
-    const matchesSearch =
-      client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.tin.includes(searchTerm);
-    const matchesSegment = segmentFilter === "all" || client.segment === segmentFilter;
-    const matchesStatus = statusFilter === "all" || client.status === statusFilter;
-    return matchesSearch && matchesSegment && matchesStatus;
-  });
+  // Debounce search term to avoid hammering API
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+
+  useEffect(() => {
+    loadClients();
+  }, [debouncedSearchTerm, segmentFilter, statusFilter]);
+
+  const loadClients = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const data = await fetchClients({
+        searchTerm: debouncedSearchTerm,
+        segment: segmentFilter,
+        status: statusFilter,
+      });
+
+      setClients(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load clients");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filteredClients = clients;
 
   const getComplianceBadge = (score: number) => {
     if (score >= 90) return <Badge className="bg-success">Excellent</Badge>;
@@ -114,6 +102,21 @@ export function ClientList() {
       />
 
       <div className="p-6">
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              {error}
+              <button
+                onClick={loadClients}
+                className="ml-2 underline hover:no-underline"
+              >
+                Try again
+              </button>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Filters */}
         <div className="flex flex-wrap gap-4 mb-6">
           <div className="relative flex-1 min-w-[300px]">
@@ -165,7 +168,21 @@ export function ClientList() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredClients.map((client) => (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-primary" />
+                    <p className="text-sm text-muted-foreground">Loading clients...</p>
+                  </TableCell>
+                </TableRow>
+              ) : filteredClients.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    No clients found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredClients.map((client) => (
                 <TableRow key={client.id}>
                   <TableCell className="font-medium">{client.name}</TableCell>
                   <TableCell className="font-mono text-sm">{client.tin}</TableCell>
@@ -203,7 +220,8 @@ export function ClientList() {
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
-              ))}
+              ))
+              )}
             </TableBody>
           </Table>
         </div>

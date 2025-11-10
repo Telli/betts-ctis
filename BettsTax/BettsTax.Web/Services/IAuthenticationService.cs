@@ -31,5 +31,10 @@ namespace BettsTax.Web.Services
         /// Revoke refresh token to terminate session
         /// </summary>
         Task RevokeRefreshTokenAsync(string refreshToken);
+
+        /// <summary>
+        /// Register a new user
+        /// </summary>
+        Task<RegisterResponse> RegisterAsync(RegisterRequest request);
     }
 }

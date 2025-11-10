@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "./PageHeader";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -29,70 +29,65 @@ import {
   DialogFooter,
 } from "./ui/dialog";
 import { Label } from "./ui/label";
-import { Search, Plus, Receipt, DollarSign, CheckCircle, Clock } from "lucide-react";
+import { Search, Plus, Receipt, DollarSign, CheckCircle, Clock, Loader2, AlertTriangle } from "lucide-react";
 import { Textarea } from "./ui/textarea";
+import { fetchPayments, fetchPaymentSummary, type Payment } from "../lib/services/payments";
+import { Alert, AlertDescription } from "./ui/alert";
 
-const mockPayments = [
-  {
-    id: 1,
-    client: "ABC Corporation",
-    taxType: "GST",
-    period: "Q3 2025",
-    amount: 22500,
-    method: "Bank Transfer",
-    status: "Paid",
-    date: "2025-10-01",
-    receiptNo: "RCP-2025-001",
-  },
-  {
-    id: 2,
-    client: "XYZ Trading",
-    taxType: "Income Tax",
-    period: "2024",
-    amount: 150000,
-    method: "Cheque",
-    status: "Pending",
-    date: "2025-09-28",
-    receiptNo: "RCP-2025-002",
-  },
-  {
-    id: 3,
-    client: "Tech Solutions",
-    taxType: "PAYE",
-    period: "Sep 2025",
-    amount: 45000,
-    method: "Cash",
-    status: "Paid",
-    date: "2025-09-25",
-    receiptNo: "RCP-2025-003",
-  },
-  {
-    id: 4,
-    client: "Global Imports",
-    taxType: "Excise Duty",
-    period: "Q3 2025",
-    amount: 78000,
-    method: "Bank Transfer",
-    status: "Overdue",
-    date: "2025-09-15",
-    receiptNo: "RCP-2025-004",
-  },
-];
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
 
 export function Payments() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [taxTypeFilter, setTaxTypeFilter] = useState("all");
   const [isRecordDialogOpen, setIsRecordDialogOpen] = useState(false);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [summary, setSummary] = useState({ totalPaid: 0, totalPending: 0, totalOverdue: 0 });
 
-  const filteredPayments = mockPayments.filter((payment) => {
-    const matchesSearch =
-      payment.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.receiptNo.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || payment.status === statusFilter;
-    const matchesTaxType = taxTypeFilter === "all" || payment.taxType === taxTypeFilter;
-    return matchesSearch && matchesStatus && matchesTaxType;
-  });
+  // Debounce search term to avoid hammering API
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+
+  useEffect(() => {
+    loadPayments();
+  }, [debouncedSearchTerm, statusFilter, taxTypeFilter]);
+
+  const loadPayments = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const [paymentsData, summaryData] = await Promise.all([
+        fetchPayments({ searchTerm: debouncedSearchTerm, status: statusFilter, taxType: taxTypeFilter }),
+        fetchPaymentSummary(),
+      ]);
+
+      setPayments(paymentsData);
+      setSummary(summaryData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load payments");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filteredPayments = payments;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -107,15 +102,7 @@ export function Payments() {
     }
   };
 
-  const totalPaid = filteredPayments
-    .filter((p) => p.status === "Paid")
-    .reduce((sum, p) => sum + p.amount, 0);
-  const totalPending = filteredPayments
-    .filter((p) => p.status === "Pending")
-    .reduce((sum, p) => sum + p.amount, 0);
-  const totalOverdue = filteredPayments
-    .filter((p) => p.status === "Overdue")
-    .reduce((sum, p) => sum + p.amount, 0);
+  const { totalPaid, totalPending, totalOverdue } = summary;
 
   return (
     <div>
@@ -310,26 +297,51 @@ export function Payments() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredPayments.map((payment) => (
-                <TableRow key={payment.id}>
-                  <TableCell className="font-mono text-sm">{payment.receiptNo}</TableCell>
-                  <TableCell className="font-medium">{payment.client}</TableCell>
-                  <TableCell>{payment.taxType}</TableCell>
-                  <TableCell>{payment.period}</TableCell>
-                  <TableCell className="text-right font-mono">
-                    {payment.amount.toLocaleString()}
-                  </TableCell>
-                  <TableCell>{payment.method}</TableCell>
-                  <TableCell>{payment.date}</TableCell>
-                  <TableCell>{getStatusBadge(payment.status)}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm">
-                      <Receipt className="w-4 h-4 mr-1" />
-                      View
-                    </Button>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="h-32 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">Loading payments...</p>
+                    </div>
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : filteredPayments.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="h-32 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Receipt className="h-8 w-8 text-muted-foreground" />
+                      <p className="text-sm font-medium">No payments found</p>
+                      <p className="text-sm text-muted-foreground">
+                        {searchTerm || statusFilter !== "all" || taxTypeFilter !== "all"
+                          ? "Try adjusting your filters"
+                          : "Record your first payment to get started"}
+                      </p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredPayments.map((payment) => (
+                  <TableRow key={payment.id}>
+                    <TableCell className="font-mono text-sm">{payment.receiptNo}</TableCell>
+                    <TableCell className="font-medium">{payment.client}</TableCell>
+                    <TableCell>{payment.taxType}</TableCell>
+                    <TableCell>{payment.period}</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {payment.amount.toLocaleString()}
+                    </TableCell>
+                    <TableCell>{payment.method}</TableCell>
+                    <TableCell>{payment.date}</TableCell>
+                    <TableCell>{getStatusBadge(payment.status)}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="sm">
+                        <Receipt className="w-4 h-4 mr-1" />
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </div>
