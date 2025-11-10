@@ -13,14 +13,14 @@ public class ApplicationDbContext : DbContext
     }
 
     // DbSets
-    public DbSet<User> Users { get; set; }
-    public DbSet<Client> Clients { get; set; }
-    public DbSet<Payment> Payments { get; set; }
-    public DbSet<Document> Documents { get; set; }
-    public DbSet<Filing> Filings { get; set; }
-    public DbSet<FilingSchedule> FilingSchedules { get; set; }
-    public DbSet<FilingDocument> FilingDocuments { get; set; }
-    public DbSet<FilingHistory> FilingHistories { get; set; }
+    public DbSet<User> Users { get; set; } = null!;
+    public DbSet<Client> Clients { get; set; } = null!;
+    public DbSet<Payment> Payments { get; set; } = null!;
+    public DbSet<Document> Documents { get; set; } = null!;
+    public DbSet<Filing> Filings { get; set; } = null!;
+    public DbSet<FilingSchedule> FilingSchedules { get; set; } = null!;
+    public DbSet<FilingDocument> FilingDocuments { get; set; } = null!;
+    public DbSet<FilingHistory> FilingHistories { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

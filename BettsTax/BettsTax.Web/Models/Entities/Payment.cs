@@ -14,8 +14,8 @@ public class Payment
     public string Status { get; set; } = string.Empty; // Completed, Pending, Processing
     public DateTime Date { get; set; }
     public string ReceiptNo { get; set; } = string.Empty;
-    public bool IsDemo { get; set; } = false;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public bool IsDemo { get; set; }
+    public DateTime CreatedAt { get; set; }
 
     // Navigation property
     public Client Client { get; set; } = null!;

@@ -17,8 +17,8 @@ public class Filing
     public decimal? InputTaxCredit { get; set; }
     public decimal? NetGstPayable { get; set; }
     public string? Notes { get; set; }
-    public bool IsDemo { get; set; } = false;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public bool IsDemo { get; set; }
+    public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public DateTime? SubmittedAt { get; set; }
 

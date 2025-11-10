@@ -26,7 +26,7 @@ public class FilingDocument
     public string Name { get; set; } = string.Empty;
     public int Version { get; set; }
     public string UploadedBy { get; set; } = string.Empty;
-    public DateTime Date { get; set; } = DateTime.UtcNow;
+    public DateTime Date { get; set; }
     public string? FilePath { get; set; }
 
     // Navigation property
@@ -40,7 +40,7 @@ public class FilingHistory
 {
     public int Id { get; set; }
     public int FilingId { get; set; }
-    public DateTime Date { get; set; } = DateTime.UtcNow;
+    public DateTime Date { get; set; }
     public string User { get; set; } = string.Empty;
     public string Action { get; set; } = string.Empty; // Created, Updated, Reviewed, Submitted
     public string Changes { get; set; } = string.Empty;

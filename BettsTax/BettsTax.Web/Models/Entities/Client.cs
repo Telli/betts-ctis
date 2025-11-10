@@ -13,8 +13,8 @@ public class Client
     public string Status { get; set; } = string.Empty; // Active, Under Review, Suspended
     public decimal ComplianceScore { get; set; }
     public string AssignedTo { get; set; } = string.Empty;
-    public bool IsDemo { get; set; } = false;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public bool IsDemo { get; set; }
+    public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 
     // Navigation properties
