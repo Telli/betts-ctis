@@ -44,6 +44,9 @@ public class AdminController : ControllerBase
 
     [HttpGet("audit-logs")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    /// <summary>
+    /// Retrieve audit log entries.
+    /// </summary>
     public async Task<IActionResult> GetAuditLogs()
     {
         try
