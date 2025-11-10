@@ -31,20 +31,12 @@ public class FilingsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetActiveFiling()
     {
-        try
+        var filing = await _demoDataService.GetActiveFilingAsync();
+        if (filing is null)
         {
-            var filing = await _demoDataService.GetActiveFilingAsync();
-            if (filing is null)
-            {
-                return NotFound(new { success = false, message = "No active filing found" });
-            }
+            return NotFound(new { success = false, message = "No active filing found" });
+        }
 
-            return Ok(new { success = true, data = filing });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to retrieve active filing workspace");
-            return StatusCode(500, new { success = false, message = "Failed to load filing workspace" });
-        }
+        return Ok(new { success = true, data = filing });
     }
 }
