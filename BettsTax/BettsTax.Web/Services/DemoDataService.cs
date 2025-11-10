@@ -1,4 +1,3 @@
-using System.Linq;
 using BettsTax.Core.DTOs.Demo;
 using BettsTax.Core.Services.Interfaces;
 
