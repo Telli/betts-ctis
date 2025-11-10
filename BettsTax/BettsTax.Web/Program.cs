@@ -97,6 +97,14 @@ builder.Services.AddSingleton<IAuthenticationService, AuthenticationService>();
 builder.Services.AddSingleton<BettsTax.Web.Services.IAuthorizationService, AuthorizationService>();
 builder.Services.AddSingleton<IDeadlineMonitoringService, DeadlineMonitoringService>();
 
+// Register new services
+builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IClientService, ClientService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IFilingService, FilingService>();
+builder.Services.AddScoped<IKpiService, KpiService>();
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
