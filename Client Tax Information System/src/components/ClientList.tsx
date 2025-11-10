@@ -28,6 +28,23 @@ import {
 import { fetchClients, type Client } from "../lib/services/clients";
 import { Alert, AlertDescription } from "./ui/alert";
 
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 export function ClientList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [segmentFilter, setSegmentFilter] = useState("all");
@@ -36,9 +53,12 @@ export function ClientList() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Debounce search term to avoid hammering API
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+
   useEffect(() => {
     loadClients();
-  }, [searchTerm, segmentFilter, statusFilter]);
+  }, [debouncedSearchTerm, segmentFilter, statusFilter]);
 
   const loadClients = async () => {
     try {
@@ -46,7 +66,7 @@ export function ClientList() {
       setError(null);
 
       const data = await fetchClients({
-        searchTerm,
+        searchTerm: debouncedSearchTerm,
         segment: segmentFilter,
         status: statusFilter,
       });

@@ -70,13 +70,10 @@ export async function uploadDocument(
   formData.append("taxType", metadata.taxType);
   formData.append("year", String(metadata.year));
 
-  const token = (await import("../auth")).getToken();
-  const response = await fetch(`${API_BASE_URL}/documents/upload`, {
+  // Use authenticatedFetch to handle token refresh automatically
+  // Don't set Content-Type header - let browser set it with boundary for multipart/form-data
+  const response = await authenticatedFetch(`${API_BASE_URL}/documents/upload`, {
     method: "POST",
-    credentials: "include",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
     body: formData,
   });
 

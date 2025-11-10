@@ -34,6 +34,23 @@ import { Textarea } from "./ui/textarea";
 import { fetchPayments, fetchPaymentSummary, type Payment } from "../lib/services/payments";
 import { Alert, AlertDescription } from "./ui/alert";
 
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 export function Payments() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -44,9 +61,12 @@ export function Payments() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState({ totalPaid: 0, totalPending: 0, totalOverdue: 0 });
 
+  // Debounce search term to avoid hammering API
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+
   useEffect(() => {
     loadPayments();
-  }, [searchTerm, statusFilter, taxTypeFilter]);
+  }, [debouncedSearchTerm, statusFilter, taxTypeFilter]);
 
   const loadPayments = async () => {
     try {
@@ -54,7 +74,7 @@ export function Payments() {
       setError(null);
 
       const [paymentsData, summaryData] = await Promise.all([
-        fetchPayments({ searchTerm, status: statusFilter, taxType: taxTypeFilter }),
+        fetchPayments({ searchTerm: debouncedSearchTerm, status: statusFilter, taxType: taxTypeFilter }),
         fetchPaymentSummary(),
       ]);
 
@@ -277,26 +297,51 @@ export function Payments() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredPayments.map((payment) => (
-                <TableRow key={payment.id}>
-                  <TableCell className="font-mono text-sm">{payment.receiptNo}</TableCell>
-                  <TableCell className="font-medium">{payment.client}</TableCell>
-                  <TableCell>{payment.taxType}</TableCell>
-                  <TableCell>{payment.period}</TableCell>
-                  <TableCell className="text-right font-mono">
-                    {payment.amount.toLocaleString()}
-                  </TableCell>
-                  <TableCell>{payment.method}</TableCell>
-                  <TableCell>{payment.date}</TableCell>
-                  <TableCell>{getStatusBadge(payment.status)}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm">
-                      <Receipt className="w-4 h-4 mr-1" />
-                      View
-                    </Button>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="h-32 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">Loading payments...</p>
+                    </div>
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : filteredPayments.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="h-32 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Receipt className="h-8 w-8 text-muted-foreground" />
+                      <p className="text-sm font-medium">No payments found</p>
+                      <p className="text-sm text-muted-foreground">
+                        {searchTerm || statusFilter !== "all" || taxTypeFilter !== "all"
+                          ? "Try adjusting your filters"
+                          : "Record your first payment to get started"}
+                      </p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredPayments.map((payment) => (
+                  <TableRow key={payment.id}>
+                    <TableCell className="font-mono text-sm">{payment.receiptNo}</TableCell>
+                    <TableCell className="font-medium">{payment.client}</TableCell>
+                    <TableCell>{payment.taxType}</TableCell>
+                    <TableCell>{payment.period}</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {payment.amount.toLocaleString()}
+                    </TableCell>
+                    <TableCell>{payment.method}</TableCell>
+                    <TableCell>{payment.date}</TableCell>
+                    <TableCell>{getStatusBadge(payment.status)}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="sm">
+                        <Receipt className="w-4 h-4 mr-1" />
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </div>

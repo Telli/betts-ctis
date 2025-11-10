@@ -44,6 +44,7 @@ import {
   type RecentActivity,
 } from "../lib/services/dashboard";
 import { Alert, AlertDescription } from "./ui/alert";
+import { getUser } from "../lib/auth";
 
 interface DashboardProps {
   userRole?: "client" | "staff";
@@ -70,7 +71,9 @@ export function Dashboard({ userRole = "staff" }: DashboardProps) {
       setIsLoading(true);
       setError(null);
 
-      const clientId = viewType === "client" ? 1 : undefined;
+      // Get the actual client ID from the authenticated user
+      const user = getUser();
+      const clientId = viewType === "client" ? user?.clientId : undefined;
 
       const [metricsData, trendsData, complianceData, deadlinesData, activityData] =
         await Promise.all([

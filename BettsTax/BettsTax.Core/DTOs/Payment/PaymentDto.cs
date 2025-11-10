@@ -21,10 +21,9 @@ public class PaymentDto
 /// </summary>
 public class PaymentSummaryDto
 {
-    public decimal TotalAmount { get; set; }
-    public int TotalCount { get; set; }
-    public int CompletedCount { get; set; }
-    public int PendingCount { get; set; }
+    public decimal TotalPaid { get; set; }
+    public decimal TotalPending { get; set; }
+    public decimal TotalOverdue { get; set; }
 }
 
 /// <summary>

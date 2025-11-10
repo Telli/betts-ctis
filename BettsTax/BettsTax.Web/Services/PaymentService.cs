@@ -62,17 +62,24 @@ public class PaymentService : IPaymentService
             query = query.Where(p => p.ClientId == clientId.Value);
         }
 
-        var totalAmount = await query.SumAsync(p => (decimal?)p.Amount) ?? 0;
-        var totalCount = await query.CountAsync();
-        var completedCount = await query.CountAsync(p => p.Status == "Completed");
-        var pendingCount = await query.CountAsync(p => p.Status == "Pending" || p.Status == "Processing");
+        var totalPaid = await query
+            .Where(p => p.Status == "Completed")
+            .SumAsync(p => (decimal?)p.Amount) ?? 0;
+
+        var totalPending = await query
+            .Where(p => p.Status == "Pending" || p.Status == "Processing")
+            .SumAsync(p => (decimal?)p.Amount) ?? 0;
+
+        // Calculate overdue payments (payments marked as "Overdue" status or past due)
+        var totalOverdue = await query
+            .Where(p => p.Status == "Overdue")
+            .SumAsync(p => (decimal?)p.Amount) ?? 0;
 
         return new PaymentSummaryDto
         {
-            TotalAmount = totalAmount,
-            TotalCount = totalCount,
-            CompletedCount = completedCount,
-            PendingCount = pendingCount
+            TotalPaid = totalPaid,
+            TotalPending = totalPending,
+            TotalOverdue = totalOverdue
         };
     }
 

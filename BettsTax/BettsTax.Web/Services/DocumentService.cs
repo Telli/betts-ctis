@@ -104,7 +104,7 @@ public class DocumentService : IDocumentService
             TaxType = dto.TaxType,
             Version = 1,
             UploadedBy = uploadedBy,
-            UploadDate = DateTime.Now.ToString("yyyy-MM-dd"),
+            UploadDate = DateTime.UtcNow.ToString("yyyy-MM-dd"),
             Hash = hash,
             Status = "Pending Review"
         };
