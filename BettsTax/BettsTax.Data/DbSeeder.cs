@@ -604,7 +604,7 @@ namespace BettsTax.Data
                 for (int i = 0; i < docCount; i++)
                 {
                     var docType = documentTypes[i % documentTypes.Length];
-                    var uploadDate = DateTime.UtcNow.AddDays(-(docCount - i) * 5);
+                    var uploadDate = DateTime.UtcNow.AddDays(-((double)(docCount - i) * 5));
 
                     documents.Add(new Document
                     {
