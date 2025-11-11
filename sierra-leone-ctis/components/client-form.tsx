@@ -92,7 +92,6 @@ export function ClientForm({ clientId, isEditMode = false }: ClientFormProps) {
         annualTurnover: typeof formData.annualTurnover === 'string' ? parseFloat(formData.annualTurnover) || 0 : formData.annualTurnover,
       };
 
-      console.log('Sending payload:', payload);
 
       if (isEditMode && clientId) {
         await ClientService.update(clientId, payload);

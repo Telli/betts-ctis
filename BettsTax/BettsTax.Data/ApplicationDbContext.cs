@@ -70,7 +70,8 @@ namespace BettsTax.Data
         
         // Reporting System
         public DbSet<Models.ReportRequest> ReportRequests { get; set; }
-        
+        public DbSet<Models.ReportTemplate> ReportTemplates { get; set; }
+
         // Compliance Monitoring System (Finance Act 2025)
         public DbSet<Models.ComplianceDeadline> ComplianceDeadlines { get; set; }
         public DbSet<Models.ComplianceAlert> ComplianceAlertsModels { get; set; }

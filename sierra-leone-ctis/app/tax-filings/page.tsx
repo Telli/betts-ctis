@@ -33,7 +33,6 @@ export default function TaxFilingsPage() {
 
   // Fetch tax filings
   const fetchTaxFilings = async () => {
-    console.log('[Tax Filings] Starting to fetch data...')
     try {
       setLoading(true)
       const response = await TaxFilingService.getTaxFilings(
@@ -45,7 +44,6 @@ export default function TaxFilingsPage() {
       )
       
       if (response.success) {
-        console.log('[Tax Filings] Successfully loaded data:', response.data.length, 'filings')
         setTaxFilings(response.data)
         setFilteredFilings(response.data)
         setTotalPages(response.pagination.totalPages)
@@ -69,7 +67,6 @@ export default function TaxFilingsPage() {
       })
     } finally {
       // Always clear loading state so UI renders
-      console.log('[Tax Filings] Setting loading to false')
       setLoading(false)
     }
   }

@@ -11,6 +11,26 @@ namespace BettsTax.Core.DTOs
         public IEnumerable<RecentActivityDto> RecentActivity { get; set; } = new List<RecentActivityDto>();
         public IEnumerable<UpcomingDeadlineDto> UpcomingDeadlines { get; set; } = new List<UpcomingDeadlineDto>();
         public IEnumerable<PendingApprovalDto> PendingApprovals { get; set; } = new List<PendingApprovalDto>();
+        public DashboardMetricsDto Metrics { get; set; } = new();
+    }
+
+    public class DashboardMetricsDto
+    {
+        public decimal ComplianceRate { get; set; }
+        public string ComplianceRateTrend { get; set; } = string.Empty; // e.g., "+3%", "-2%"
+        public bool ComplianceRateTrendUp { get; set; }
+
+        public int FilingTimelinessAvgDays { get; set; }
+        public string FilingTimelinessTrend { get; set; } = string.Empty;
+        public bool FilingTimelinessTrendUp { get; set; }
+
+        public decimal PaymentOnTimeRate { get; set; }
+        public string PaymentOnTimeRateTrend { get; set; } = string.Empty;
+        public bool PaymentOnTimeRateTrendUp { get; set; }
+
+        public decimal DocumentSubmissionRate { get; set; }
+        public string DocumentSubmissionRateTrend { get; set; } = string.Empty;
+        public bool DocumentSubmissionRateTrendUp { get; set; }
     }
 
     public class ClientSummaryDto

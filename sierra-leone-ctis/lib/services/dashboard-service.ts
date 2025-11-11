@@ -61,12 +61,44 @@ export interface NavigationCounts {
   unreadNotifications: number;
 }
 
+export interface DashboardMetrics {
+  complianceRate: number;
+  complianceRateTrend: string;
+  complianceRateTrendUp: boolean;
+  filingTimelinessAvgDays: number;
+  filingTimelinessTrend: string;
+  filingTimelinessTrendUp: boolean;
+  paymentOnTimeRate: number;
+  paymentOnTimeRateTrend: string;
+  paymentOnTimeRateTrendUp: boolean;
+  documentSubmissionRate: number;
+  documentSubmissionRateTrend: string;
+  documentSubmissionRateTrendUp: boolean;
+}
+
 export interface DashboardData {
   clientSummary: ClientSummary;
   complianceOverview: ComplianceOverview;
   recentActivity: RecentActivity[];
   upcomingDeadlines: UpcomingDeadline[];
   pendingApprovals: PendingApproval[];
+  metrics: DashboardMetrics;
+}
+
+export interface QuickAction {
+  title: string;
+  description: string;
+  icon: string;
+  color: string;
+  action: string;
+  enabled: boolean;
+  order: number;
+}
+
+export interface QuickActionsResponse {
+  actions: QuickAction[];
+  userRole: string;
+  counts: Record<string, number>;
 }
 
 export const DashboardService = {
@@ -123,6 +155,14 @@ export const DashboardService = {
    */
   getNavigationCounts: async (): Promise<NavigationCounts> => {
     const response = await apiClient.get<{ success: boolean; data: NavigationCounts }>('/api/dashboard/navigation-counts');
+    return response.data.data;
+  },
+
+  /**
+   * Get user-specific quick actions based on role and permissions
+   */
+  getQuickActions: async (): Promise<QuickActionsResponse> => {
+    const response = await apiClient.get<{ success: boolean; data: QuickActionsResponse }>('/api/dashboard/quick-actions');
     return response.data.data;
   }
 };

@@ -15,7 +15,9 @@ namespace BettsTax.Core.Services
         Task<IEnumerable<UpcomingDeadlineDto>> GetUpcomingDeadlinesAsync(int days = 30);
         Task<IEnumerable<PendingApprovalDto>> GetPendingApprovalsAsync(string userId);
         Task<NavigationCountsDto> GetNavigationCountsAsync(string userId);
-        
+        Task<DashboardMetricsDto> GetDashboardMetricsAsync();
+        Task<QuickActionsResponseDto> GetQuickActionsAsync(string userId);
+
         // Client-specific dashboard methods
         Task<ClientDashboardDto> GetClientDashboardDataAsync(int clientId);
         Task<ClientComplianceOverviewDto> GetClientComplianceOverviewAsync(int clientId);
