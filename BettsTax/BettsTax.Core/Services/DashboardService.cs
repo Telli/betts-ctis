@@ -282,30 +282,28 @@ namespace BettsTax.Core.Services
             var lastMonth = currentMonth.AddMonths(-1);
 
             // Calculate Compliance Rate based on actual filing activity
-            // Get tax years that had deadlines in the current period
-            var currentMonthDeadlines = await _db.TaxYears
-                .Where(t => t.FilingDeadline != null && 
-                           t.FilingDeadline >= currentMonth.AddDays(-30) && 
-                           t.FilingDeadline <= currentMonth)
+            // Get tax years that were filed in the current period
+            var currentMonthFilings = await _db.TaxYears
+                .Where(t => t.DateFiled != null &&
+                            t.DateFiled >= currentMonth.AddDays(-30) &&
+                            t.DateFiled <= currentMonth &&
+                            (t.Status == TaxYearStatus.Filed || t.Status == TaxYearStatus.Paid))
                 .ToListAsync();
 
-            var lastMonthDeadlines = await _db.TaxYears
-                .Where(t => t.FilingDeadline != null && 
-                           t.FilingDeadline >= lastMonth.AddDays(-30) && 
-                           t.FilingDeadline <= lastMonth)
+            var lastMonthFilings = await _db.TaxYears
+                .Where(t => t.DateFiled != null &&
+                            t.DateFiled >= lastMonth.AddDays(-30) &&
+                            t.DateFiled <= lastMonth &&
+                            (t.Status == TaxYearStatus.Filed || t.Status == TaxYearStatus.Paid))
                 .ToListAsync();
 
-            // Calculate compliance as percentage that were filed on time (before or on deadline)
-            var currentCompliance = currentMonthDeadlines.Count > 0
-                ? (decimal)currentMonthDeadlines.Count(t => t.DateFiled != null && 
-                    t.DateFiled <= t.FilingDeadline && 
-                    (t.Status == TaxYearStatus.Filed || t.Status == TaxYearStatus.Paid)) / currentMonthDeadlines.Count * 100
+            // Calculate compliance as percentage of filings made on or before their deadline
+            var currentCompliance = currentMonthFilings.Count > 0
+                ? (decimal)currentMonthFilings.Count(t => t.FilingDeadline != null && t.DateFiled <= t.FilingDeadline) / currentMonthFilings.Count * 100
                 : 0m;
 
-            var lastCompliance = lastMonthDeadlines.Count > 0
-                ? (decimal)lastMonthDeadlines.Count(t => t.DateFiled != null && 
-                    t.DateFiled <= t.FilingDeadline && 
-                    (t.Status == TaxYearStatus.Filed || t.Status == TaxYearStatus.Paid)) / lastMonthDeadlines.Count * 100
+            var lastCompliance = lastMonthFilings.Count > 0
+                ? (decimal)lastMonthFilings.Count(t => t.FilingDeadline != null && t.DateFiled <= t.FilingDeadline) / lastMonthFilings.Count * 100
                 : 0m;
 
             var complianceTrend = currentCompliance - lastCompliance;
