@@ -78,6 +78,38 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     return null;
   }
 
+  // Sanitize CSS color values to prevent XSS
+  const sanitizeColor = (color: string): string => {
+    // Allow only valid CSS color formats: hex, rgb, rgba, hsl, hsla, and named colors
+    const validColorPattern = /^(#[0-9a-fA-F]{3,8}|rgb\([^)]+\)|rgba\([^)]+\)|hsl\([^)]+\)|hsla\([^)]+\)|[a-z]+)$/;
+
+    if (!color || typeof color !== 'string') {
+      return '';
+    }
+
+    const trimmedColor = color.trim();
+
+    // Check if it matches a valid color pattern
+    if (validColorPattern.test(trimmedColor)) {
+      // Additional check: ensure no script tags or javascript: protocol
+      if (trimmedColor.toLowerCase().includes('script') ||
+          trimmedColor.toLowerCase().includes('javascript:') ||
+          trimmedColor.includes('<') ||
+          trimmedColor.includes('>')) {
+        return '';
+      }
+      return trimmedColor;
+    }
+
+    return '';
+  };
+
+  // Sanitize CSS variable key to prevent injection
+  const sanitizeKey = (key: string): string => {
+    // Only allow alphanumeric characters, hyphens, and underscores
+    return key.replace(/[^a-zA-Z0-9-_]/g, '');
+  };
+
   return (
     <style
       dangerouslySetInnerHTML={{
@@ -90,7 +122,9 @@ ${colorConfig
     const color =
       itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
       itemConfig.color;
-    return color ? `  --color-${key}: ${color};` : null;
+    const sanitizedColor = color ? sanitizeColor(color) : '';
+    const sanitizedKey = sanitizeKey(key);
+    return sanitizedColor ? `  --color-${sanitizedKey}: ${sanitizedColor};` : null;
   })
   .join("\n")}
 }

@@ -3,6 +3,8 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Alert, AlertDescription } from "./ui/alert";
+import { login } from "../lib/auth";
 import logo from "figma:asset/c09e3416d3f18d5dd7594d245d067b31f50605af.png";
 
 interface LoginProps {
@@ -12,12 +14,37 @@ interface LoginProps {
 export function Login({ onLogin }: LoginProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // For demo purposes, staff emails have @bettsfirm.com
-    const role = email.includes("@bettsfirm.com") ? "staff" : "client";
-    onLogin(role);
+    setError(null);
+
+    if (!email || !password) {
+      setError("Please enter both email and password");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Call the authentication API
+      const response = await login(email, password);
+
+      if (response.success && response.user) {
+        // Determine role from user info
+        const role = response.user.role.toLowerCase() === "client" ? "client" : "staff";
+        onLogin(role);
+      } else {
+        setError(response.message || "Invalid email or password");
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("An error occurred during login. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -34,6 +61,12 @@ export function Login({ onLogin }: LoginProps) {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="email">Email Address</Label>
               <Input
@@ -42,6 +75,7 @@ export function Login({ onLogin }: LoginProps) {
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={isLoading}
                 required
               />
             </div>
@@ -53,11 +87,12 @@ export function Login({ onLogin }: LoginProps) {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoading}
                 required
               />
             </div>
-            <Button type="submit" className="w-full">
-              Sign In
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? "Signing in..." : "Sign In"}
             </Button>
             <div className="text-center">
               <Button variant="link" type="button" className="text-sm">
@@ -65,18 +100,6 @@ export function Login({ onLogin }: LoginProps) {
               </Button>
             </div>
           </form>
-
-          <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-            <p className="text-sm font-medium mb-2">Demo Credentials</p>
-            <div className="text-xs space-y-1 text-muted-foreground">
-              <p>
-                <strong>Staff:</strong> staff@bettsfirm.com / password
-              </p>
-              <p>
-                <strong>Client:</strong> client@example.com / password
-              </p>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

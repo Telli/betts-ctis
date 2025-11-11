@@ -1,0 +1,9 @@
+# Node
+Client Tax Information System/node_modules/
+
+# .NET build
+BettsTax/**/bin/
+BettsTax/**/obj/
+
+# Logs
+*.log

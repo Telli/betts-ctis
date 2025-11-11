@@ -20,17 +20,21 @@ namespace BettsTax.Web.Controllers
     public class DeadlinesController : ControllerBase
     {
         private readonly IDeadlineMonitoringService _deadlineService;
+        private readonly Services.IAuthorizationService _authorizationService;
         private readonly ILogger<DeadlinesController> _logger;
         private readonly ApplicationDbContext _db;
 
         public DeadlinesController(
             IDeadlineMonitoringService deadlineService,
+            Services.IAuthorizationService authorizationService,
             ILogger<DeadlinesController> logger,
             ApplicationDbContext db)
         {
             _deadlineService = deadlineService;
+            _authorizationService = authorizationService;
             _logger = logger;
             _db = db;
+        }
         }
 
         /// <summary>
@@ -43,6 +47,7 @@ namespace BettsTax.Web.Controllers
         [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> GetUpcomingDeadlines(
             [FromQuery] int days = 30,
@@ -61,14 +66,34 @@ namespace BettsTax.Web.Controllers
                 }
 
                 var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-                var userRole = User.FindFirstValue(ClaimTypes.Role);
+                var userRole = _authorizationService.GetUserRole(User);
+
+                // SECURITY: Validate authorization for clientId access
+                if (!_authorizationService.CanAccessClientData(User, clientId))
+                {
+                    _logger.LogWarning(
+                        "Unauthorized access attempt: User {UserId} with role {Role} tried to access ClientId {ClientId}",
+                        userId, userRole, clientId);
+                    return StatusCode(403, new
+                    {
+                        success = false,
+                        message = "Access denied. You do not have permission to access this client's data."
+                    });
+                }
+
+                // If no clientId specified and user is a client, auto-filter to their data
+                var effectiveClientId = clientId;
+                if (!effectiveClientId.HasValue && !_authorizationService.IsStaffOrAdmin(User))
+                {
+                    effectiveClientId = _authorizationService.GetUserClientId(User);
+                }
 
                 _logger.LogInformation(
                     "User {UserId} with role {Role} requesting upcoming deadlines for {Days} days, ClientId: {ClientId}",
-                    userId, userRole, days, clientId?.ToString() ?? "all");
+                    userId, userRole, days, effectiveClientId?.ToString() ?? "all");
 
                 // Get deadlines from service
-                var deadlines = await _deadlineService.GetUpcomingDeadlinesAsync(clientId, days);
+                var deadlines = await _deadlineService.GetUpcomingDeadlinesAsync(effectiveClientId, days);
 
                 _logger.LogInformation(
                     "Retrieved {Count} upcoming deadlines for user {UserId}",
@@ -82,7 +107,7 @@ namespace BettsTax.Web.Controllers
                     {
                         count = deadlines.Count,
                         daysAhead = days,
-                        clientId = clientId
+                        clientId = effectiveClientId
                     }
                 });
             }
@@ -105,20 +130,41 @@ namespace BettsTax.Web.Controllers
         [HttpGet("overdue")]
         [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> GetOverdueDeadlines([FromQuery] int? clientId = null)
         {
             try
             {
                 var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-                var userRole = User.FindFirstValue(ClaimTypes.Role);
+                var userRole = _authorizationService.GetUserRole(User);
+
+                // SECURITY: Validate authorization for clientId access
+                if (!_authorizationService.CanAccessClientData(User, clientId))
+                {
+                    _logger.LogWarning(
+                        "Unauthorized access attempt: User {UserId} with role {Role} tried to access ClientId {ClientId}",
+                        userId, userRole, clientId);
+                    return StatusCode(403, new
+                    {
+                        success = false,
+                        message = "Access denied. You do not have permission to access this client's data."
+                    });
+                }
+
+                // If no clientId specified and user is a client, auto-filter to their data
+                var effectiveClientId = clientId;
+                if (!effectiveClientId.HasValue && !_authorizationService.IsStaffOrAdmin(User))
+                {
+                    effectiveClientId = _authorizationService.GetUserClientId(User);
+                }
 
                 _logger.LogInformation(
                     "User {UserId} with role {Role} requesting overdue deadlines, ClientId: {ClientId}",
-                    userId, userRole, clientId?.ToString() ?? "all");
+                    userId, userRole, effectiveClientId?.ToString() ?? "all");
 
                 // Get overdue deadlines from service
-                var deadlines = await _deadlineService.GetOverdueItemsAsync(clientId);
+                var deadlines = await _deadlineService.GetOverdueItemsAsync(effectiveClientId);
 
                 _logger.LogInformation(
                     "Retrieved {Count} overdue deadlines for user {UserId}",
@@ -131,7 +177,7 @@ namespace BettsTax.Web.Controllers
                     meta = new
                     {
                         count = deadlines.Count,
-                        clientId = clientId
+                        clientId = effectiveClientId
                     }
                 });
             }
@@ -155,6 +201,7 @@ namespace BettsTax.Web.Controllers
         [HttpGet]
         [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> GetDeadlines(
             [FromQuery] string? status = null,
@@ -167,10 +214,33 @@ namespace BettsTax.Web.Controllers
         {
             try
             {
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                var userRole = _authorizationService.GetUserRole(User);
+
+                // SECURITY: Validate authorization for clientId access
+                if (!_authorizationService.CanAccessClientData(User, clientId))
+                {
+                    _logger.LogWarning(
+                        "Unauthorized access attempt: User {UserId} with role {Role} tried to access ClientId {ClientId}",
+                        userId, userRole, clientId);
+                    return StatusCode(403, new
+                    {
+                        success = false,
+                        message = "Access denied. You do not have permission to access this client's data."
+                    });
+                }
+
+                // If no clientId specified and user is a client, auto-filter to their data
+                var effectiveClientId = clientId;
+                if (!effectiveClientId.HasValue && !_authorizationService.IsStaffOrAdmin(User))
+                {
+                    effectiveClientId = _authorizationService.GetUserClientId(User);
+                }
+
                 var query = _db.ComplianceDeadlines.AsNoTracking().AsQueryable();
 
-                if (clientId.HasValue)
-                    query = query.Where(d => d.ClientId == clientId.Value);
+                if (effectiveClientId.HasValue)
+                    query = query.Where(d => d.ClientId == effectiveClientId.Value);
 
                 if (!string.IsNullOrWhiteSpace(category))
                     query = query.Where(d => d.Requirements.Contains(category));
@@ -267,21 +337,43 @@ namespace BettsTax.Web.Controllers
         [HttpGet("stats")]
         [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> GetDeadlineStats([FromQuery] int? clientId = null)
         {
             try
             {
                 var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                var userRole = _authorizationService.GetUserRole(User);
+
+                // SECURITY: Validate authorization for clientId access
+                if (!_authorizationService.CanAccessClientData(User, clientId))
+                {
+                    _logger.LogWarning(
+                        "Unauthorized access attempt: User {UserId} with role {Role} tried to access ClientId {ClientId}",
+                        userId, userRole, clientId);
+                    return StatusCode(403, new
+                    {
+                        success = false,
+                        message = "Access denied. You do not have permission to access this client's data."
+                    });
+                }
+
+                // If no clientId specified and user is a client, auto-filter to their data
+                var effectiveClientId = clientId;
+                if (!effectiveClientId.HasValue && !_authorizationService.IsStaffOrAdmin(User))
+                {
+                    effectiveClientId = _authorizationService.GetUserClientId(User);
+                }
 
                 _logger.LogInformation(
                     "User {UserId} requesting deadline statistics, ClientId: {ClientId}",
-                    userId, clientId?.ToString() ?? "all");
+                    userId, effectiveClientId?.ToString() ?? "all");
 
                 // Get deadlines for different time periods
-                var next7DaysTask = _deadlineService.GetUpcomingDeadlinesAsync(clientId, 7);
-                var next30DaysTask = _deadlineService.GetUpcomingDeadlinesAsync(clientId, 30);
-                var overdueTask = _deadlineService.GetOverdueItemsAsync(clientId);
+                var next7DaysTask = _deadlineService.GetUpcomingDeadlinesAsync(effectiveClientId, 7);
+                var next30DaysTask = _deadlineService.GetUpcomingDeadlinesAsync(effectiveClientId, 30);
+                var overdueTask = _deadlineService.GetOverdueItemsAsync(effectiveClientId);
 
                 await Task.WhenAll(next7DaysTask, next30DaysTask, overdueTask);
 
