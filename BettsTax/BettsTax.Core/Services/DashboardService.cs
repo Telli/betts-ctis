@@ -490,6 +490,8 @@ namespace BettsTax.Core.Services
                     var clientId = user.ClientProfile?.ClientId;
                     if (clientId.HasValue)
                     {
+                        var validClientId = clientId.Value;
+                        
                         actions.AddRange(new[]
                         {
                             new QuickActionDto { Title = "Upload Documents", Description = "Add tax documents", Icon = "Upload", Color = "bg-green-600 hover:bg-green-700", Action = "/client-portal/documents", Order = 1 },
@@ -502,15 +504,15 @@ namespace BettsTax.Core.Services
 
                         // Get counts for client
                         counts["pendingDocuments"] = await _db.Documents
-                            .Where(d => d.ClientId == clientId.Value && d.VerificationStatus == DocumentVerificationStatus.NotRequested)
+                            .Where(d => d.ClientId == validClientId && d.VerificationStatus == DocumentVerificationStatus.NotRequested)
                             .CountAsync();
                         counts["upcomingDeadlines"] = await _db.TaxYears
-                            .Where(ty => ty.ClientId == clientId.Value &&
+                            .Where(ty => ty.ClientId == validClientId &&
                                         ty.FilingDeadline != null &&
                                         ty.FilingDeadline <= DateTime.Today.AddDays(30))
                             .CountAsync();
                         counts["overduePayments"] = await _db.Payments
-                            .Where(p => p.ClientId == clientId.Value && p.Status == PaymentStatus.Pending)
+                            .Where(p => p.ClientId == validClientId && p.Status == PaymentStatus.Pending)
                             .CountAsync();
                     }
                     else
