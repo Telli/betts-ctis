@@ -73,7 +73,12 @@ namespace BettsTax.Web.Controllers
         [HttpGet("quick-actions")]
         public async Task<IActionResult> GetQuickActions()
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new { success = false, message = "User not authenticated" });
+            }
+
             var actions = await _dashboardService.GetQuickActionsAsync(userId);
             return Ok(new { success = true, data = actions });
         }

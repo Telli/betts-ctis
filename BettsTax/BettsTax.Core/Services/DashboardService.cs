@@ -333,19 +333,23 @@ namespace BettsTax.Core.Services
 
             // Calculate Payment On-Time Rate
             var currentPayments = await _db.Payments
-                .Where(p => p.CreatedAt >= currentMonth.AddDays(-30) && p.CreatedAt <= currentMonth)
+                .Where(p => p.DueDate != null &&
+                           p.DueDate >= currentMonth.AddDays(-30) &&
+                           p.DueDate <= currentMonth)
                 .ToListAsync();
 
-            var onTimePayments = currentPayments.Count(p => p.Status == PaymentStatus.Approved);
+            var onTimePayments = currentPayments.Count(p => p.PaymentDate <= p.DueDate && p.Status == PaymentStatus.Approved);
             var paymentOnTimeRate = currentPayments.Count > 0
                 ? (decimal)onTimePayments / currentPayments.Count * 100
                 : 0m;
 
             var lastMonthPayments = await _db.Payments
-                .Where(p => p.CreatedAt >= lastMonth.AddDays(-30) && p.CreatedAt < currentMonth.AddDays(-30))
+                .Where(p => p.DueDate != null &&
+                           p.DueDate >= lastMonth.AddDays(-30) &&
+                           p.DueDate < currentMonth.AddDays(-30))
                 .ToListAsync();
 
-            var lastOnTimePayments = lastMonthPayments.Count(p => p.Status == PaymentStatus.Approved);
+            var lastOnTimePayments = lastMonthPayments.Count(p => p.PaymentDate <= p.DueDate && p.Status == PaymentStatus.Approved);
             var lastPaymentOnTimeRate = lastMonthPayments.Count > 0
                 ? (decimal)lastOnTimePayments / lastMonthPayments.Count * 100
                 : 0m;
@@ -353,28 +357,41 @@ namespace BettsTax.Core.Services
             var paymentTrend = paymentOnTimeRate - lastPaymentOnTimeRate;
 
             // Calculate Document Submission Rate
-            var requiredDocuments = await _db.TaxYears
-                .Where(t => t.FilingDeadline >= currentMonth.AddDays(-30))
+            // Get tax years with deadlines in the current period
+            var currentTaxYearIds = await _db.TaxYears
+                .Where(t => t.FilingDeadline != null &&
+                           t.FilingDeadline >= currentMonth.AddDays(-30) &&
+                           t.FilingDeadline <= currentMonth)
+                .Select(t => t.TaxYearId)
+                .ToListAsync();
+
+            // Count tax years that have at least one document
+            var taxYearsWithDocs = await _db.Documents
+                .Where(d => d.TaxYearId != null && currentTaxYearIds.Contains(d.TaxYearId.Value))
+                .Select(d => d.TaxYearId)
+                .Distinct()
                 .CountAsync();
 
-            var submittedDocuments = await _db.Documents
-                .Where(d => d.UploadedAt >= currentMonth.AddDays(-30))
-                .CountAsync();
-
-            var documentRate = requiredDocuments > 0
-                ? (decimal)submittedDocuments / requiredDocuments * 100
+            var documentRate = currentTaxYearIds.Count > 0
+                ? (decimal)taxYearsWithDocs / currentTaxYearIds.Count * 100
                 : 100m;
 
-            var lastRequiredDocuments = await _db.TaxYears
-                .Where(t => t.FilingDeadline >= lastMonth.AddDays(-30) && t.FilingDeadline < currentMonth.AddDays(-30))
+            // Last month calculation
+            var lastTaxYearIds = await _db.TaxYears
+                .Where(t => t.FilingDeadline != null &&
+                           t.FilingDeadline >= lastMonth.AddDays(-30) &&
+                           t.FilingDeadline < currentMonth.AddDays(-30))
+                .Select(t => t.TaxYearId)
+                .ToListAsync();
+
+            var lastTaxYearsWithDocs = await _db.Documents
+                .Where(d => d.TaxYearId != null && lastTaxYearIds.Contains(d.TaxYearId.Value))
+                .Select(d => d.TaxYearId)
+                .Distinct()
                 .CountAsync();
 
-            var lastSubmittedDocuments = await _db.Documents
-                .Where(d => d.UploadedAt >= lastMonth.AddDays(-30) && d.UploadedAt < currentMonth.AddDays(-30))
-                .CountAsync();
-
-            var lastDocumentRate = lastRequiredDocuments > 0
-                ? (decimal)lastSubmittedDocuments / lastRequiredDocuments * 100
+            var lastDocumentRate = lastTaxYearIds.Count > 0
+                ? (decimal)lastTaxYearsWithDocs / lastTaxYearIds.Count * 100
                 : 100m;
 
             var documentTrend = documentRate - lastDocumentRate;
@@ -385,7 +402,7 @@ namespace BettsTax.Core.Services
                 ComplianceRateTrend = complianceTrend >= 0 ? $"+{Math.Abs(Math.Round(complianceTrend, 1))}%" : $"-{Math.Abs(Math.Round(complianceTrend, 1))}%",
                 ComplianceRateTrendUp = complianceTrend >= 0,
 
-                FilingTimelinessAvgDays = Math.Max(0, avgDaysBeforeDeadline),
+                FilingTimelinessAvgDays = avgDaysBeforeDeadline,
                 FilingTimelinessTrend = timelinessTrendDays >= 0 ? $"+{Math.Abs(timelinessTrendDays)} days" : $"-{Math.Abs(timelinessTrendDays)} days",
                 FilingTimelinessTrendUp = timelinessTrendDays >= 0,
 

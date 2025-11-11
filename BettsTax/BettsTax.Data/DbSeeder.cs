@@ -576,7 +576,10 @@ namespace BettsTax.Data
                         Status = status,
                         FilingDeadline = filingDeadline,
                         DateFiled = dateFiled,
-                        IncomeTaxOwed = client.AnnualTurnover * 0.25m
+                        IncomeTaxOwed = client.AnnualTurnover * 0.25m,
+                        TaxLiability = client.AnnualTurnover * 0.25m,
+                        CreatedDate = new DateTime(year, 1, 1),
+                        UpdatedDate = dateFiled ?? DateTime.UtcNow
                     });
                 }
             }
