@@ -542,7 +542,7 @@ namespace BettsTax.Core.Services
             var payments = await _db.Payments
                 .AsNoTracking()
                 .Include(p => p.TaxFiling)
-                .Where(p => p.TaxFiling.ClientId == clientId)
+                .Where(p => p.ClientId == clientId)
                 .ToListAsync();
 
             // Calculate compliance score based on filing status and payment history

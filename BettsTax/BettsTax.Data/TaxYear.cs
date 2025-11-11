@@ -16,7 +16,17 @@ namespace BettsTax.Data
         public TaxYearStatus Status { get; set; } = TaxYearStatus.Draft;
         public DateTime? FilingDeadline { get; set; }
         public DateTime? DateFiled { get; set; }
-        public DateTime? FilingDate { get; set; } // Alias for DateFiled (compatibility)
+
+        /// <summary>
+        /// Computed property that maps to DateFiled for compatibility.
+        /// Always synchronized - setting either property updates both.
+        /// </summary>
+        [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+        public DateTime? FilingDate
+        {
+            get => DateFiled;
+            set => DateFiled = value;
+        }
 
         // Audit fields
         public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
