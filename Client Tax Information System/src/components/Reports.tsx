@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "./PageHeader";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -12,7 +12,8 @@ import {
 } from "./ui/select";
 import { Calendar } from "./ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { FileText, Download, Eye, CalendarIcon, FileSpreadsheet } from "lucide-react";
+import { FileText, Download, Eye, CalendarIcon, FileSpreadsheet, Loader2 } from "lucide-react";
+import { fetchClients, type Client } from "../lib/services/clients";
 
 const reportTypes = [
   {
@@ -71,6 +72,33 @@ export function Reports() {
   const [dateTo, setDateTo] = useState<Date>();
   const [clientFilter, setClientFilter] = useState("all");
   const [taxTypeFilter, setTaxTypeFilter] = useState("all");
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loadingClients, setLoadingClients] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadClients() {
+      setLoadingClients(true);
+      try {
+        const data = await fetchClients();
+        if (!cancelled) {
+          setClients(data);
+        }
+      } catch (err) {
+        console.error("Failed to load clients:", err);
+      } finally {
+        if (!cancelled) {
+          setLoadingClients(false);
+        }
+      }
+    }
+
+    loadClients();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div>
@@ -167,15 +195,19 @@ export function Reports() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Client</Label>
-                    <Select value={clientFilter} onValueChange={setClientFilter}>
+                    <Select value={clientFilter} onValueChange={setClientFilter} disabled={loadingClients}>
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue>
+                          {loadingClients ? "Loading..." : clientFilter === "all" ? "All Clients" : clients.find(c => c.id.toString() === clientFilter)?.name}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Clients</SelectItem>
-                        <SelectItem value="abc">ABC Corporation</SelectItem>
-                        <SelectItem value="xyz">XYZ Trading</SelectItem>
-                        <SelectItem value="tech">Tech Solutions</SelectItem>
+                        {clients.map((client) => (
+                          <SelectItem key={client.id} value={client.id.toString()}>
+                            {client.name}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>

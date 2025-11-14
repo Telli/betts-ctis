@@ -1,9 +1,10 @@
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { PageHeader } from "./PageHeader";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { Card, CardContent } from "./ui/card";
+import { Alert, AlertDescription } from "./ui/alert";
 import {
   Select,
   SelectContent,
@@ -11,76 +12,80 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Search, Upload, FileText, Grid3x3, List, Download, Eye } from "lucide-react";
+import { Search, Upload, FileText, Grid3x3, List, Download, Eye, Loader2, AlertCircle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-
-const mockDocuments = [
-  {
-    id: 1,
-    name: "Financial Statements 2024.pdf",
-    type: "Financial Statement",
-    client: "ABC Corporation",
-    year: 2024,
-    taxType: "Income Tax",
-    version: 2,
-    uploadedBy: "John Doe",
-    uploadDate: "2025-10-01",
-    hash: "a3b2c1d4e5f6...",
-    status: "verified",
-  },
-  {
-    id: 2,
-    name: "Bank Statements Q3.pdf",
-    type: "Bank Statement",
-    client: "XYZ Trading",
-    year: 2025,
-    taxType: "GST",
-    version: 1,
-    uploadedBy: "Jane Smith",
-    uploadDate: "2025-09-28",
-    hash: "f6e5d4c3b2a1...",
-    status: "scanning",
-  },
-  {
-    id: 3,
-    name: "Sales Records Sept.xlsx",
-    type: "Sales Record",
-    client: "Tech Solutions",
-    year: 2025,
-    taxType: "GST",
-    version: 3,
-    uploadedBy: "Mike Brown",
-    uploadDate: "2025-10-02",
-    hash: "b4c5d6e7f8a9...",
-    status: "verified",
-  },
-  {
-    id: 4,
-    name: "Payroll Summary Q3.pdf",
-    type: "Payroll Record",
-    client: "ABC Corporation",
-    year: 2025,
-    taxType: "PAYE",
-    version: 1,
-    uploadedBy: "Sarah Johnson",
-    uploadDate: "2025-09-25",
-    hash: "c5d6e7f8a9b0...",
-    status: "verified",
-  },
-];
+import { fetchDocuments, downloadDocument, type Document } from "../lib/services/documents";
 
 export function Documents() {
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [typeFilter, setTypeFilter] = useState("all");
   const [yearFilter, setYearFilter] = useState("all");
 
-  const filteredDocuments = mockDocuments.filter((doc) => {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDocuments() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const data = await fetchDocuments({
+          searchTerm: searchTerm || undefined,
+          type: typeFilter !== "all" ? typeFilter : undefined,
+          year: yearFilter !== "all" ? yearFilter : undefined,
+        });
+
+        if (!cancelled) {
+          setDocuments(data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : "Failed to load documents.";
+          setError(message);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadDocuments();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchTerm, typeFilter, yearFilter]);
+
+  const filteredDocuments = documents.filter((doc) => {
     const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = typeFilter === "all" || doc.type === typeFilter;
     const matchesYear = yearFilter === "all" || doc.year.toString() === yearFilter;
     return matchesSearch && matchesType && matchesYear;
   });
+
+  const handleDownload = async (docId: number, fileName: string) => {
+    try {
+      const blob = await downloadDocument(docId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to download document.";
+      setError(message);
+    }
+  };
+
+  // Get unique types and years from documents for filter options
+  const availableTypes = Array.from(new Set(documents.map((d) => d.type))).sort();
+  const availableYears = Array.from(new Set(documents.map((d) => d.year))).sort((a, b) => b - a);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -109,6 +114,13 @@ export function Documents() {
       />
 
       <div className="p-6">
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         {/* Filters */}
         <div className="flex flex-wrap gap-4 mb-6">
           <div className="relative flex-1 min-w-[300px]">
@@ -126,10 +138,11 @@ export function Documents() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="Financial Statement">Financial Statement</SelectItem>
-              <SelectItem value="Bank Statement">Bank Statement</SelectItem>
-              <SelectItem value="Sales Record">Sales Record</SelectItem>
-              <SelectItem value="Payroll Record">Payroll Record</SelectItem>
+              {availableTypes.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {type}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={yearFilter} onValueChange={setYearFilter}>
@@ -138,9 +151,11 @@ export function Documents() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Years</SelectItem>
-              <SelectItem value="2025">2025</SelectItem>
-              <SelectItem value="2024">2024</SelectItem>
-              <SelectItem value="2023">2023</SelectItem>
+              {availableYears.map((year) => (
+                <SelectItem key={year} value={year.toString()}>
+                  {year}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <div className="flex border border-border rounded-lg">
@@ -161,8 +176,26 @@ export function Documents() {
           </div>
         </div>
 
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <span className="ml-3 text-muted-foreground">Loading documents...</span>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!isLoading && filteredDocuments.length === 0 && (
+          <div className="text-center py-12">
+            <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">
+              {documents.length === 0 ? "No documents found." : "No documents match your filters."}
+            </p>
+          </div>
+        )}
+
         {/* Grid View */}
-        {viewMode === "grid" && (
+        {!isLoading && viewMode === "grid" && filteredDocuments.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filteredDocuments.map((doc) => (
               <Card key={doc.id} className="hover:shadow-md transition-shadow cursor-pointer">
@@ -185,7 +218,12 @@ export function Documents() {
                       <Eye className="w-3 h-3 mr-1" />
                       View
                     </Button>
-                    <Button size="sm" variant="outline" className="flex-1">
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="flex-1"
+                      onClick={() => handleDownload(doc.id, doc.name)}
+                    >
                       <Download className="w-3 h-3 mr-1" />
                       Download
                     </Button>
@@ -201,7 +239,7 @@ export function Documents() {
         )}
 
         {/* Table View */}
-        {viewMode === "table" && (
+        {!isLoading && viewMode === "table" && filteredDocuments.length > 0 && (
           <div className="border border-border rounded-lg bg-card overflow-x-auto">
             <table className="w-full">
               <thead className="border-b border-border">
@@ -241,7 +279,11 @@ export function Documents() {
                         <Button size="sm" variant="ghost">
                           <Eye className="w-3 h-3" />
                         </Button>
-                        <Button size="sm" variant="ghost">
+                        <Button 
+                          size="sm" 
+                          variant="ghost"
+                          onClick={() => handleDownload(doc.id, doc.name)}
+                        >
                           <Download className="w-3 h-3" />
                         </Button>
                       </div>
