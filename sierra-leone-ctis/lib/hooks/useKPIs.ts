@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { InternalKPIDto, ClientKPIDto, KPIAlertDto, KPIThresholdDto } from '@/lib/types/kpi';
+import { InternalKPIDto, ClientKPIDto, KPIAlertDto, KPIThresholdDto, KpiDashboardSummaryDto } from '@/lib/types/kpi';
 
 // Query keys
 const KPI_KEYS = {
@@ -221,5 +221,28 @@ export function useCreateKPIAlert() {
       // Invalidate alerts queries
       queryClient.invalidateQueries({ queryKey: ['kpi', 'alerts'] });
     },
+  });
+}
+
+export function useKpiDashboardSummary(fromDate?: Date, toDate?: Date) {
+  return useQuery({
+    queryKey: ['kpi', 'dashboard-summary', fromDate?.toISOString(), toDate?.toISOString()],
+    queryFn: async (): Promise<KpiDashboardSummaryDto> => {
+      try {
+        const params = new URLSearchParams();
+        if (fromDate) params.append('fromDate', fromDate.toISOString());
+        if (toDate) params.append('toDate', toDate.toISOString());
+
+        const queryString = params.toString();
+        const url = `/api/kpi/dashboard${queryString ? `?${queryString}` : ''}`;
+
+        const response = await apiClient.get<KpiDashboardSummaryDto>(url);
+        return response.data;
+      } catch (error: any) {
+        console.error('Error fetching KPI dashboard summary:', error);
+        throw new Error(error.response?.data?.message || 'Failed to fetch KPI dashboard summary');
+      }
+    },
+    staleTime: 5 * 60 * 1000,
   });
 }

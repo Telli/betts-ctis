@@ -6,6 +6,7 @@ public interface IKPIService
 {
     Task<InternalKPIDto> GetInternalKPIsAsync(DateTime? fromDate = null, DateTime? toDate = null);
     Task<ClientKPIDto> GetClientKPIsAsync(int clientId, DateTime? fromDate = null, DateTime? toDate = null);
+    Task<KpiDashboardSummaryDto> GetDashboardSummaryAsync(DateTime? fromDate = null, DateTime? toDate = null);
     Task<List<KPIAlertDto>> GetKPIAlertsAsync(int? clientId = null);
     Task UpdateKPIThresholdsAsync(KPIThresholdDto thresholds);
     Task<bool> RefreshKPIDataAsync();

@@ -11,18 +11,29 @@ interface ConditionalLayoutProps {
 }
 
 export function ConditionalLayout({ children }: ConditionalLayoutProps) {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user } = useAuth();
   const pathname = usePathname();
 
   // Define routes that should never show the sidebar, even when authenticated
   const publicRoutes = ['/login', '/register', '/forgot-password'];
   const isPublicRoute = publicRoutes.includes(pathname);
 
-  // Define routes that should show sidebar when authenticated
-  const shouldShowSidebar = isLoggedIn && !isPublicRoute;
+  // Client portal routes have their own layout (ClientPortalLayout) with ClientSidebar
+  // Don't show admin sidebar for client portal routes
+  const isClientPortalRoute = pathname.startsWith('/client-portal');
+  
+  // Associate routes have their own layout
+  const isAssociateRoute = pathname.startsWith('/associate');
+
+  // Only show admin sidebar for admin/staff routes (not client portal or associate routes)
+  const shouldShowAdminSidebar = isLoggedIn && !isPublicRoute && !isClientPortalRoute && !isAssociateRoute;
+  
+  // Prevent clients from seeing admin sidebar even if they somehow access admin routes
+  const isClientUser = user?.role === 'Client';
+  const shouldShowSidebar = shouldShowAdminSidebar && !isClientUser;
 
   if (shouldShowSidebar) {
-    // Authenticated layout with sidebar
+    // Authenticated admin/staff layout with sidebar
     return (
       <div className="flex h-screen bg-gradient-to-br from-sierra-blue-25 to-white">
         <Sidebar />
@@ -37,6 +48,16 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
           </ErrorBoundary>
         </main>
       </div>
+    );
+  }
+  
+  // Client portal and associate routes have their own layouts, so just render children
+  // The nested layout will handle the appropriate sidebar
+  if (isClientPortalRoute || isAssociateRoute) {
+    return (
+      <ErrorBoundary>
+        {children}
+      </ErrorBoundary>
     );
   }
 

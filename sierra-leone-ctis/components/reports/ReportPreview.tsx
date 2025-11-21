@@ -30,7 +30,9 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/components/ui/use-toast';
-import { ReportRequest } from '@/lib/services/report-service';
+import { ReportRequest, reportService } from '@/lib/services/report-service';
+import { getNumericDefault, getStringDefault, getArrayDefault } from '@/lib/utils/data-defaults';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface ReportPreviewProps {
   report: ReportRequest;
@@ -38,103 +40,35 @@ interface ReportPreviewProps {
   onDownload?: (reportId: string, title: string) => void;
 }
 
-// Mock data for different report types
-const getMockReportData = (reportType: string) => {
-  switch (reportType) {
-    case 'TaxCompliance':
-    case 'TaxSummary':
-      return {
-        clientName: 'Freetown Trading Company Ltd',
-        clientNumber: 'CL-2024-001',
-        taxYear: 2024,
-        complianceScore: 85,
-        complianceGrade: 'B',
-        summary: {
-          totalTaxLiability: 45000000,
-          totalPaid: 40000000,
-          outstandingAmount: 5000000,
-          penaltiesApplied: 750000
-        },
-        filingStatus: [
-          { taxType: 'Income Tax', status: 'Filed', dueDate: '2024-04-30', filedDate: '2024-04-28' },
-          { taxType: 'GST', status: 'Filed', dueDate: '2024-01-15', filedDate: '2024-01-14' },
-          { taxType: 'Payroll Tax', status: 'Outstanding', dueDate: '2024-02-15', filedDate: null }
-        ],
-        upcomingDeadlines: [
-          { taxType: 'GST', description: 'February 2024 Return', dueDate: '2024-03-15', daysRemaining: 10 },
-          { taxType: 'Payroll Tax', description: 'February 2024 PAYE', dueDate: '2024-03-15', daysRemaining: 10 }
-        ]
-      };
-      
-    case 'PaymentHistory':
-      return {
-        totalPayments: 24,
-        totalAmount: 52000000,
-        paymentsByMonth: [
-          { month: 'Jan 2024', count: 4, amount: 12000000 },
-          { month: 'Feb 2024', count: 3, amount: 8500000 },
-          { month: 'Mar 2024', count: 5, amount: 15000000 },
-          { month: 'Apr 2024', count: 6, amount: 16500000 }
-        ],
-        paymentsByMethod: [
-          { method: 'Orange Money', count: 12, amount: 25000000, percentage: 48 },
-          { method: 'Africell Money', count: 8, amount: 18000000, percentage: 35 },
-          { method: 'Bank Transfer', count: 4, amount: 9000000, percentage: 17 }
-        ],
-        recentPayments: [
-          { date: '2024-01-25', amount: 5000000, method: 'Orange Money', taxType: 'Income Tax', status: 'Completed' },
-          { date: '2024-01-20', amount: 2500000, method: 'Africell Money', taxType: 'GST', status: 'Completed' },
-          { date: '2024-01-15', amount: 1800000, method: 'Bank Transfer', taxType: 'Payroll Tax', status: 'Completed' }
-        ]
-      };
-      
-    case 'KPISummary':
-      return {
-        reportPeriod: { startDate: '2024-01-01', endDate: '2024-01-31' },
-        clientMetrics: {
-          totalClients: 156,
-          activeClients: 142,
-          newClients: 8,
-          churnedClients: 2
-        },
-        revenueMetrics: {
-          totalRevenue: 125000000,
-          revenueGrowth: 15.5,
-          averageRevenuePerClient: 801282,
-          recurringRevenue: 95000000
-        },
-        complianceMetrics: {
-          averageComplianceScore: 87.3,
-          clientsWithGradeA: 45,
-          clientsWithIssues: 12,
-          totalPenaltiesIssued: 8500000
-        }
-      };
-      
-    default:
-      return {
-        summary: 'This is a preview of the ' + reportType + ' report.',
-        data: 'Detailed report data would be displayed here.'
-      };
-  }
-};
-
 export default function ReportPreview({ report, onClose, onDownload }: ReportPreviewProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('preview');
   const [zoomLevel, setZoomLevel] = useState(100);
-  const [reportData, setReportData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Simulate loading report data
-    const timer = setTimeout(() => {
-      setReportData(getMockReportData(report.reportType));
-      setLoading(false);
-    }, 1000);
+    // Refresh report status to get latest data
+    const refreshReport = async () => {
+      if (report.status === 'Completed' || report.status === 'Processing') {
+        setLoading(true);
+        setError(null);
+        try {
+          const updatedReport = await reportService.getReport(report.id);
+          if (!updatedReport.success) {
+            setError(updatedReport.error || 'Failed to load report data');
+          }
+        } catch (err) {
+          console.error('Error refreshing report:', err);
+          setError(err instanceof Error ? err.message : 'Failed to load report data');
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
 
-    return () => clearTimeout(timer);
-  }, [report]);
+    refreshReport();
+  }, [report.id, report.status]);
 
   const handleDownload = () => {
     if (onDownload) {
@@ -162,316 +96,7 @@ export default function ReportPreview({ report, onClose, onDownload }: ReportPre
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return `SLE ${amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-  };
 
-  const renderTaxCompliancePreview = (data: any) => (
-    <div className="space-y-6">
-      {/* Client Header */}
-      <Card className="bg-sierra-blue-50 border-sierra-blue-200">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-2xl font-bold text-sierra-blue-900">{data.clientName}</h2>
-              <p className="text-sierra-blue-700">Client ID: {data.clientNumber}</p>
-            </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-sierra-blue-900">{data.complianceScore}/100</div>
-              <Badge className="mt-1" variant={data.complianceGrade === 'A' ? 'default' : 'secondary'}>
-                Grade {data.complianceGrade}
-              </Badge>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <div className="text-2xl font-bold">{formatCurrency(data.summary.totalTaxLiability)}</div>
-              <div className="text-sm text-muted-foreground">Total Tax Liability</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-green-600">{formatCurrency(data.summary.totalPaid)}</div>
-              <div className="text-sm text-muted-foreground">Total Paid</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-red-600">{formatCurrency(data.summary.outstandingAmount)}</div>
-              <div className="text-sm text-muted-foreground">Outstanding</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-orange-600">{formatCurrency(data.summary.penaltiesApplied)}</div>
-              <div className="text-sm text-muted-foreground">Penalties</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Filing Status */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filing Status</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {data.filingStatus.map((filing: any, index: number) => (
-              <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  {filing.status === 'Filed' ? (
-                    <CheckCircle className="h-5 w-5 text-green-600" />
-                  ) : (
-                    <AlertCircle className="h-5 w-5 text-red-600" />
-                  )}
-                  <div>
-                    <div className="font-medium">{filing.taxType}</div>
-                    <div className="text-sm text-muted-foreground">
-                      Due: {format(new Date(filing.dueDate), 'MMM d, yyyy')}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <Badge variant={filing.status === 'Filed' ? 'default' : 'destructive'}>
-                    {filing.status}
-                  </Badge>
-                  {filing.filedDate && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Filed: {format(new Date(filing.filedDate), 'MMM d')}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Upcoming Deadlines */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Upcoming Deadlines</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {data.upcomingDeadlines.map((deadline: any, index: number) => (
-              <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Clock className="h-5 w-5 text-orange-600" />
-                  <div>
-                    <div className="font-medium">{deadline.taxType}</div>
-                    <div className="text-sm text-muted-foreground">{deadline.description}</div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-medium">
-                    {format(new Date(deadline.dueDate), 'MMM d, yyyy')}
-                  </div>
-                  <div className="text-xs text-orange-600">
-                    {deadline.daysRemaining} days remaining
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
-  const renderPaymentHistoryPreview = (data: any) => (
-    <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-2xl font-bold">{data.totalPayments}</div>
-                <div className="text-sm text-muted-foreground">Total Payments</div>
-              </div>
-              <FileText className="h-8 w-8 text-sierra-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-2xl font-bold">{formatCurrency(data.totalAmount)}</div>
-                <div className="text-sm text-muted-foreground">Total Amount</div>
-              </div>
-              <DollarSign className="h-8 w-8 text-sierra-green-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-2xl font-bold">{data.paymentsByMethod[0].method}</div>
-                <div className="text-sm text-muted-foreground">Most Used Method</div>
-              </div>
-              <TrendingUp className="h-8 w-8 text-sierra-gold-600" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Payment Methods Breakdown */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment Methods</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {data.paymentsByMethod.map((method: any, index: number) => (
-              <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                <div>
-                  <div className="font-medium">{method.method}</div>
-                  <div className="text-sm text-muted-foreground">{method.count} transactions</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-bold">{formatCurrency(method.amount)}</div>
-                  <div className="text-sm text-muted-foreground">{method.percentage}%</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Recent Payments */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Payments</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {data.recentPayments.map((payment: any, index: number) => (
-              <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  <div>
-                    <div className="font-medium">{formatCurrency(payment.amount)}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {payment.taxType} • {payment.method}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm">{format(new Date(payment.date), 'MMM d, yyyy')}</div>
-                  <Badge variant="default" className="mt-1">
-                    {payment.status}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
-  const renderKPISummaryPreview = (data: any) => (
-    <div className="space-y-6">
-      {/* Client Metrics */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Client Metrics</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-sierra-blue-600">{data.clientMetrics.totalClients}</div>
-              <div className="text-sm text-muted-foreground">Total Clients</div>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-green-600">{data.clientMetrics.activeClients}</div>
-              <div className="text-sm text-muted-foreground">Active Clients</div>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-sierra-gold-600">{data.clientMetrics.newClients}</div>
-              <div className="text-sm text-muted-foreground">New Clients</div>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-red-600">{data.clientMetrics.churnedClients}</div>
-              <div className="text-sm text-muted-foreground">Churned</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Revenue Metrics */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Revenue Metrics</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <div className="text-2xl font-bold">{formatCurrency(data.revenueMetrics.totalRevenue)}</div>
-              <div className="text-sm text-muted-foreground">Total Revenue</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-green-600">+{data.revenueMetrics.revenueGrowth}%</div>
-              <div className="text-sm text-muted-foreground">Growth Rate</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold">{formatCurrency(data.revenueMetrics.averageRevenuePerClient)}</div>
-              <div className="text-sm text-muted-foreground">Avg per Client</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold">{formatCurrency(data.revenueMetrics.recurringRevenue)}</div>
-              <div className="text-sm text-muted-foreground">Recurring</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Compliance Metrics */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Compliance Metrics</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <div className="text-2xl font-bold text-sierra-blue-600">{data.complianceMetrics.averageComplianceScore}</div>
-              <div className="text-sm text-muted-foreground">Avg Compliance Score</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-green-600">{data.complianceMetrics.clientsWithGradeA}</div>
-              <div className="text-sm text-muted-foreground">Grade A Clients</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-orange-600">{data.complianceMetrics.clientsWithIssues}</div>
-              <div className="text-sm text-muted-foreground">With Issues</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-red-600">{formatCurrency(data.complianceMetrics.totalPenaltiesIssued)}</div>
-              <div className="text-sm text-muted-foreground">Total Penalties</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
-  const renderGenericPreview = (data: any) => (
-    <Card>
-      <CardContent className="p-8">
-        <div className="text-center">
-          <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-          <h3 className="text-lg font-medium mb-2">{report.reportType} Report</h3>
-          <p className="text-muted-foreground mb-4">
-            This is a preview of your {report.reportType} report. The actual report will contain detailed data and analysis.
-          </p>
-          <div className="text-sm text-muted-foreground">
-            <p>Generated: {format(new Date(report.createdAt), 'PPP pp')}</p>
-            {report.parameters && Object.keys(report.parameters).length > 0 && (
-              <p className="mt-2">Parameters: {Object.keys(report.parameters).join(', ')}</p>
-            )}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
 
   return (
     <div className="space-y-6">
@@ -540,25 +165,98 @@ export default function ReportPreview({ report, onClose, onDownload }: ReportPre
               <Card>
                 <CardContent className="p-8">
                   <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sierra-blue-600 mx-auto mb-4"></div>
-                    <p className="text-muted-foreground">Loading report preview...</p>
+                    <Skeleton className="h-8 w-8 mx-auto mb-4" />
+                    <Skeleton className="h-4 w-48 mx-auto" />
+                    <p className="text-muted-foreground mt-4">Loading report preview...</p>
                   </div>
                 </CardContent>
               </Card>
-            ) : reportData ? (
-              <>
-                {(report.reportType === 'TaxCompliance' || report.reportType === 'TaxSummary') && renderTaxCompliancePreview(reportData)}
-                {report.reportType === 'PaymentHistory' && renderPaymentHistoryPreview(reportData)}
-                {report.reportType === 'KPISummary' && renderKPISummaryPreview(reportData)}
-                {!['TaxCompliance', 'TaxSummary', 'PaymentHistory', 'KPISummary'].includes(report.reportType) && renderGenericPreview(reportData)}
-              </>
-            ) : (
-              <Alert>
+            ) : error ? (
+              <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  Unable to load report preview. Please try downloading the report directly.
+                  {error}
                 </AlertDescription>
               </Alert>
+            ) : report.status === 'Completed' ? (
+              <Card>
+                <CardContent className="p-8">
+                  <div className="text-center">
+                    <FileText className="h-16 w-16 mx-auto mb-4 text-sierra-blue-600" />
+                    <h3 className="text-lg font-medium mb-2">{report.reportType} Report</h3>
+                    <p className="text-muted-foreground mb-4">
+                      This report has been completed. Download the full report to view detailed data and analysis.
+                    </p>
+                    {report.downloadUrl && (
+                      <div className="mt-4">
+                        <Button onClick={handleDownload}>
+                          <Download className="mr-2 h-4 w-4" />
+                          Download Report
+                        </Button>
+                      </div>
+                    )}
+                    <div className="text-sm text-muted-foreground mt-6">
+                      <p>Report ID: {report.id}</p>
+                      <p>Generated: {format(new Date(report.createdAt), 'PPP pp')}</p>
+                      {report.completedAt && (
+                        <p>Completed: {format(new Date(report.completedAt), 'PPP pp')}</p>
+                      )}
+                      {report.fileSize && (
+                        <p>File Size: {(report.fileSize / 1024 / 1024).toFixed(2)} MB</p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : report.status === 'Processing' ? (
+              <Card>
+                <CardContent className="p-8">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sierra-blue-600 mx-auto mb-4"></div>
+                    <h3 className="text-lg font-medium mb-2">Report Processing</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Your report is currently being generated. Preview will be available once processing is complete.
+                    </p>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
+                      <div 
+                        className="bg-sierra-blue-600 h-2.5 rounded-full transition-all duration-300" 
+                        style={{ width: `${getNumericDefault(report.progress)}%` }}
+                      ></div>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Progress: {getNumericDefault(report.progress)}%
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : report.status === 'Failed' ? (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="font-medium mb-2">Report Generation Failed</div>
+                  {report.errorMessage ? (
+                    <p>{report.errorMessage}</p>
+                  ) : (
+                    <p>An error occurred while generating this report. Please try generating a new report.</p>
+                  )}
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Card>
+                <CardContent className="p-8">
+                  <div className="text-center">
+                    <Clock className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+                    <h3 className="text-lg font-medium mb-2">{report.reportType} Report</h3>
+                    <p className="text-muted-foreground mb-4">
+                      This report is pending generation. Preview will be available once processing begins.
+                    </p>
+                    <div className="text-sm text-muted-foreground">
+                      <p>Status: {getStringDefault(report.status)}</p>
+                      <p>Created: {format(new Date(report.createdAt), 'PPP pp')}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </div>
         </TabsContent>

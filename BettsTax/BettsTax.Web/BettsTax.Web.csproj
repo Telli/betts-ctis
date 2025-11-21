@@ -39,6 +39,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BettsTax.Core\BettsTax.Core.csproj" />
+    <ProjectReference Include="..\BettsTax.Data\BettsTax.Data.csproj" />
     <ProjectReference Include="..\BettsTax.Shared\BettsTax.Shared.csproj" />
   </ItemGroup>
 

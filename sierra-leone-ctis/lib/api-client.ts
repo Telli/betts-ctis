@@ -24,56 +24,6 @@ const buildUrl = (endpoint: string): string => {
   }
 };
 
-/**
- * Get the authentication token from local storage or cookies
- */
-export const getToken = (): string | null => {
-  if (typeof window !== 'undefined') {
-    // Try localStorage first
-    const localToken = localStorage.getItem('auth_token');
-    if (localToken) return localToken;
-
-    // Fallback to cookies
-    const cookies = document.cookie.split(';');
-    for (const cookie of cookies) {
-      const [name, value] = cookie.trim().split('=');
-      if (name === 'auth_token') {
-        return value;
-      }
-    }
-  }
-  return null;
-};
-
-/**
- * Set the authentication token in local storage and cookies
- */
-export const setToken = (token: string): void => {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('auth_token', token);
-    // Also set as cookie for middleware access
-    document.cookie = `auth_token=${token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
-  }
-};
-
-/**
- * Remove the authentication token from local storage and cookies
- */
-export const removeToken = (): void => {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('auth_token');
-    // Also remove cookie
-    document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-  }
-};
-
-/**
- * Check if the user is authenticated
- */
-export const isAuthenticated = (): boolean => {
-  return !!getToken();
-};
-
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: any;
@@ -103,14 +53,10 @@ export const apiRequest = async <T>(
     responseType = 'json'
   } = options;
 
-  const token = getToken();
   const headers: Record<string, string> = {
     ...customHeaders
   };
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
   // Add on-behalf headers for permission tracking
   if (onBehalfOf) {
@@ -140,15 +86,43 @@ export const apiRequest = async <T>(
   }
 
   const url = buildUrl(endpoint);
-  const response = await fetch(url, config);
+  let response = await fetch(url, config);
   
-  // Handle unauthorized responses
-  if (response.status === 401) {
-    removeToken();
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login';
+  // Handle unauthorized responses with automatic token refresh
+  // Phase 1: Automatic refresh token rotation
+  if (response.status === 401 && !endpoint.includes('/auth/refresh') && !endpoint.includes('/auth/login')) {
+    try {
+      // Attempt to refresh the token
+      const refreshResponse = await fetch(buildUrl('/api/auth/refresh'), {
+        method: 'POST',
+        credentials: 'include'
+      });
+      
+      if (refreshResponse.ok) {
+        // Retry the original request with new token
+        response = await fetch(url, config);
+      } else {
+        // Refresh failed, throw unauthorized error
+        const error = new Error('Session expired') as ApiError;
+        error.code = 'UNAUTHORIZED';
+        error.status = 401;
+        throw error;
+      }
+    } catch (refreshError) {
+      // Refresh attempt failed
+      const error = new Error('Unauthorized') as ApiError;
+      error.code = 'UNAUTHORIZED';
+      error.status = 401;
+      throw error;
     }
-    throw new Error('Unauthorized');
+  }
+  
+  // If still unauthorized after refresh attempt, throw error
+  if (response.status === 401) {
+    const error = new Error('Unauthorized') as ApiError;
+    error.code = 'UNAUTHORIZED';
+    error.status = 401;
+    throw error;
   }
 
   // Handle permission denied responses

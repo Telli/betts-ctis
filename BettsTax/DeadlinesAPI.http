@@ -1,0 +1,116 @@
+# REST Client file for BettsTax Deadlines API quick checks
+# Requires VS Code REST Client extension or similar
+
+@baseUrl=http://localhost:5001
+@token=REPLACE_WITH_JWT
+
+### Login (copy token -> set @token above)
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@thebettsfirmsl.com",
+  "password": "AdminPass123!"
+}
+
+### List deadlines (filters optional)
+GET {{baseUrl}}/api/deadlines?status=all&type=all&priority=all&clientId=&fromDate=&toDate=
+Authorization: Bearer {{token}}
+
+### Upcoming deadlines (next 30 days, optional clientId)
+GET {{baseUrl}}/api/deadlines/upcoming?days=30&clientId=
+Authorization: Bearer {{token}}
+
+### Overdue deadlines (optional clientId)
+GET {{baseUrl}}/api/deadlines/overdue?clientId=
+Authorization: Bearer {{token}}
+
+### Deadline statistics (optional clientId)
+GET {{baseUrl}}/api/deadlines/stats?clientId=
+Authorization: Bearer {{token}}
+
+### Create deadline (adjust clientId)
+POST {{baseUrl}}/api/deadlines
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "GST Filing",
+  "type": "tax-filing",
+  "description": "Quarterly GST",
+  "dueDate": "{{$datetime iso8601 3 d}}",
+  "priority": "high",
+  "category": "GST",
+  "clientId": 1,
+  "amount": 1500,
+  "taxYear": {{$localDatetime "yyyy"}},
+  "taxType": "GST",
+  "notes": "Created via .http"
+}
+
+### Update deadline (set {id})
+PUT {{baseUrl}}/api/deadlines/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "description": "Updated description",
+  "amount": 2000,
+  "priority": "medium"
+}
+
+### Mark deadline complete (set {id})
+PUT {{baseUrl}}/api/deadlines/1/complete
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "notes": "Completed via .http"
+}
+
+### Get reminders for a deadline (set {deadlineId})
+GET {{baseUrl}}/api/deadlines/1/reminders
+Authorization: Bearer {{token}}
+
+### Set reminders for a deadline
+POST {{baseUrl}}/api/deadlines/1/reminders
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "daysBefore": [7, 1],
+  "methods": ["sms", "email"]
+}
+
+### Update reminder (set {reminderId} e.g., sms-123)
+PUT {{baseUrl}}/api/deadlines/reminders/sms-1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "status": "sent"
+}
+
+### Delete reminder (set {reminderId} e.g., sms-123)
+DELETE {{baseUrl}}/api/deadlines/reminders/sms-1
+Authorization: Bearer {{token}}
+
+### Calendar for month (include reminders)
+GET {{baseUrl}}/api/deadlines/calendar?year={{$localDatetime "yyyy"}}&month={{$localDatetime "MM"}}&includeReminders=true
+Authorization: Bearer {{token}}
+
+### Sierra Leone tax calendar (year)
+GET {{baseUrl}}/api/deadlines/sierra-leone-calendar?year={{$localDatetime "yyyy"}}
+Authorization: Bearer {{token}}
+
+### Analytics (timeRange: 3m|6m|12m)
+GET {{baseUrl}}/api/deadlines/analytics?timeRange=6m
+Authorization: Bearer {{token}}
+
+### Export CSV (downloads file)
+GET {{baseUrl}}/api/deadlines/export?format=csv
+Authorization: Bearer {{token}}
+
+### Export iCal (downloads file)
+GET {{baseUrl}}/api/deadlines/export?format=ics
+Authorization: Bearer {{token}}

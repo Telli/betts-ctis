@@ -25,7 +25,7 @@ namespace BettsTax.Core.DTOs
         public DateTime UpdatedDate { get; set; }
         public List<DocumentDto> Documents { get; set; } = new();
         public List<PaymentDto> Payments { get; set; } = new();
-        
+
         // Computed properties
         public bool IsOverdue => DueDate < DateTime.UtcNow && Status != FilingStatus.Filed;
         public int DaysUntilDue => (DueDate.Date - DateTime.UtcNow.Date).Days;
@@ -78,5 +78,20 @@ namespace BettsTax.Core.DTOs
     {
         public FilingStatus Status { get; set; }
         public string? ReviewComments { get; set; }
+    }
+
+    public class FilingScheduleDto
+    {
+        public int? Id { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public decimal Taxable { get; set; }
+    }
+
+    public class TaxFilingValidationResultDto
+    {
+        public bool IsValid { get; set; }
+        public List<string> Errors { get; set; } = new();
+        public List<string> Warnings { get; set; } = new();
     }
 }

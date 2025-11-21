@@ -318,13 +318,13 @@ namespace BettsTax.Core.Services
                 ? (int)recentFilings.Average(t => (t.FilingDeadline!.Value - t.DateFiled!.Value).TotalDays)
                 : 0;
 
-            var lastMonthFilings = await _db.TaxYears
+            var lastMonthTimelinessFilings = await _db.TaxYears
                 .Where(t => t.DateFiled != null && t.FilingDeadline != null &&
                            t.DateFiled >= lastMonth.AddDays(-30) && t.DateFiled < currentMonth.AddDays(-30))
                 .ToListAsync();
 
-            var lastAvgDaysBeforeDeadline = lastMonthFilings.Count > 0
-                ? (int)lastMonthFilings.Average(t => (t.FilingDeadline!.Value - t.DateFiled!.Value).TotalDays)
+            var lastAvgDaysBeforeDeadline = lastMonthTimelinessFilings.Count > 0
+                ? (int)lastMonthTimelinessFilings.Average(t => (t.FilingDeadline!.Value - t.DateFiled!.Value).TotalDays)
                 : 0;
 
             var timelinessTrendDays = avgDaysBeforeDeadline - lastAvgDaysBeforeDeadline;

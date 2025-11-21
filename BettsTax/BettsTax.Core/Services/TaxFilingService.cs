@@ -30,11 +30,11 @@ namespace BettsTax.Core.Services
         }
 
         public async Task<PagedResult<TaxFilingDto>> GetTaxFilingsAsync(
-            int page, 
-            int pageSize, 
-            string? searchTerm = null, 
-            TaxType? taxType = null, 
-            FilingStatus? status = null, 
+            int page,
+            int pageSize,
+            string? searchTerm = null,
+            TaxType? taxType = null,
+            FilingStatus? status = null,
             int? clientId = null)
         {
             var query = _context.TaxFilings
@@ -48,7 +48,7 @@ namespace BettsTax.Core.Services
             // Apply filters
             if (!string.IsNullOrEmpty(searchTerm))
             {
-                query = query.Where(tf => 
+                query = query.Where(tf =>
                     tf.FilingReference.Contains(searchTerm) ||
                     tf.Client!.BusinessName.Contains(searchTerm) ||
                     tf.Client!.ClientNumber.Contains(searchTerm));
@@ -118,7 +118,7 @@ namespace BettsTax.Core.Services
                 throw new InvalidOperationException("Client not found");
 
             // Generate filing reference if not provided
-            var filingReference = createDto.FilingReference ?? 
+            var filingReference = createDto.FilingReference ??
                 GenerateFilingReference(createDto.TaxType, createDto.TaxYear, createDto.ClientId);
 
             var taxFiling = new TaxFiling
@@ -148,13 +148,13 @@ namespace BettsTax.Core.Services
             await _context.SaveChangesAsync();
 
             // Audit log
-            await _auditService.LogAsync(userId, "CREATE", "TaxFiling", taxFiling.TaxFilingId.ToString(), 
+            await _auditService.LogAsync(userId, "CREATE", "TaxFiling", taxFiling.TaxFilingId.ToString(),
                 $"Created tax filing {filingReference} for client {client.BusinessName}");
 
-            _logger.LogInformation("Created tax filing {FilingReference} for client {ClientId}", 
+            _logger.LogInformation("Created tax filing {FilingReference} for client {ClientId}",
                 filingReference, createDto.ClientId);
 
-            return await GetTaxFilingByIdAsync(taxFiling.TaxFilingId) ?? 
+            return await GetTaxFilingByIdAsync(taxFiling.TaxFilingId) ??
                 throw new InvalidOperationException("Failed to retrieve created tax filing");
         }
 
@@ -275,6 +275,80 @@ namespace BettsTax.Core.Services
                 throw new InvalidOperationException("Failed to retrieve submitted tax filing");
         }
 
+	        public async Task<TaxFilingValidationResultDto> ValidateTaxFilingForSubmissionAsync(int id)
+	        {
+	            var result = new TaxFilingValidationResultDto
+	            {
+	                IsValid = false,
+	                Errors = new List<string>(),
+	                Warnings = new List<string>()
+	            };
+
+	            var taxFiling = await _context.TaxFilings
+	                .Include(tf => tf.Payments)
+	                .FirstOrDefaultAsync(tf => tf.TaxFilingId == id);
+
+	            if (taxFiling == null)
+	            {
+	                result.Errors.Add("Tax filing not found.");
+	                return result;
+	            }
+
+	            // Status validations
+	            if (taxFiling.Status != FilingStatus.Draft)
+	            {
+	                switch (taxFiling.Status)
+	                {
+	                    case FilingStatus.Submitted:
+	                    case FilingStatus.UnderReview:
+	                        result.Errors.Add("This filing has already been submitted for review.");
+	                        break;
+	                    case FilingStatus.Approved:
+	                        result.Errors.Add("This filing has already been approved.");
+	                        break;
+	                    case FilingStatus.Rejected:
+	                        result.Errors.Add("This filing was rejected during review. Please address the review comments and update the filing before resubmitting.");
+	                        break;
+	                    case FilingStatus.Filed:
+	                        result.Errors.Add("This filing has already been filed and cannot be resubmitted.");
+	                        break;
+	                    default:
+	                        result.Errors.Add("Only draft tax filings can be submitted.");
+	                        break;
+	                }
+	            }
+
+	            // Due date / overdue warnings
+	            if (taxFiling.DueDate.HasValue)
+	            {
+	                if (taxFiling.DueDate.Value.Date < DateTime.UtcNow.Date && taxFiling.Status != FilingStatus.Filed)
+	                {
+	                    result.Warnings.Add("The filing is past its due date; penalties and interest may apply.");
+	                }
+	            }
+	            else
+	            {
+	                result.Warnings.Add("Due date has not been set for this filing.");
+	            }
+
+	            // Tax liability warnings
+	            if (taxFiling.TaxLiability <= 0)
+	            {
+	                result.Warnings.Add("Tax liability has not been calculated or is zero. Please ensure the assessment is up to date before submitting.");
+	            }
+
+	            // Schedule warnings
+	            var hasSchedules = await _context.FilingSchedules.AnyAsync(s => s.TaxFilingId == id);
+	            if (!hasSchedules)
+	            {
+	                result.Warnings.Add("No schedules have been saved for this filing. Assessment may be incomplete.");
+	            }
+
+	            result.IsValid = result.Errors.Count == 0;
+	            return result;
+	        }
+
+
         public async Task<TaxFilingDto> ReviewTaxFilingAsync(int id, ReviewTaxFilingDto reviewDto, string userId)
         {
             var taxFiling = await _context.TaxFilings.FindAsync(id);
@@ -305,12 +379,12 @@ namespace BettsTax.Core.Services
         public async Task<List<TaxFilingDto>> GetUpcomingDeadlinesAsync(int days = 30)
         {
             var cutoffDate = DateTime.UtcNow.AddDays(days);
-            
+
             var taxFilings = await _context.TaxFilings
                 .Include(tf => tf.Client)
                 .Include(tf => tf.SubmittedBy)
                 .Include(tf => tf.ReviewedBy)
-                .Where(tf => tf.DueDate <= cutoffDate && 
+                .Where(tf => tf.DueDate <= cutoffDate &&
                            tf.Status != FilingStatus.Filed &&
                            tf.DueDate >= DateTime.UtcNow.Date)
                 .OrderBy(tf => tf.DueDate)
@@ -345,12 +419,12 @@ namespace BettsTax.Core.Services
         /// Calculate comprehensive tax liability including penalties and interest
         /// </summary>
         public async Task<TaxCalculationResult> CalculateComprehensiveTaxLiabilityAsync(
-            int clientId, 
-            TaxType taxType, 
-            int taxYear, 
-            decimal taxableAmount, 
+            int clientId,
+            TaxType taxType,
+            int taxYear,
+            decimal taxableAmount,
             DateTime dueDate,
-            decimal annualTurnover = 0, 
+            decimal annualTurnover = 0,
             bool isIndividual = false)
         {
             // Get client for taxpayer category
@@ -409,7 +483,7 @@ namespace BettsTax.Core.Services
                 // Apply filters
                 if (!string.IsNullOrEmpty(searchTerm))
                 {
-                    query = query.Where(tf => 
+                    query = query.Where(tf =>
                         tf.FilingReference.Contains(searchTerm) ||
                         tf.Client!.BusinessName.Contains(searchTerm));
                 }
@@ -529,7 +603,7 @@ namespace BettsTax.Core.Services
                     taxFiling.WithholdingTaxSubtype = updateDto.WithholdingTaxSubtype;
                 if (updateDto.IsResident.HasValue)
                     taxFiling.IsResident = updateDto.IsResident.Value;
-                    
+
                 taxFiling.UpdatedDate = DateTime.UtcNow;
                 taxFiling.LastModifiedByAssociateId = associateId;
 

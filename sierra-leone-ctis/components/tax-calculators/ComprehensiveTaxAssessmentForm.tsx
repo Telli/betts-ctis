@@ -14,15 +14,14 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DatePicker } from '@/components/ui/date-picker';
+import { format } from 'date-fns';
 import { 
   Calculator, 
   Plus,
   Minus,
   AlertTriangle, 
   Info,
-  CalendarIcon,
   CheckCircle,
   XCircle,
   DollarSign,
@@ -33,8 +32,6 @@ import {
   Award,
   AlertCircle
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { TaxCalculationService, ComprehensiveAssessmentRequest, ComprehensiveAssessment, TaxAllowance, PayrollEmployee, ExciseDutyItem } from '@/lib/services/tax-calculation-service';
 
@@ -362,32 +359,11 @@ export default function ComprehensiveTaxAssessmentForm({
                 {/* Due Date */}
                 <div className="space-y-2">
                   <Label>Income Tax Due Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !form.watch('incomeTaxDueDate') && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {form.watch('incomeTaxDueDate') ? (
-                          format(form.watch('incomeTaxDueDate')!, "PPP")
-                        ) : (
-                          <span>Pick due date</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={form.watch('incomeTaxDueDate')}
-                        onSelect={(date) => form.setValue('incomeTaxDueDate', date)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <DatePicker
+                    value={form.watch('incomeTaxDueDate') ?? null}
+                    onChange={(date) => form.setValue('incomeTaxDueDate', date || undefined)}
+                    placeholder="Pick due date"
+                  />
                 </div>
               </TabsContent>
 
@@ -441,32 +417,11 @@ export default function ComprehensiveTaxAssessmentForm({
                 {/* Due Date */}
                 <div className="space-y-2">
                   <Label>GST Due Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !form.watch('gstDueDate') && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {form.watch('gstDueDate') ? (
-                          format(form.watch('gstDueDate')!, "PPP")
-                        ) : (
-                          <span>Pick due date</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={form.watch('gstDueDate')}
-                        onSelect={(date) => form.setValue('gstDueDate', date)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <DatePicker
+                    value={form.watch('gstDueDate') ?? null}
+                    onChange={(date) => form.setValue('gstDueDate', date || undefined)}
+                    placeholder="Pick due date"
+                  />
                 </div>
               </TabsContent>
 
@@ -551,32 +506,11 @@ export default function ComprehensiveTaxAssessmentForm({
                 {/* Due Date */}
                 <div className="space-y-2">
                   <Label>Payroll Tax Due Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !form.watch('payrollTaxDueDate') && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {form.watch('payrollTaxDueDate') ? (
-                          format(form.watch('payrollTaxDueDate')!, "PPP")
-                        ) : (
-                          <span>Pick due date</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={form.watch('payrollTaxDueDate')}
-                        onSelect={(date) => form.setValue('payrollTaxDueDate', date)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <DatePicker
+                    value={form.watch('payrollTaxDueDate') ?? null}
+                    onChange={(date) => form.setValue('payrollTaxDueDate', date || undefined)}
+                    placeholder="Pick due date"
+                  />
                 </div>
               </TabsContent>
 
@@ -655,32 +589,11 @@ export default function ComprehensiveTaxAssessmentForm({
                 {/* Due Date */}
                 <div className="space-y-2">
                   <Label>Excise Duty Due Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !form.watch('exciseDutyDueDate') && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {form.watch('exciseDutyDueDate') ? (
-                          format(form.watch('exciseDutyDueDate')!, "PPP")
-                        ) : (
-                          <span>Pick due date</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={form.watch('exciseDutyDueDate')}
-                        onSelect={(date) => form.setValue('exciseDutyDueDate', date)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <DatePicker
+                    value={form.watch('exciseDutyDueDate') ?? null}
+                    onChange={(date) => form.setValue('exciseDutyDueDate', date || undefined)}
+                    placeholder="Pick due date"
+                  />
                 </div>
               </TabsContent>
 

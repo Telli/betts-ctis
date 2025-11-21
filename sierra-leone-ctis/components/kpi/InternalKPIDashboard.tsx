@@ -4,12 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, RefreshCw, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
+import { DatePicker } from '@/components/ui/date-picker';
+import { RefreshCw, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
-import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useState } from 'react';
 import KPICard from './KPICard';
 import ComplianceTrendChart from './ComplianceTrendChart';
 import TaxTypeBreakdownChart from './TaxTypeBreakdownChart';
@@ -74,41 +73,20 @@ export default function InternalKPIDashboard() {
         
         <div className="flex items-center space-x-2">
           {/* Date Range Picker */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-[280px] justify-start text-left font-normal",
-                  !dateRange && "text-muted-foreground"
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {dateRange?.from ? (
-                  dateRange.to ? (
-                    <>
-                      {format(dateRange.from, "LLL dd, y")} -{" "}
-                      {format(dateRange.to, "LLL dd, y")}
-                    </>
-                  ) : (
-                    format(dateRange.from, "LLL dd, y")
-                  )
-                ) : (
-                  <span>Pick a date range</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                initialFocus
-                mode="range"
-                defaultMonth={dateRange?.from}
-                selected={dateRange.from && dateRange.to ? { from: dateRange.from, to: dateRange.to } : undefined}
-                onSelect={(range) => setDateRange(range ? { from: range.from, to: range.to } : {})}
-                numberOfMonths={2}
-              />
-            </PopoverContent>
-          </Popover>
+          <div className="flex items-center space-x-2">
+            <DatePicker
+              value={dateRange?.from ?? null}
+              onChange={(date) => setDateRange(prev => ({ ...prev, from: date || undefined }))}
+              placeholder="From date"
+            />
+            <span className="text-sm text-muted-foreground">to</span>
+            <DatePicker
+              value={dateRange?.to ?? null}
+              onChange={(date) => setDateRange(prev => ({ ...prev, to: date || undefined }))}
+              placeholder="To date"
+              minDate={dateRange?.from}
+            />
+          </div>
 
           {/* Refresh Button */}
           <Button 

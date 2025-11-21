@@ -10,12 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { useToast } from '@/components/ui/use-toast'
 import { PaymentService, ClientService, TaxFilingService, PaymentMethod, CreatePaymentDto, TaxFilingDto } from '@/lib/services'
-import { CalendarIcon } from 'lucide-react'
-import { Calendar } from '@/components/ui/calendar'
 import ClientSearchSelect from '@/components/client-search-select'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { cn } from '@/lib/utils'
-import { format } from 'date-fns'
+import { DatePicker } from '@/components/ui/date-picker'
 
 const paymentSchema = z
   .object({
@@ -317,37 +313,14 @@ export default function PaymentForm({ onSuccess, initialData }: PaymentFormProps
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Payment Date</FormLabel>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <FormControl>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full pl-3 text-left font-normal",
-                          !field.value && "text-muted-foreground"
-                        )}
-                      >
-                        {field.value ? (
-                          format(field.value, "PPP")
-                        ) : (
-                          <span>Pick a date</span>
-                        )}
-                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                      </Button>
-                    </FormControl>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={field.value}
-                      onSelect={field.onChange}
-                      disabled={(date) =>
-                        date > new Date() || date < new Date("1900-01-01")
-                      }
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                <FormControl>
+                  <DatePicker
+                    value={field.value ?? null}
+                    onChange={(d) => field.onChange(d || undefined)}
+                    maxDate={new Date()}
+                    placeholder="Pick a date"
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}

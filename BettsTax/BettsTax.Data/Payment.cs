@@ -3,8 +3,25 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BettsTax.Data
 {
-    public enum PaymentStatus { Pending, Approved, Rejected, Completed }
-    public enum PaymentMethod { BankTransfer, Cash, Cheque, OnlinePayment }
+    public enum PaymentStatus
+    {
+        Pending = 0,
+        Approved = 1,
+        Rejected = 2,
+        Completed = 3,
+        Processing = 4,
+        Failed = 5
+    }
+
+    public enum PaymentMethod
+    {
+        BankTransfer = 0,
+        Cash = 1,
+        Check = 2,
+        Cheque = Check,
+        OnlinePayment = 3,
+        MobileMoney = 4
+    }
 
     public class Payment
     {

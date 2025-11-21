@@ -20,6 +20,11 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Quartz;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
+using System.Threading.Tasks;
+using BettsTax.Web.Constants;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,18 +43,36 @@ builder.Host.UseSerilog(Log.Logger);
 // Add services
 // ---------------------------
 
-// SQLite connection for development
+// PostgreSQL connection (required for pgvector support)
+var connectionString = builder.Configuration.GetConnectionString("PostgresConnection") 
+    ?? builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connectionString, o => o.UseVector()));
 
 // Identity
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
-    options.Password.RequiredLength = 6;
-    options.Password.RequireNonAlphanumeric = false;
+    options.Password.RequiredLength = 12;
+    options.Password.RequireNonAlphanumeric = true;
+    options.Password.RequireDigit = true;
+    options.Password.RequireLowercase = true;
+    options.Password.RequireUppercase = true;
+    options.Password.RequiredUniqueChars = 4;
+    options.User.RequireUniqueEmail = true;
+    options.SignIn.RequireConfirmedEmail = true;
 })
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
+
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Cookie.Name = AuthConstants.AccessTokenCookieName;
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.SlidingExpiration = true;
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(30);
+});
 
 // Jwt
 var jwtSection = builder.Configuration.GetSection("Jwt");
@@ -72,6 +95,18 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(key),
         RoleClaimType = System.Security.Claims.ClaimTypes.Role
     };
+    options.SaveToken = true;
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            if (string.IsNullOrEmpty(context.Token) && context.Request.Cookies.TryGetValue(AuthConstants.AccessTokenCookieName, out var cookieToken))
+            {
+                context.Token = cookieToken;
+            }
+            return Task.CompletedTask;
+        }
+    };
 });
 
 // SAML Authentication Configuration - TODO: Configure SAML properly
@@ -93,6 +128,18 @@ builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 
 // FluentValidation
 builder.Services.AddFluentValidationAutoValidation();
+
+builder.Services.AddValidatorsFromAssemblyContaining<BettsTax.Web.Controllers.AuthController>();
+
+builder.Services.AddAntiforgery(options =>
+{
+    options.Cookie.Name = AuthConstants.CsrfCookieName;
+    options.Cookie.HttpOnly = false; // needs to be readable by client JS to send header
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.HeaderName = AuthConstants.CsrfHeaderName;
+    options.SuppressXFrameOptionsHeader = false;
+});
 
 // Health checks
 builder.Services.AddHealthChecks();
@@ -226,6 +273,7 @@ builder.Services.AddScoped<BettsTax.Core.Services.ISmsService, BettsTax.Core.Ser
 // Activity timeline services
 builder.Services.AddScoped<BettsTax.Core.Services.IActivityTimelineService, BettsTax.Core.Services.ActivityTimelineService>();
 builder.Services.AddScoped<BettsTax.Core.Services.ActivityLogger>();
+builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 
 // Message services
 builder.Services.AddScoped<BettsTax.Core.Services.IMessageService, BettsTax.Core.Services.MessageService>();
@@ -266,8 +314,8 @@ builder.Services.AddHttpClient<BettsTax.Core.Services.CurrencyExchangeService>()
 builder.Services.AddScoped<BettsTax.Core.Services.IComplianceTrackerService, BettsTax.Core.Services.ComplianceTrackerService>();
 builder.Services.AddScoped<BettsTax.Core.Services.IPenaltyCalculationService, BettsTax.Core.Services.PenaltyCalculationService>();
 
-// Data export services
-builder.Services.AddScoped<BettsTax.Core.Services.IDataExportService, BettsTax.Core.Services.DataExportService>();
+// Data export services (temporarily disabled due to file corruption)
+// builder.Services.AddScoped<BettsTax.Core.Services.IDataExportService, BettsTax.Core.Services.DataExportService>();
 builder.Services.AddScoped<BettsTax.Core.Services.IExportFormatService, BettsTax.Core.Services.ExportFormatService>();
 
 // Associate Permission Services
@@ -284,6 +332,7 @@ builder.Services.AddHostedService<BettsTax.Web.Services.KpiBackgroundService>();
 
 // Compliance aggregation service (CTIS Enhancement)
 builder.Services.AddScoped<IComplianceService, BettsTax.Core.Services.ComplianceService>();
+builder.Services.AddScoped<IComplianceDashboardService, BettsTax.Core.Services.ComplianceDashboardService>();
 
 // Reporting Services
 builder.Services.AddScoped<BettsTax.Core.Services.Interfaces.IReportService, BettsTax.Core.Services.ReportService>();
@@ -301,6 +350,13 @@ if (enableWorkflow)
 // Advanced Analytics & Reporting Services (NEW)
 builder.Services.AddScoped<BettsTax.Core.Services.Analytics.IAdvancedQueryBuilderService, BettsTax.Core.Services.Analytics.AdvancedQueryBuilderService>();
 builder.Services.AddScoped<BettsTax.Core.Services.Analytics.IAdvancedAnalyticsService, BettsTax.Core.Services.Analytics.AdvancedAnalyticsService>();
+
+// Phase 3: RAG Bot Services
+builder.Services.AddScoped<BettsTax.Core.Services.Bot.IRAGBotService, BettsTax.Core.Services.Bot.RAGBotService>();
+builder.Services.AddScoped<BettsTax.Core.Services.Bot.IDocumentProcessingService, BettsTax.Core.Services.Bot.DocumentProcessingService>();
+builder.Services.AddScoped<BettsTax.Core.Services.Bot.ILLMProviderFactory, BettsTax.Core.Services.Bot.LLMProviderFactory>();
+builder.Services.AddScoped<BettsTax.Core.Services.Bot.IEncryptionService, BettsTax.Core.Services.Bot.EncryptionService>();
+builder.Services.AddHttpClient("LLMProvider").SetHandlerLifetime(TimeSpan.FromMinutes(5));
 
 // Accounting Integration Services (NEW)
 builder.Services.AddScoped<BettsTax.Core.Services.IAccountingIntegrationFactory, BettsTax.Core.Services.AccountingIntegrationFactory>();
@@ -432,6 +488,7 @@ builder.Services.Configure<FormOptions>(o => {
 builder.Services.AddControllers(options =>
 {
     options.Filters.Add<BettsTax.Web.Filters.AuditActionFilter>();
+    options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
 })
 .AddJsonOptions(options =>
 {
@@ -439,6 +496,15 @@ builder.Services.AddControllers(options =>
     options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
     // Keep property names as-is (don't change casing)
     options.JsonSerializerOptions.PropertyNamingPolicy = null;
+    // Emit enum values as strings for frontend compatibility
+    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
+
+builder.Services.Configure<CookiePolicyOptions>(options =>
+{
+    options.MinimumSameSitePolicy = SameSiteMode.Strict;
+    options.Secure = CookieSecurePolicy.Always;
+    options.HttpOnly = Microsoft.AspNetCore.CookiePolicy.HttpOnlyPolicy.Always;
 });
 
 // Authorization Policies
@@ -563,13 +629,12 @@ using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<BettsTax.Data.ApplicationDbContext>();
         
-        // Log database creation attempt
-        Log.Information("Attempting to create database schema...");
+        // Log database migration attempt
+        Log.Information("Applying database migrations...");
         
-        // For development, use EnsureCreatedAsync to create the database schema
-        // This avoids migration issues and ensures all tables are created
-        var created = await db.Database.EnsureCreatedAsync();
-        Log.Information("Database EnsureCreatedAsync completed. Created: {Created}", created);
+        // Use migrations for proper schema management
+        await db.Database.MigrateAsync();
+        Log.Information("Database migrations completed successfully");
         
         // Check if WorkflowTriggers table exists
         try
@@ -579,7 +644,7 @@ using (var scope = app.Services.CreateScope())
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Error checking WorkflowTriggers table");
+            Log.Error(ex, "Error checking WorkflowTriggers table - table may not exist yet");
         }
     }
 

@@ -6,8 +6,17 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { AlertTriangle, CheckCircle, Clock, XCircle, TrendingUp, FileText, DollarSign, Calendar, Download } from 'lucide-react'
-import { ComplianceService, ComplianceOverviewData, ComplianceItem } from '@/lib/services/compliance-service'
+import { AlertTriangle, CheckCircle, Clock, XCircle, TrendingUp, DollarSign, Download } from 'lucide-react'
+import { ComplianceService } from '@/lib/services/compliance-service'
+import type {
+  ComplianceOverviewData,
+  ComplianceItem,
+  ComplianceTaxTypeSummary,
+  FilingChecklistMatrixRow,
+  PenaltyWarningSummary,
+  DocumentRequirementSummary,
+  ComplianceTimelineEvent,
+} from '@/lib/services/compliance-service'
 import { formatSierraLeones, formatPercentage } from '@/lib/utils/currency'
 import { PageHeader } from '@/components/page-header'
 import { FilingChecklistMatrix } from '@/components/filing-checklist-matrix'
@@ -19,9 +28,15 @@ import { ComplianceTimeline } from '@/components/compliance-timeline'
 export default function CompliancePage() {
   const [complianceData, setComplianceData] = useState<ComplianceItem[]>([])
   const [overviewData, setOverviewData] = useState<ComplianceOverviewData | null>(null)
+  const [taxTypeBreakdown, setTaxTypeBreakdown] = useState<ComplianceTaxTypeSummary[]>([])
+  const [filingMatrix, setFilingMatrix] = useState<FilingChecklistMatrixRow[]>([])
+  const [penaltyWarnings, setPenaltyWarnings] = useState<PenaltyWarningSummary[]>([])
+  const [documentRequirements, setDocumentRequirements] = useState<DocumentRequirementSummary[]>([])
+  const [timelineEvents, setTimelineEvents] = useState<ComplianceTimelineEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('overview')
+  const currentYear = new Date().getFullYear()
 
   useEffect(() => {
     const fetchComplianceData = async () => {
@@ -29,13 +44,40 @@ export default function CompliancePage() {
         setLoading(true)
         setError(null)
         
-        const [complianceItems, overview] = await Promise.all([
+        const [
+          complianceItems,
+          overview,
+          taxTypes,
+          matrix,
+          warnings,
+          documents,
+          timeline
+        ] = await Promise.all([
           ComplianceService.getComplianceData(),
-          ComplianceService.getComplianceOverview()
+          ComplianceService.getComplianceOverview(),
+          ComplianceService.getComplianceByTaxType(),
+          ComplianceService.getFilingChecklistMatrix(currentYear),
+          ComplianceService.getPenaltyWarnings(),
+          ComplianceService.getDocumentSubmissionSummary(),
+          ComplianceService.getComplianceTimeline()
         ])
         
         setComplianceData(complianceItems || [])
         setOverviewData(overview)
+        setTaxTypeBreakdown(taxTypes)
+        setFilingMatrix(matrix)
+        setPenaltyWarnings(warnings)
+        setDocumentRequirements(documents)
+        setTimelineEvents(
+          (timeline || []).map((event) => ({
+            ...event,
+            date: new Date(event.date).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric'
+            })
+          }))
+        )
       } catch (err) {
         console.error('Error fetching compliance data:', err)
         setError('Failed to load compliance data. Please try again later.')
@@ -45,7 +87,7 @@ export default function CompliancePage() {
     }
 
     fetchComplianceData()
-  }, [])
+  }, [currentYear])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -114,21 +156,6 @@ export default function CompliancePage() {
             <Button onClick={() => window.location.reload()}>
               Retry
             </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  if (!complianceData?.length && !loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>No Compliance Data</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">No compliance data is available for your clients.</p>
           </CardContent>
         </Card>
       </div>
@@ -237,7 +264,7 @@ export default function CompliancePage() {
                       <div className="flex items-center gap-2">
                         {getStatusIcon(item.status)}
                         <span className="font-medium">{item.clientName}</span>
-                        <Badge variant="outline">{item.clientName}</Badge>
+                        <Badge variant="outline">{item.taxType || item.type}</Badge>
                       </div>
                       <div className="text-sm text-muted-foreground">
                         {item.type} • {item.taxYear ? `Tax Year ${item.taxYear}` : item.category}
@@ -246,7 +273,7 @@ export default function CompliancePage() {
                     
                     <div className="flex items-center gap-4">
                       <div className="text-right">
-                        {item.complianceScore && (
+                        {typeof item.complianceScore === 'number' && (
                           <div className={`text-sm font-medium ${getScoreColor(item.complianceScore)}`}>
                             Score: {formatPercentage(item.complianceScore)}
                           </div>
@@ -270,6 +297,12 @@ export default function CompliancePage() {
                     </div>
                   </div>
                 ))}
+
+                {complianceData.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    No compliance trackers available yet. Once clients are onboarded, their status will appear here.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -308,31 +341,28 @@ export default function CompliancePage() {
               <CardTitle>Compliance by Tax Type</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {['Income Tax', 'GST', 'Payroll Tax', 'Excise Duty'].map((taxType) => {
-                  const items = (complianceData || []).filter(item => (item.taxType || item.type) === taxType)
-                  const avgScore = items.length > 0 
-                    ? Math.round(items.reduce((sum, item) => sum + (item.complianceScore || 0), 0) / items.length)
-                    : 0
-                  
-                  return (
-                    <div key={taxType} className="flex items-center justify-between p-4 border rounded-lg">
+              {taxTypeBreakdown.length > 0 ? (
+                <div className="space-y-4">
+                  {taxTypeBreakdown.map((tax) => (
+                    <div key={tax.taxType} className="flex items-center justify-between p-4 border rounded-lg">
                       <div>
-                        <div className="font-medium">{taxType}</div>
+                        <div className="font-medium">{tax.taxType}</div>
                         <div className="text-sm text-muted-foreground">
-                          {items.length} clients
+                          {tax.clientCount} clients • {formatSierraLeones(tax.outstandingAmount)} outstanding
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={`text-lg font-bold ${getScoreColor(avgScore)}`}>
-                          {formatPercentage(avgScore)}
+                        <div className={`text-lg font-bold ${getScoreColor(tax.averageScore)}`}>
+                          {formatPercentage(tax.complianceRate)}
                         </div>
-                        <Progress value={avgScore} className="w-24 mt-1" />
+                        <Progress value={tax.complianceRate} className="w-24 mt-1" />
                       </div>
                     </div>
-                  )
-                })}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No tax type breakdown available yet.</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -373,13 +403,13 @@ export default function CompliancePage() {
 
       {/* New Phase 3 Components */}
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-        <FilingChecklistMatrix />
-        <PenaltyWarningsCard />
+        <FilingChecklistMatrix year={currentYear} rows={filingMatrix} />
+        <PenaltyWarningsCard warnings={penaltyWarnings} />
       </div>
 
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-        <DocumentSubmissionTracker />
-        <ComplianceTimeline />
+        <DocumentSubmissionTracker requirements={documentRequirements} />
+        <ComplianceTimeline events={timelineEvents} />
       </div>
     </div>
     </div>

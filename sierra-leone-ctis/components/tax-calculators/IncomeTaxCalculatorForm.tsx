@@ -14,8 +14,9 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Calendar } from '@/components/ui/calendar';
+// Calendar deprecated; using DatePicker
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DatePicker } from '@/components/ui/date-picker';
 import { 
   Plus, 
   Minus, 
@@ -243,9 +244,7 @@ export default function IncomeTaxCalculatorForm({
                 {form.watch('taxpayerCategory') && (
                   <Card className="bg-sierra-blue-50 border-sierra-blue-200">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm text-sierra-blue-800">
-                        Tax Rates for {selectedCategory?.label} (Finance Act 2025)
-                      </CardTitle>
+                      <CardTitle>Tax Rates for {selectedCategory?.label} (Finance Act 2025)</CardTitle>
                     </CardHeader>
                     <CardContent className="pt-0">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
@@ -371,62 +370,18 @@ export default function IncomeTaxCalculatorForm({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Tax Due Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !form.watch('dueDate') && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {form.watch('dueDate') ? (
-                            format(form.watch('dueDate')!, "PPP")
-                          ) : (
-                            <span>Pick due date</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={form.watch('dueDate')}
-                          onSelect={(date) => form.setValue('dueDate', date)}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <DatePicker
+                      value={form.watch('dueDate') ?? null}
+                      onChange={(d) => form.setValue('dueDate', d || undefined)}
+                    />
                   </div>
 
                   <div className="space-y-2">
                     <Label>Payment Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !form.watch('paymentDate') && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {form.watch('paymentDate') ? (
-                            format(form.watch('paymentDate')!, "PPP")
-                          ) : (
-                            <span>Pick payment date</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={form.watch('paymentDate')}
-                          onSelect={(date) => form.setValue('paymentDate', date)}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <DatePicker
+                      value={form.watch('paymentDate') ?? null}
+                      onChange={(d) => form.setValue('paymentDate', d || undefined)}
+                    />
                   </div>
                 </div>
 
@@ -572,45 +527,18 @@ function TaxCalculationResults({ calculation }: { calculation: IncomeTaxCalculat
                       Taxable: {formatCurrency(bracket.taxableAmount)} @ {bracket.rate}%
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-medium">{formatCurrency(bracket.taxAmount)}</div>
-                    <Badge variant="outline">{bracket.rate}%</Badge>
-                  </div>
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Penalties */}
-      {calculation.penalties && (
-        <Card className="border-red-200 bg-red-50">
-          <CardHeader>
-            <CardTitle className="text-red-800">Penalties Applied</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>Late Filing Penalty:</span>
-                <span className="font-medium text-red-600">
-                  {formatCurrency(calculation.penalties.lateFilingPenalty)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Late Payment Interest:</span>
-                <span className="font-medium text-red-600">
-                  {formatCurrency(calculation.penalties.latePaymentInterest)}
-                </span>
-              </div>
-              <Separator />
+            <Separator className="my-3" />
+            {calculation.penalties && (
               <div className="flex justify-between font-medium">
                 <span>Total Penalties:</span>
                 <span className="text-red-600">
                   {formatCurrency(calculation.penalties.totalPenalty)}
                 </span>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       )}

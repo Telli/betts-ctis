@@ -505,4 +505,70 @@ public class DeadlineMonitoringService : IDeadlineMonitoringService
 
         return new List<DateTime>();
     }
+
+    /// <summary>
+    /// Calculate Payroll Tax deadline - Annual returns due January 31
+    /// Phase 2 requirement: Specific Payroll Tax deadline rules
+    /// </summary>
+    public static DateTime CalculatePayrollTaxAnnualDeadline(int taxYear)
+    {
+        return new DateTime(taxYear + 1, 1, 31);
+    }
+
+    /// <summary>
+    /// Calculate foreign employee filing deadline - Within 1 month of start date
+    /// Phase 2 requirement: Foreign employee specific deadline
+    /// </summary>
+    public static DateTime CalculateForeignEmployeeFilingDeadline(DateTime employeeStartDate)
+    {
+        return employeeStartDate.AddMonths(1);
+    }
+
+    /// <summary>
+    /// Calculate Excise Duty deadline - 21 days from delivery/import date
+    /// Phase 2 requirement: Excise Duty specific deadline rules
+    /// </summary>
+    public static DateTime CalculateExciseDutyDeadline(DateTime deliveryOrImportDate)
+    {
+        var deadline = deliveryOrImportDate.AddDays(21);
+        // Move to next business day if falls on weekend
+        return AdjustForWeekend(deadline);
+    }
+
+    /// <summary>
+    /// Calculate GST deadline - Period end + 21 days (not fixed dates)
+    /// Phase 2 requirement: GST deadline based on period end
+    /// </summary>
+    public static DateTime CalculateGstDeadline(DateTime periodEndDate)
+    {
+        var deadline = periodEndDate.AddDays(21);
+        return AdjustForWeekend(deadline);
+    }
+
+    /// <summary>
+    /// Adjust deadline to next business day if it falls on weekend
+    /// Phase 2 requirement: Holiday/weekend handling
+    /// </summary>
+    private static DateTime AdjustForWeekend(DateTime date)
+    {
+        // If Saturday, move to Monday
+        if (date.DayOfWeek == DayOfWeek.Saturday)
+            return date.AddDays(2);
+        
+        // If Sunday, move to Monday
+        if (date.DayOfWeek == DayOfWeek.Sunday)
+            return date.AddDays(1);
+        
+        return date;
+    }
+
+    /// <summary>
+    /// Convert UTC time to Sierra Leone timezone (GMT)
+    /// Phase 2 requirement: Timezone awareness
+    /// </summary>
+    public static DateTime ConvertToSierraLeoneTime(DateTime utcDateTime)
+    {
+        // Sierra Leone is in GMT timezone (UTC+0)
+        return TimeZoneInfo.ConvertTimeFromUtc(utcDateTime, TimeZoneInfo.Utc);
+    }
 }

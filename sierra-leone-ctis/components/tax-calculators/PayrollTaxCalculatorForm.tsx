@@ -12,8 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DatePicker } from '@/components/ui/date-picker';
 import { 
   Calculator, 
   Users, 
@@ -21,14 +20,11 @@ import {
   Minus,
   AlertTriangle, 
   Info,
-  CalendarIcon,
   FileText,
   DollarSign,
   UserPlus,
   TrendingUp
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { TaxCalculationService, PayrollTaxCalculationRequest, PayrollTaxCalculation, PayrollEmployee } from '@/lib/services/tax-calculation-service';
 
@@ -371,7 +367,7 @@ export default function PayrollTaxCalculatorForm({
                 {employeeFields.length > 0 && (
                   <Card className="bg-sierra-gold-50 border-sierra-gold-200">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm text-sierra-gold-800">Payroll Summary</CardTitle>
+                      <CardTitle className="text-sm text-sierra-blue-900">Payroll Summary</CardTitle>
                     </CardHeader>
                     <CardContent className="pt-0">
                       <div className="grid grid-cols-3 gap-4 text-sm">
@@ -398,62 +394,20 @@ export default function PayrollTaxCalculatorForm({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>PAYE Due Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !form.watch('dueDate') && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {form.watch('dueDate') ? (
-                            format(form.watch('dueDate')!, "PPP")
-                          ) : (
-                            <span>Pick due date</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={form.watch('dueDate')}
-                          onSelect={(date) => form.setValue('dueDate', date)}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <DatePicker
+                      value={form.watch('dueDate') ?? null}
+                      onChange={(date) => form.setValue('dueDate', date || undefined)}
+                      placeholder="Pick due date"
+                    />
                   </div>
 
                   <div className="space-y-2">
                     <Label>Remittance Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !form.watch('remittanceDate') && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {form.watch('remittanceDate') ? (
-                            format(form.watch('remittanceDate')!, "PPP")
-                          ) : (
-                            <span>Pick remittance date</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={form.watch('remittanceDate')}
-                          onSelect={(date) => form.setValue('remittanceDate', date)}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <DatePicker
+                      value={form.watch('remittanceDate') ?? null}
+                      onChange={(date) => form.setValue('remittanceDate', date || undefined)}
+                      placeholder="Pick remittance date"
+                    />
                   </div>
                 </div>
 

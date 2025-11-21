@@ -11,8 +11,15 @@ namespace BettsTax.Data
             var context = sp.GetRequiredService<ApplicationDbContext>();
 
             // Check if templates already exist
-            if (await context.ReportTemplates.AnyAsync())
-                return;
+            try
+            {
+                if (await context.ReportTemplates.AnyAsync())
+                    return;
+            }
+            catch (Exception)
+            {
+                // Table might not exist yet, continue with seeding
+            }
 
             var templates = new List<Models.ReportTemplate>
             {
@@ -56,12 +63,12 @@ namespace BettsTax.Data
                     EstimatedDurationSeconds = 120,
                     IsDefault = true,
                     IsActive = true,
-                    SupportedFormats = JsonSerializer.Serialize(new[] { "PDF", "Excel", "CSV" }),
-                    Features = JsonSerializer.Serialize(new[] { "Transaction details", "Payment methods", "Reconciliation", "Trends analysis" }),
+                    SupportedFormats = JsonSerializer.Serialize(new string[] { "PDF", "Excel", "CSV" }),
+                    Features = JsonSerializer.Serialize(new string[] { "Transaction details", "Payment methods", "Reconciliation", "Trends analysis" }),
                     RequiredFields = JsonSerializer.Serialize(new string[] { }),
-                    Parameters = JsonSerializer.Serialize(new[]
+                    Parameters = JsonSerializer.Serialize(new object[]
                     {
-                        new { name = "paymentMethod", type = "select", label = "Payment Method", options = new[] { "All", "Orange Money", "Africell Money", "Bank Transfer" } },
+                        new { name = "paymentMethod", type = "select", label = "Payment Method", options = new string[] { "All", "Orange Money", "Africell Money", "Bank Transfer" } },
                         new { name = "includeFailures", type = "boolean", label = "Include Failed Transactions", @default = false },
                         new { name = "groupByClient", type = "boolean", label = "Group by Client", @default = true }
                     }),
@@ -85,14 +92,14 @@ namespace BettsTax.Data
                     EstimatedDurationSeconds = 150,
                     IsDefault = true,
                     IsActive = true,
-                    SupportedFormats = JsonSerializer.Serialize(new[] { "PDF", "Excel" }),
-                    Features = JsonSerializer.Serialize(new[] { "Activity tracking", "Login analytics", "Document uploads", "Filing status" }),
+                    SupportedFormats = JsonSerializer.Serialize(new string[] { "PDF", "Excel" }),
+                    Features = JsonSerializer.Serialize(new string[] { "Activity tracking", "Login analytics", "Document uploads", "Filing status" }),
                     RequiredFields = JsonSerializer.Serialize(new string[] { }),
-                    Parameters = JsonSerializer.Serialize(new[]
+                    Parameters = JsonSerializer.Serialize(new object[]
                     {
                         new { name = "includeDormant", type = "boolean", label = "Include Dormant Clients", @default = false },
                         new { name = "activityThreshold", type = "number", label = "Activity Threshold (days)", @default = 30 },
-                        new { name = "detailLevel", type = "select", label = "Detail Level", options = new[] { "Summary", "Detailed", "Complete" } }
+                        new { name = "detailLevel", type = "select", label = "Detail Level", options = new string[] { "Summary", "Detailed", "Complete" } }
                     }),
                     DefaultParameterValues = JsonSerializer.Serialize(new Dictionary<string, object>
                     {
@@ -114,14 +121,14 @@ namespace BettsTax.Data
                     EstimatedDurationSeconds = 90,
                     IsDefault = true,
                     IsActive = true,
-                    SupportedFormats = JsonSerializer.Serialize(new[] { "PDF", "Excel" }),
-                    Features = JsonSerializer.Serialize(new[] { "Revenue metrics", "Client metrics", "Compliance metrics", "Trend analysis" }),
+                    SupportedFormats = JsonSerializer.Serialize(new string[] { "PDF", "Excel" }),
+                    Features = JsonSerializer.Serialize(new string[] { "Revenue metrics", "Client metrics", "Compliance metrics", "Trend analysis" }),
                     RequiredFields = JsonSerializer.Serialize(new string[] { }),
-                    Parameters = JsonSerializer.Serialize(new[]
+                    Parameters = JsonSerializer.Serialize(new object[]
                     {
                         new { name = "includeTargets", type = "boolean", label = "Include Targets", @default = true },
                         new { name = "compareWithPrevious", type = "boolean", label = "Compare with Previous Period", @default = true },
-                        new { name = "breakdownLevel", type = "select", label = "Breakdown Level", options = new[] { "Monthly", "Quarterly", "Yearly" } }
+                        new { name = "breakdownLevel", type = "select", label = "Breakdown Level", options = new string[] { "Monthly", "Quarterly", "Yearly" } }
                     }),
                     DefaultParameterValues = JsonSerializer.Serialize(new Dictionary<string, object>
                     {
@@ -143,12 +150,12 @@ namespace BettsTax.Data
                     EstimatedDurationSeconds = 120,
                     IsDefault = true,
                     IsActive = true,
-                    SupportedFormats = JsonSerializer.Serialize(new[] { "PDF", "Excel" }),
-                    Features = JsonSerializer.Serialize(new[] { "Penalty calculations", "Late filing analysis", "Interest calculations", "Mitigation strategies" }),
+                    SupportedFormats = JsonSerializer.Serialize(new string[] { "PDF", "Excel" }),
+                    Features = JsonSerializer.Serialize(new string[] { "Penalty calculations", "Late filing analysis", "Interest calculations", "Mitigation strategies" }),
                     RequiredFields = JsonSerializer.Serialize(new string[] { }),
-                    Parameters = JsonSerializer.Serialize(new[]
+                    Parameters = JsonSerializer.Serialize(new object[]
                     {
-                        new { name = "severityLevel", type = "select", label = "Severity Level", options = new[] { "All", "Minor", "Major", "Critical" } },
+                        new { name = "severityLevel", type = "select", label = "Severity Level", options = new string[] { "All", "Minor", "Major", "Critical" } },
                         new { name = "includeProjections", type = "boolean", label = "Include Projections", @default = true },
                         new { name = "mitigationStrategies", type = "boolean", label = "Include Mitigation Strategies", @default = true }
                     }),
@@ -172,13 +179,13 @@ namespace BettsTax.Data
                     EstimatedDurationSeconds = 100,
                     IsDefault = true,
                     IsActive = true,
-                    SupportedFormats = JsonSerializer.Serialize(new[] { "PDF", "Excel", "CSV" }),
-                    Features = JsonSerializer.Serialize(new[] { "Document tracking", "Verification status", "Missing documents", "Upload history" }),
+                    SupportedFormats = JsonSerializer.Serialize(new string[] { "PDF", "Excel", "CSV" }),
+                    Features = JsonSerializer.Serialize(new string[] { "Document tracking", "Verification status", "Missing documents", "Upload history" }),
                     RequiredFields = JsonSerializer.Serialize(new string[] { }),
-                    Parameters = JsonSerializer.Serialize(new[]
+                    Parameters = JsonSerializer.Serialize(new object[]
                     {
                         new { name = "includeArchived", type = "boolean", label = "Include Archived Documents", @default = false },
-                        new { name = "verificationStatus", type = "select", label = "Verification Status", options = new[] { "All", "Verified", "Pending", "Rejected" } },
+                        new { name = "verificationStatus", type = "select", label = "Verification Status", options = new string[] { "All", "Verified", "Pending", "Rejected" } },
                         new { name = "groupByType", type = "boolean", label = "Group by Type", @default = true }
                     }),
                     DefaultParameterValues = JsonSerializer.Serialize(new Dictionary<string, object>
@@ -201,14 +208,14 @@ namespace BettsTax.Data
                     EstimatedDurationSeconds = 110,
                     IsDefault = true,
                     IsActive = true,
-                    SupportedFormats = JsonSerializer.Serialize(new[] { "PDF", "Excel" }),
-                    Features = JsonSerializer.Serialize(new[] { "Revenue trends", "Client segmentation", "Tax type breakdown", "Growth analysis" }),
+                    SupportedFormats = JsonSerializer.Serialize(new string[] { "PDF", "Excel" }),
+                    Features = JsonSerializer.Serialize(new string[] { "Revenue trends", "Client segmentation", "Tax type breakdown", "Growth analysis" }),
                     RequiredFields = JsonSerializer.Serialize(new string[] { }),
-                    Parameters = JsonSerializer.Serialize(new[]
+                    Parameters = JsonSerializer.Serialize(new object[]
                     {
                         new { name = "includeCharts", type = "boolean", label = "Include Charts", @default = true },
                         new { name = "segmentByCategory", type = "boolean", label = "Segment by Category", @default = true },
-                        new { name = "forecastPeriod", type = "select", label = "Forecast Period", options = new[] { "None", "3 Months", "6 Months", "12 Months" } }
+                        new { name = "forecastPeriod", type = "select", label = "Forecast Period", options = new string[] { "None", "3 Months", "6 Months", "12 Months" } }
                     }),
                     DefaultParameterValues = JsonSerializer.Serialize(new Dictionary<string, object>
                     {
@@ -230,13 +237,13 @@ namespace BettsTax.Data
                     EstimatedDurationSeconds = 140,
                     IsDefault = true,
                     IsActive = true,
-                    SupportedFormats = JsonSerializer.Serialize(new[] { "PDF", "Excel", "CSV" }),
-                    Features = JsonSerializer.Serialize(new[] { "User activity", "System events", "Data modifications", "Security monitoring" }),
+                    SupportedFormats = JsonSerializer.Serialize(new string[] { "PDF", "Excel", "CSV" }),
+                    Features = JsonSerializer.Serialize(new string[] { "User activity", "System events", "Data modifications", "Security monitoring" }),
                     RequiredFields = JsonSerializer.Serialize(new string[] { }),
-                    Parameters = JsonSerializer.Serialize(new[]
+                    Parameters = JsonSerializer.Serialize(new object[]
                     {
-                        new { name = "eventCategory", type = "select", label = "Event Category", options = new[] { "All", "Authentication", "DataModification", "Security", "System" } },
-                        new { name = "severityFilter", type = "select", label = "Severity Filter", options = new[] { "All", "Low", "Medium", "High", "Critical" } },
+                        new { name = "eventCategory", type = "select", label = "Event Category", options = new string[] { "All", "Authentication", "DataModification", "Security", "System" } },
+                        new { name = "severityFilter", type = "select", label = "Severity Filter", options = new string[] { "All", "Low", "Medium", "High", "Critical" } },
                         new { name = "includeSystemEvents", type = "boolean", label = "Include System Events", @default = false }
                     }),
                     DefaultParameterValues = JsonSerializer.Serialize(new Dictionary<string, object>

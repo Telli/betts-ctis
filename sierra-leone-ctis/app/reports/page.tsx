@@ -94,8 +94,8 @@ export default function ReportsPage() {
   const [showPreview, setShowPreview] = useState(false)
   const [selectedReport, setSelectedReport] = useState<ReportRequest | null>(null)
   const [filters, setFilters] = useState({
-    status: '',
-    type: '',
+    status: 'all',
+    type: 'all',
     dateFrom: '',
     dateTo: '',
     search: ''
@@ -119,7 +119,13 @@ export default function ReportsPage() {
   }, [])
 
   const fetchReports = async () => {
-    const result = await reportService.getReports({ ...filters, page, pageSize, sortBy, sortDir })
+    // Transform filters for API: convert "all" to empty string
+    const apiFilters = {
+      ...filters,
+      status: filters.status === 'all' ? '' : filters.status,
+      type: filters.type === 'all' ? '' : filters.type,
+    }
+    const result = await reportService.getReports({ ...apiFilters, page, pageSize, sortBy, sortDir })
     if (result.success && result.data) {
       setReports(result.data)
       const p = result.pagination
@@ -199,7 +205,18 @@ export default function ReportsPage() {
     fetchReports()
   }
 
-  const filteredReports = reports
+  const filteredReports = reports.filter(report => {
+    // Filter by status
+    if (filters.status !== 'all' && report.status !== filters.status) {
+      return false
+    }
+    // Filter by type
+    if (filters.type !== 'all' && report.reportType !== filters.type) {
+      return false
+    }
+    // Additional filters can be added here for date ranges, etc.
+    return true
+  })
 
   // Handle new report generator
   if (showNewGenerator) {
@@ -292,7 +309,7 @@ export default function ReportsPage() {
                   <SelectValue placeholder="All Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Status</SelectItem>
+                  <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="Pending">Pending</SelectItem>
                   <SelectItem value="Processing">Processing</SelectItem>
                   <SelectItem value="Completed">Completed</SelectItem>
@@ -307,7 +324,7 @@ export default function ReportsPage() {
                   <SelectValue placeholder="All Report Types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Types</SelectItem>
+                  <SelectItem value="all">All Types</SelectItem>
                   {reportTypes.map((type) => (
                     <SelectItem key={type.value} value={type.value}>
                       {type.label}

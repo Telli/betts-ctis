@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/page-header';
+import { useToast } from '@/components/ui/use-toast';
+
 import { Save, Send } from 'lucide-react';
 import { FormTab } from './filing-workspace/form-tab';
 import { SchedulesTab } from './filing-workspace/schedules-tab';
@@ -21,18 +23,19 @@ export interface FilingWorkspaceProps {
   mode?: 'create' | 'edit' | 'view';
 }
 
-export function FilingWorkspace({ 
-  filingId, 
-  filing, 
-  onSave, 
+export function FilingWorkspace({
+  filingId,
+  filing,
+  onSave,
   onSubmit,
-  mode = 'edit' 
+  mode = 'edit'
 }: FilingWorkspaceProps) {
   const [activeTab, setActiveTab] = useState('form');
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchedFiling, setFetchedFiling] = useState<TaxFilingDto | undefined>(undefined);
+  const { toast } = useToast();
 
   // Fetch filing when ID is provided and no filing prop is passed
   useEffect(() => {
@@ -68,12 +71,31 @@ export function FilingWorkspace({
       onSubmit?.();
       return;
     }
+
     setIsSubmitting(true);
     try {
+      // Validate filing before attempting submission
+      const validation = await TaxFilingService.validateTaxFilingForSubmission(filingId);
+
+      const errors = validation.errors ?? [];
+      if (!validation.isValid && errors.length > 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Cannot submit filing',
+          description: errors.join(' '),
+        });
+        return;
+      }
+
       await TaxFilingService.submitTaxFiling(filingId);
       onSubmit?.();
     } catch (err) {
       console.error('Submit filing failed', err);
+      toast({
+        variant: 'destructive',
+        title: 'Submission failed',
+        description: 'An error occurred while submitting the filing. Please try again.',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -81,7 +103,7 @@ export function FilingWorkspace({
 
   const isReadOnly = mode === 'view';
   const currentFiling = filing ?? fetchedFiling;
-  const filingTitle = currentFiling 
+  const filingTitle = currentFiling
     ? `${currentFiling.taxType} Return - ${currentFiling.filingReference || `FY ${currentFiling.taxYear}`}`
     : 'New Tax Filing';
 
@@ -97,15 +119,15 @@ export function FilingWorkspace({
         actions={
           !isReadOnly && (
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={handleSaveDraft}
                 disabled={isSaving || isSubmitting || loading}
               >
                 <Save className="w-4 h-4 mr-2" />
                 {isSaving ? 'Saving...' : 'Save Draft'}
               </Button>
-              <Button 
+              <Button
                 onClick={handleSubmit}
                 disabled={isSaving || isSubmitting || loading}
               >

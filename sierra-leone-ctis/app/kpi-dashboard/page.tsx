@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,18 +9,50 @@ import Link from 'next/link';
 import InternalKPIDashboard from '@/components/kpi/InternalKPIDashboard';
 import { PageHeader } from '@/components/page-header';
 import { MetricCard } from '@/components/metric-card';
+import Loading from '@/app/loading';
+import { useKpiDashboardSummary } from '@/lib/hooks/useKPIs';
 
 export default function KPIDashboardPage() {
   const [activeView, setActiveView] = useState<'internal' | 'client'>('internal');
+  const { data: summary, isLoading: summaryLoading, error: summaryError } = useKpiDashboardSummary();
 
-  // Mock data for client performance
-  const clientKPIData = {
-    totalClients: 145,
-    activeClients: 132,
-    avgComplianceScore: 87,
-    avgFilingTime: 12,
-    topPerformer: 'Koroma Industries Ltd.',
+  const internalSummary = summary?.internal;
+  const clientSummary = summary?.client;
+  const summaryErrorMessage = summaryError instanceof Error
+    ? summaryError.message
+    : summaryError
+    ? 'Failed to load KPI summary data.'
+    : null;
+
+  const formatCurrency = (value?: number, currency: string = 'SLE') => {
+    if (value == null) return '—';
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency,
+        maximumFractionDigits: value >= 1 ? 0 : 2,
+      }).format(value);
+    } catch {
+      return `${currency} ${value.toLocaleString()}`;
+    }
   };
+
+  const formatPercent = (value?: number) => {
+    if (value == null) return '—';
+    return `${value.toFixed(1)}%`;
+  };
+
+  const formatDays = (value?: number) => {
+    if (value == null) return '—';
+    return `${value.toFixed(1)} days`;
+  };
+
+  const segmentColours = ['bg-green-600', 'bg-blue-600', 'bg-amber-500', 'bg-sky-500', 'bg-purple-500'];
+  const segments = useMemo(() => clientSummary?.segments ?? [], [clientSummary?.segments]);
+
+  if (summaryLoading && !summary) {
+    return <Loading />;
+  }
 
   return (
     <div className="flex-1 flex flex-col">
@@ -46,7 +78,7 @@ export default function KPIDashboardPage() {
             <TrendingUp className="h-4 w-4 text-sierra-blue" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-sierra-blue">Overview</div>
+            <div className="text-2xl font-bold text-sierra-blue-800">Overview</div>
             <p className="text-xs text-muted-foreground">
               Firm performance metrics
             </p>
@@ -64,7 +96,7 @@ export default function KPIDashboardPage() {
             <Users className="h-4 w-4 text-sierra-gold" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-sierra-gold">Analytics</div>
+            <div className="text-2xl font-bold text-sierra-blue-800">Analytics</div>
             <p className="text-xs text-muted-foreground">
               Client-specific KPIs
             </p>
@@ -82,7 +114,7 @@ export default function KPIDashboardPage() {
             <FileText className="h-4 w-4 text-sierra-green" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-sierra-green">Trends</div>
+            <div className="text-2xl font-bold text-sierra-blue-800">Trends</div>
             <p className="text-xs text-muted-foreground">
               Compliance over time
             </p>
@@ -100,7 +132,7 @@ export default function KPIDashboardPage() {
             <DollarSign className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-purple-600">Finance</div>
+            <div className="text-2xl font-bold text-sierra-blue-800">Finance</div>
             <p className="text-xs text-muted-foreground">
               Revenue and payments
             </p>
@@ -131,50 +163,51 @@ export default function KPIDashboardPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
             <MetricCard
               title="Total Revenue"
-              value="SLE 2.5M"
-              trend="up"
-              trendValue="+15%"
-              subtitle="vs last quarter"
+              value={formatCurrency(internalSummary?.totalRevenue, internalSummary?.revenueCurrency)}
+              trend={internalSummary?.revenueChangePercentage != null ? (internalSummary.revenueChangePercentage > 0 ? 'up' : internalSummary.revenueChangePercentage < 0 ? 'down' : 'neutral') : undefined}
+              trendValue={internalSummary?.revenueChangePercentage != null ? `${internalSummary.revenueChangePercentage > 0 ? '+' : ''}${internalSummary.revenueChangePercentage.toFixed(1)}%` : undefined}
+              subtitle={internalSummary?.referencePeriodLabel}
               icon={<DollarSign className="w-4 h-4" />}
               color="success"
             />
             <MetricCard
               title="Active Clients"
-              value="132"
-              trend="up"
-              trendValue="+8"
-              subtitle="vs last month"
+              value={internalSummary ? internalSummary.activeClients.toLocaleString() : '—'}
+              subtitle={internalSummary ? `${internalSummary.totalClients.toLocaleString()} total` : undefined}
               icon={<Users className="w-4 h-4" />}
               color="primary"
             />
             <MetricCard
               title="Filing Timeliness"
-              value="92%"
-              trend="up"
-              trendValue="+5%"
-              subtitle="on-time filings"
+              value={formatDays(internalSummary?.averageFilingTimelinessDays)}
+              subtitle="avg before deadline"
               icon={<FileText className="w-4 h-4" />}
               color="info"
             />
             <MetricCard
               title="Compliance Rate"
-              value="87%"
-              trend="down"
-              trendValue="-2%"
-              subtitle="vs target"
+              value={formatPercent(internalSummary?.complianceRate)}
+              subtitle="current period"
               icon={<TrendingUp className="w-4 h-4" />}
               color="warning"
             />
             <MetricCard
               title="Avg Processing"
-              value="3.2 days"
-              trend="down"
-              trendValue="-0.8 days"
-              subtitle="faster"
+              value={formatDays(internalSummary?.averageProcessingTimeDays)}
+              subtitle="filing review"
               icon={<Activity className="w-4 h-4" />}
               color="success"
             />
           </div>
+
+          {summaryErrorMessage && (
+            <Card className="border-destructive/40">
+              <CardHeader>
+                <CardTitle>Error loading summary</CardTitle>
+                <CardDescription>{summaryErrorMessage}</CardDescription>
+              </CardHeader>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -197,41 +230,35 @@ export default function KPIDashboardPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
             <MetricCard
               title="Total Clients"
-              value={clientKPIData.totalClients}
+              value={clientSummary ? clientSummary.totalClients.toLocaleString() : '—'}
               icon={<Users className="w-4 h-4" />}
               color="primary"
             />
             <MetricCard
               title="Active Clients"
-              value={clientKPIData.activeClients}
-              trend="up"
-              trendValue="+8"
-              subtitle="this month"
+              value={clientSummary ? clientSummary.activeClients.toLocaleString() : '—'}
+              subtitle={clientSummary ? `${clientSummary.totalClients.toLocaleString()} total` : undefined}
               icon={<Users className="w-4 h-4" />}
               color="success"
             />
             <MetricCard
               title="Avg Compliance"
-              value={`${clientKPIData.avgComplianceScore}%`}
-              trend="up"
-              trendValue="+3%"
+              value={formatPercent(clientSummary?.averageComplianceScore)}
               subtitle="client average"
               icon={<TrendingUp className="w-4 h-4" />}
               color="info"
             />
             <MetricCard
               title="Avg Filing Time"
-              value={`${clientKPIData.avgFilingTime} days`}
-              trend="down"
-              trendValue="-2 days"
+              value={formatDays(clientSummary?.averageFilingTimeDays)}
               subtitle="before deadline"
               icon={<FileText className="w-4 h-4" />}
               color="success"
             />
             <MetricCard
               title="Top Performer"
-              value="98%"
-              subtitle={clientKPIData.topPerformer}
+              value={formatPercent(clientSummary?.topPerformerComplianceScore)}
+              subtitle={clientSummary?.topPerformerName ?? 'No data'}
               icon={<Activity className="w-4 h-4" />}
               color="success"
             />
@@ -244,49 +271,31 @@ export default function KPIDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
-                {/* Large Taxpayers */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Large Taxpayers</span>
-                    <span className="text-sm text-muted-foreground">95% compliance</span>
-                  </div>
-                  <div className="relative h-4 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="absolute h-full bg-green-600 transition-all" style={{ width: '95%' }} />
-                  </div>
-                </div>
+                {segments.length > 0 ? (
+                  segments.map((segment, index) => {
+                    const colourClass = segmentColours[index % segmentColours.length];
+                    const width = Math.max(0, Math.min(segment.complianceRate, 100));
 
-                {/* Medium Taxpayers */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Medium Taxpayers</span>
-                    <span className="text-sm text-muted-foreground">87% compliance</span>
-                  </div>
-                  <div className="relative h-4 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="absolute h-full bg-blue-600 transition-all" style={{ width: '87%' }} />
-                  </div>
-                </div>
-
-                {/* Small Businesses */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Small Businesses</span>
-                    <span className="text-sm text-muted-foreground">78% compliance</span>
-                  </div>
-                  <div className="relative h-4 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="absolute h-full bg-amber-500 transition-all" style={{ width: '78%' }} />
-                  </div>
-                </div>
-
-                {/* Individuals */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Individual Taxpayers</span>
-                    <span className="text-sm text-muted-foreground">82% compliance</span>
-                  </div>
-                  <div className="relative h-4 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="absolute h-full bg-sky-500 transition-all" style={{ width: '82%' }} />
-                  </div>
-                </div>
+                    return (
+                      <div key={segment.segment}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">{segment.segment}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {segment.complianceRate.toFixed(1)}% compliance · {segment.clientCount.toLocaleString()} clients
+                          </span>
+                        </div>
+                        <div className="relative h-4 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className={`absolute h-full transition-all ${colourClass}`}
+                            style={{ width: `${width}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm text-muted-foreground">No segment performance data available.</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -299,7 +308,7 @@ export default function KPIDashboardPage() {
                 <Users className="h-4 w-4 text-sierra-gold" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-sierra-gold">Analytics</div>
+                <div className="text-2xl font-bold text-sierra-blue-800">Analytics</div>
                 <p className="text-xs text-muted-foreground">
                   Client-specific KPIs
                 </p>
@@ -317,7 +326,7 @@ export default function KPIDashboardPage() {
                 <FileText className="h-4 w-4 text-sierra-green" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-sierra-green">Trends</div>
+                <div className="text-2xl font-bold text-sierra-blue-800">Trends</div>
                 <p className="text-xs text-muted-foreground">
                   Compliance over time
                 </p>
@@ -335,7 +344,7 @@ export default function KPIDashboardPage() {
                 <DollarSign className="h-4 w-4 text-purple-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-purple-600">Finance</div>
+                <div className="text-2xl font-bold text-sierra-blue-800">Finance</div>
                 <p className="text-xs text-muted-foreground">
                   Revenue and payments
                 </p>

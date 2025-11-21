@@ -129,6 +129,17 @@ namespace BettsTax.Core.Services
                 }
 
                 var oldStatus = verification.Status;
+                
+                // Phase 3: Validate status transition
+                try
+                {
+                    ValidateStatusTransition(oldStatus, dto.Status, documentId);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return Result.Failure<DocumentVerificationDto>(ex.Message);
+                }
+                
                 verification.Status = dto.Status;
                 verification.ReviewNotes = dto.ReviewNotes;
                 verification.RejectionReason = dto.RejectionReason;
@@ -214,6 +225,21 @@ namespace BettsTax.Core.Services
                 var newStatus = dto.Approved ? DocumentVerificationStatus.Verified : DocumentVerificationStatus.Rejected;
                 var userId = _userContext.GetCurrentUserId();
                 var now = DateTime.UtcNow;
+
+                // Phase 3: Validate all transitions before applying
+                var invalidTransitions = new List<string>();
+                foreach (var verification in verifications)
+                {
+                    if (!IsValidStatusTransition(verification.Status, newStatus))
+                    {
+                        invalidTransitions.Add($"Document {verification.DocumentId}: {verification.Status} -> {newStatus}");
+                    }
+                }
+
+                if (invalidTransitions.Any())
+                {
+                    return Result.Failure($"Invalid status transitions detected: {string.Join("; ", invalidTransitions)}");
+                }
 
                 foreach (var verification in verifications)
                 {
@@ -899,5 +925,106 @@ namespace BettsTax.Core.Services
                     MapToDto(requirement.DocumentRequirement) : null
             };
         }
+
+        #region Status Transition Validation - Phase 3 (fixes_plan.md §2.5)
+
+        /// <summary>
+        /// Validates if a status transition is allowed
+        /// Phase 3: Document Status Transitions
+        /// </summary>
+        private bool IsValidStatusTransition(DocumentVerificationStatus currentStatus, DocumentVerificationStatus newStatus)
+        {
+            // Define valid transitions
+            var validTransitions = new Dictionary<DocumentVerificationStatus, List<DocumentVerificationStatus>>
+            {
+                [DocumentVerificationStatus.NotRequested] = new List<DocumentVerificationStatus> 
+                { 
+                    DocumentVerificationStatus.Requested 
+                },
+                [DocumentVerificationStatus.Requested] = new List<DocumentVerificationStatus> 
+                { 
+                    DocumentVerificationStatus.Submitted,
+                    DocumentVerificationStatus.NotRequested // Allow cancellation
+                },
+                [DocumentVerificationStatus.Submitted] = new List<DocumentVerificationStatus> 
+                { 
+                    DocumentVerificationStatus.UnderReview,
+                    DocumentVerificationStatus.Rejected // Can reject without review
+                },
+                [DocumentVerificationStatus.UnderReview] = new List<DocumentVerificationStatus> 
+                { 
+                    DocumentVerificationStatus.Verified,
+                    DocumentVerificationStatus.Rejected,
+                    DocumentVerificationStatus.Submitted // Return for corrections
+                },
+                [DocumentVerificationStatus.Rejected] = new List<DocumentVerificationStatus> 
+                { 
+                    DocumentVerificationStatus.Requested, // Request resubmission
+                    DocumentVerificationStatus.Submitted  // Direct resubmission
+                },
+                [DocumentVerificationStatus.Verified] = new List<DocumentVerificationStatus> 
+                { 
+                    DocumentVerificationStatus.Filed,
+                    DocumentVerificationStatus.UnderReview // Allow re-review if needed
+                },
+                [DocumentVerificationStatus.Filed] = new List<DocumentVerificationStatus>() // Terminal state
+            };
+
+            // Same status is always valid (no-op)
+            if (currentStatus == newStatus)
+                return true;
+
+            // Check if transition is in valid list
+            return validTransitions.ContainsKey(currentStatus) && 
+                   validTransitions[currentStatus].Contains(newStatus);
+        }
+
+        /// <summary>
+        /// Validates and enforces status transition rules
+        /// Throws InvalidOperationException if transition is invalid
+        /// </summary>
+        private void ValidateStatusTransition(DocumentVerificationStatus currentStatus, DocumentVerificationStatus newStatus, int documentId)
+        {
+            if (!IsValidStatusTransition(currentStatus, newStatus))
+            {
+                var errorMessage = $"Invalid status transition for document {documentId}: " +
+                                 $"Cannot change from {currentStatus} to {newStatus}. " +
+                                 $"Valid transitions from {currentStatus} are: {GetValidTransitionsText(currentStatus)}";
+                
+                _logger.LogWarning(errorMessage);
+                throw new InvalidOperationException(errorMessage);
+            }
+
+            _logger.LogInformation(
+                "Valid status transition for document {DocumentId}: {OldStatus} -> {NewStatus}",
+                documentId, currentStatus, newStatus);
+        }
+
+        /// <summary>
+        /// Gets human-readable text of valid transitions for error messages
+        /// </summary>
+        private string GetValidTransitionsText(DocumentVerificationStatus currentStatus)
+        {
+            var validTransitions = new Dictionary<DocumentVerificationStatus, List<DocumentVerificationStatus>>
+            {
+                [DocumentVerificationStatus.NotRequested] = new List<DocumentVerificationStatus> { DocumentVerificationStatus.Requested },
+                [DocumentVerificationStatus.Requested] = new List<DocumentVerificationStatus> { DocumentVerificationStatus.Submitted, DocumentVerificationStatus.NotRequested },
+                [DocumentVerificationStatus.Submitted] = new List<DocumentVerificationStatus> { DocumentVerificationStatus.UnderReview, DocumentVerificationStatus.Rejected },
+                [DocumentVerificationStatus.UnderReview] = new List<DocumentVerificationStatus> { DocumentVerificationStatus.Verified, DocumentVerificationStatus.Rejected, DocumentVerificationStatus.Submitted },
+                [DocumentVerificationStatus.Rejected] = new List<DocumentVerificationStatus> { DocumentVerificationStatus.Requested, DocumentVerificationStatus.Submitted },
+                [DocumentVerificationStatus.Verified] = new List<DocumentVerificationStatus> { DocumentVerificationStatus.Filed, DocumentVerificationStatus.UnderReview },
+                [DocumentVerificationStatus.Filed] = new List<DocumentVerificationStatus>()
+            };
+
+            if (!validTransitions.ContainsKey(currentStatus))
+                return "None (unknown status)";
+
+            var transitions = validTransitions[currentStatus];
+            return transitions.Any() 
+                ? string.Join(", ", transitions) 
+                : "None (terminal state)";
+        }
+
+        #endregion
     }
 }

@@ -3,6 +3,49 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BettsTax.Data.Models.Security;
 
+// Refresh token model for session management
+public class RefreshToken
+{
+    [Key]
+    public long Id { get; set; }
+
+    [Required]
+    [MaxLength(450)]
+    public string UserId { get; set; } = string.Empty;
+
+    [ForeignKey(nameof(UserId))]
+    public ApplicationUser User { get; set; } = null!;
+
+    [Required]
+    [MaxLength(256)]
+    public string TokenHash { get; set; } = string.Empty;
+
+    [MaxLength(256)]
+    public string? ReplacedByTokenHash { get; set; }
+
+    public DateTime ExpiresAt { get; set; }
+    public DateTime CreatedAt { get; set; }
+
+    [MaxLength(200)]
+    public string CreatedByIp { get; set; } = string.Empty;
+
+    [MaxLength(500)]
+    public string? CreatedByUserAgent { get; set; }
+
+    public DateTime? RevokedAt { get; set; }
+
+    [MaxLength(200)]
+    public string? RevokedByIp { get; set; }
+
+    [MaxLength(500)]
+    public string? RevokedByUserAgent { get; set; }
+
+    [MaxLength(500)]
+    public string? RevocationReason { get; set; }
+
+    public bool IsCompromised { get; set; }
+}
+
 // Multi-Factor Authentication Models
 public class UserMfaConfiguration
 {

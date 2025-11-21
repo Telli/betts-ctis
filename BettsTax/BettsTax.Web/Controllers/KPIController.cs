@@ -127,6 +127,22 @@ namespace BettsTax.Web.Controllers
             }
         }
 
+        [HttpGet("dashboard")]
+        [Authorize(Roles = "Admin,SystemAdmin,Associate")]
+        public async Task<IActionResult> GetDashboardSummary(DateTime? fromDate = null, DateTime? toDate = null)
+        {
+            try
+            {
+                var summary = await _kpiService.GetDashboardSummaryAsync(fromDate, toDate);
+                return Ok(summary);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching KPI dashboard summary");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
         [HttpGet("my-kpis")]
         [Authorize(Roles = "Client")]
         public async Task<IActionResult> GetMyKPIs(DateTime? fromDate = null, DateTime? toDate = null)

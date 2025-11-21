@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using BettsTax.Data.Models.Security;
+using Pgvector.EntityFrameworkCore;
 
 namespace BettsTax.Data
 {
@@ -13,6 +14,7 @@ namespace BettsTax.Data
         public DbSet<Client> Clients { get; set; }
         public DbSet<TaxYear> TaxYears { get; set; }
         public DbSet<TaxFiling> TaxFilings { get; set; }
+        public DbSet<FilingSchedule> FilingSchedules { get; set; }
         public DbSet<Document> Documents { get; set; }
         public DbSet<DocumentVersion> DocumentVersions { get; set; }
         public DbSet<Payment> Payments { get; set; }
@@ -23,6 +25,10 @@ namespace BettsTax.Data
         public DbSet<SystemSetting> SystemSettings { get; set; }
         public DbSet<DocumentVerification> DocumentVerifications { get; set; }
         public DbSet<DocumentVerificationHistory> DocumentVerificationHistories { get; set; }
+        public DbSet<DocumentVerificationResult> DocumentVerificationResults { get; set; }
+        public DbSet<DocumentVersionControl> DocumentVersionControls { get; set; }
+        public DbSet<DocumentSubmissionWorkflow> DocumentSubmissionWorkflows { get; set; }
+        public DbSet<DocumentSubmissionStep> DocumentSubmissionSteps { get; set; }
         public DbSet<DocumentRequirement> DocumentRequirements { get; set; }
         public DbSet<ClientDocumentRequirement> ClientDocumentRequirements { get; set; }
         public DbSet<ActivityTimeline> ActivityTimelines { get; set; }
@@ -38,6 +44,9 @@ namespace BettsTax.Data
         public DbSet<PaymentWebhookLog> PaymentWebhookLogs { get; set; }
         public DbSet<PaymentMethodConfig> PaymentMethodConfigs { get; set; }
         public DbSet<PaymentStatusMapping> PaymentStatusMappings { get; set; }
+        public DbSet<PaymentApprovalRequest> PaymentApprovalRequests { get; set; }
+        public DbSet<PaymentApprovalStep> PaymentApprovalSteps { get; set; }
+        public DbSet<PaymentApprovalThreshold> PaymentApprovalThresholds { get; set; }
         public DbSet<ComplianceTracker> ComplianceTrackers { get; set; }
         public DbSet<CompliancePenalty> CompliancePenalties { get; set; }
         public DbSet<ComplianceAlert> ComplianceAlerts { get; set; }
@@ -49,6 +58,13 @@ namespace BettsTax.Data
         public DbSet<ExportQueue> ExportQueues { get; set; }
         public DbSet<ExportAccessLog> ExportAccessLogs { get; set; }
         public DbSet<ExportStatistics> ExportStatistics { get; set; }
+        public DbSet<ComplianceMonitoringWorkflow> ComplianceMonitoringWorkflows { get; set; }
+        public DbSet<ComplianceMonitoringAlert> ComplianceMonitoringAlerts { get; set; }
+        public DbSet<CompliancePenaltyCalculation> CompliancePenaltyCalculations { get; set; }
+        public DbSet<CommunicationRoutingWorkflow> CommunicationRoutingWorkflows { get; set; }
+        public DbSet<CommunicationRoutingStep> CommunicationRoutingSteps { get; set; }
+        public DbSet<CommunicationRoutingRule> CommunicationRoutingRules { get; set; }
+        public DbSet<CommunicationEscalationRule> CommunicationEscalationRules { get; set; }
         
         // Associate Permission System
         public DbSet<AssociateClientPermission> AssociateClientPermissions { get; set; }
@@ -84,6 +100,8 @@ namespace BettsTax.Data
         public DbSet<Models.Conversation> Conversations { get; set; }
         public DbSet<Models.Message> ConversationMessages { get; set; }
         public DbSet<Models.ConversationParticipant> ConversationParticipants { get; set; }
+        
+        // Conversation Tags
         public DbSet<Models.ConversationTag> ConversationTags { get; set; }
         public DbSet<Models.MessageRead> MessageReads { get; set; }
         public DbSet<Models.MessageReaction> MessageReactions { get; set; }
@@ -120,6 +138,7 @@ namespace BettsTax.Data
         public DbSet<Models.Security.EncryptedData> EncryptedData { get; set; }
         public DbSet<Models.Security.SystemHealthCheck> SystemHealthChecks { get; set; }
         public DbSet<Models.Security.SecurityScan> SecurityScans { get; set; }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
 
         // Payment Retry System (from previous implementation)
         public DbSet<Models.PaymentScheduledRetry> PaymentScheduledRetries { get; set; }
@@ -146,6 +165,15 @@ namespace BettsTax.Data
         public DbSet<Models.WorkflowExecution> WorkflowExecutions { get; set; }
         public DbSet<Models.WorkflowTemplate> WorkflowTemplates { get; set; }
         public DbSet<Models.WorkflowRule> WorkflowRules { get; set; }
+
+        // Phase 3: RAG Bot System DbSets
+        public DbSet<Models.BotConfiguration> BotConfigurations { get; set; }
+        public DbSet<Models.KnowledgeDocument> KnowledgeDocuments { get; set; }
+        public DbSet<Models.DocumentChunk> DocumentChunks { get; set; }
+        public DbSet<Models.BotConversation> BotConversations { get; set; }
+        public DbSet<Models.BotMessage> BotMessages { get; set; }
+        public DbSet<Models.BotFeedback> BotFeedbacks { get; set; }
+        public DbSet<Models.EmbeddingJob> EmbeddingJobs { get; set; }
 
         // Tax Authority Integration DbSets
         public DbSet<TaxAuthoritySubmission> TaxAuthoritySubmissions { get; set; }
@@ -181,6 +209,19 @@ namespace BettsTax.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+            
+            // Enable pgvector extension
+            modelBuilder.HasPostgresExtension("vector");
+
+            modelBuilder.Entity<RefreshToken>()
+                .HasIndex(r => r.TokenHash)
+                .IsUnique();
+
+            modelBuilder.Entity<RefreshToken>()
+                .HasOne(r => r.User)
+                .WithMany(u => u.RefreshTokens)
+                .HasForeignKey(r => r.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             // Ensure Client uses ClientId as the primary key (not the generic Id)
             modelBuilder.Entity<Client>()
@@ -2571,6 +2612,105 @@ namespace BettsTax.Data
             modelBuilder.Entity<Models.ComplianceHistoryEvent>()
                 .HasIndex(che => che.EventType)
                 .HasDatabaseName("IX_ComplianceHistoryEvent_EventType");
+
+            // Phase 3: RAG Bot System Configuration
+            // Configure BotConfiguration relationships
+            modelBuilder.Entity<Models.BotConfiguration>()
+                .HasOne(bc => bc.CreatedBy)
+                .WithMany()
+                .HasForeignKey(bc => bc.CreatedById)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Models.BotConfiguration>()
+                .HasOne(bc => bc.UpdatedBy)
+                .WithMany()
+                .HasForeignKey(bc => bc.UpdatedById)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Configure KnowledgeDocument relationships
+            modelBuilder.Entity<Models.KnowledgeDocument>()
+                .HasOne(kd => kd.UploadedBy)
+                .WithMany()
+                .HasForeignKey(kd => kd.UploadedById)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Configure DocumentChunk with pgvector
+            modelBuilder.Entity<Models.DocumentChunk>()
+                .HasOne(dc => dc.KnowledgeDocument)
+                .WithMany(kd => kd.Chunks)
+                .HasForeignKey(dc => dc.KnowledgeDocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.DocumentChunk>()
+                .Property(dc => dc.Embedding)
+                .HasColumnType("vector(1536)")
+                .HasConversion(
+                    v => v,
+                    v => v
+                ); // OpenAI ada-002 dimensions
+
+            // Configure BotConversation relationships
+            modelBuilder.Entity<Models.BotConversation>()
+                .HasOne(bc => bc.User)
+                .WithMany()
+                .HasForeignKey(bc => bc.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Configure BotMessage relationships
+            modelBuilder.Entity<Models.BotMessage>()
+                .HasOne(bm => bm.Conversation)
+                .WithMany(bc => bc.Messages)
+                .HasForeignKey(bm => bm.BotConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Configure BotFeedback relationships
+            modelBuilder.Entity<Models.BotFeedback>()
+                .HasOne(bf => bf.Message)
+                .WithMany()
+                .HasForeignKey(bf => bf.BotMessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Models.BotFeedback>()
+                .HasOne(bf => bf.User)
+                .WithMany()
+                .HasForeignKey(bf => bf.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Configure EmbeddingJob relationships
+            modelBuilder.Entity<Models.EmbeddingJob>()
+                .HasOne(ej => ej.KnowledgeDocument)
+                .WithMany()
+                .HasForeignKey(ej => ej.KnowledgeDocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Bot system indexes
+            modelBuilder.Entity<Models.BotConfiguration>()
+                .HasIndex(bc => bc.IsDefault)
+                .HasDatabaseName("IX_BotConfiguration_IsDefault");
+
+            modelBuilder.Entity<Models.KnowledgeDocument>()
+                .HasIndex(kd => kd.Category)
+                .HasDatabaseName("IX_KnowledgeDocument_Category");
+
+            modelBuilder.Entity<Models.KnowledgeDocument>()
+                .HasIndex(kd => kd.IsActive)
+                .HasDatabaseName("IX_KnowledgeDocument_IsActive");
+
+            modelBuilder.Entity<Models.DocumentChunk>()
+                .HasIndex(dc => dc.KnowledgeDocumentId)
+                .HasDatabaseName("IX_DocumentChunk_KnowledgeDocumentId");
+
+            modelBuilder.Entity<Models.BotConversation>()
+                .HasIndex(bc => new { bc.UserId, bc.LastMessageDate })
+                .HasDatabaseName("IX_BotConversation_User_LastMessage");
+
+            modelBuilder.Entity<Models.BotMessage>()
+                .HasIndex(bm => new { bm.BotConversationId, bm.Timestamp })
+                .HasDatabaseName("IX_BotMessage_Conversation_Timestamp");
+
+            modelBuilder.Entity<Models.EmbeddingJob>()
+                .HasIndex(ej => ej.Status)
+                .HasDatabaseName("IX_EmbeddingJob_Status");
         }
     }
 }

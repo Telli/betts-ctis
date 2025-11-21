@@ -19,8 +19,10 @@ import {
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { ClientPortalService } from '@/lib/services/client-portal-service'
+import { DeadlineService } from '@/lib/services/deadline-service'
 import { useToast } from '@/hooks/use-toast'
 import { Skeleton } from '@/components/ui/skeleton'
+import { getNumericDefault, getStringDefault, getArrayDefault } from '@/lib/utils/data-defaults'
 
 interface ComplianceItem {
   id: string
@@ -44,12 +46,72 @@ export default function ClientCompliancePage() {
     const fetchCompliance = async () => {
       try {
         setLoading(true)
-        const data = await ClientPortalService.getCompliance()
-        setComplianceData(data)
         
-        // Transform backend data to ComplianceItem format if needed
-        // For now using empty array as backend might not have specific format
-        setComplianceItems([])
+        // Fetch compliance overview and deadlines in parallel
+        const [complianceOverview, upcomingDeadlines, overdueDeadlines] = await Promise.all([
+          ClientPortalService.getCompliance().catch(() => null),
+          DeadlineService.getUpcomingDeadlines(60).catch(() => []),
+          DeadlineService.getOverdueDeadlines().catch(() => [])
+        ])
+        
+        setComplianceData(complianceOverview)
+        
+        // Transform deadlines into ComplianceItem format
+        const allDeadlines = [...overdueDeadlines, ...upcomingDeadlines]
+        const transformedItems: ComplianceItem[] = allDeadlines.map((deadline) => {
+          const dueDate = new Date(deadline.dueDate)
+          const now = new Date()
+          const daysUntilDue = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+          
+          // Determine status based on deadline status and days until due
+          let status: ComplianceItem['status'] = 'pending'
+          if (deadline.status === 'overdue' || daysUntilDue < 0) {
+            status = 'overdue'
+          } else if (deadline.status === 'due-soon' || (daysUntilDue >= 0 && daysUntilDue <= 7)) {
+            status = 'at-risk'
+          } else if (deadline.status === 'completed') {
+            status = 'compliant'
+          }
+          
+          // Determine priority
+          const priority: ComplianceItem['priority'] = 
+            deadline.priority === 'high' ? 'high' :
+            deadline.priority === 'low' ? 'low' : 'medium'
+          
+          // Generate required actions based on deadline type
+          const actions: string[] = []
+          if (deadline.type === 'tax-filing') {
+            actions.push('Prepare tax filing documents')
+            actions.push('Review financial statements')
+            actions.push('Submit filing before due date')
+          } else if (deadline.type === 'payment') {
+            actions.push('Review payment amount')
+            actions.push('Process payment')
+            actions.push('Confirm payment receipt')
+          } else if (deadline.type === 'compliance') {
+            actions.push('Review compliance requirements')
+            actions.push('Submit required documentation')
+            actions.push('Confirm compliance status')
+          } else {
+            actions.push('Review requirements')
+            actions.push('Submit documentation')
+            actions.push('Confirm completion')
+          }
+          
+          return {
+            id: deadline.id,
+            type: getStringDefault(deadline.taxType || deadline.category || deadline.type),
+            description: getStringDefault(deadline.description || deadline.title),
+            status,
+            dueDate,
+            lastUpdated: deadline.completedDate ? new Date(deadline.completedDate) : new Date(),
+            priority,
+            penalty: deadline.amount && status === 'overdue' ? getNumericDefault(deadline.amount) * 0.1 : undefined,
+            actions: getArrayDefault(actions)
+          }
+        })
+        
+        setComplianceItems(transformedItems)
       } catch (error: any) {
         console.error('Error fetching compliance data:', error)
         toast({
@@ -63,7 +125,7 @@ export default function ClientCompliancePage() {
     }
     
     fetchCompliance()
-  }, [])
+  }, [toast])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -116,7 +178,12 @@ export default function ClientCompliancePage() {
     pending: complianceItems.filter(item => item.status === 'pending').length
   }
 
-  const complianceScore = stats.total > 0 ? Math.round((stats.compliant / stats.total) * 100) : 100
+  // Calculate compliance score from compliance data or stats
+  const complianceScore = complianceData?.complianceScore 
+    ? Math.round(getNumericDefault(complianceData.complianceScore))
+    : stats.total > 0 
+      ? Math.round((stats.compliant / stats.total) * 100) 
+      : 100
 
   if (loading) {
     return (

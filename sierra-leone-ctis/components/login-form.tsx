@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { AuthService } from "@/lib/services";
-import { isAuthenticated } from "@/lib/api-client";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import Link from "next/link";
@@ -31,14 +30,11 @@ export function LoginForm() {
     try {
       await AuthService.login({ Email: trimmedEmail, Password: trimmedPassword });
 
-      // Verify token was stored and authentication works
-      const authenticated = isAuthenticated();
+      // Update auth context state using server-side session
+      const authenticated = await checkAuthStatus();
       if (!authenticated) {
-        throw new Error("Authentication failed - token not stored properly");
+        throw new Error("Authentication failed - unable to establish session");
       }
-
-      // Update auth context state
-      checkAuthStatus();
 
       toast({
         title: "Login successful",

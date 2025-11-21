@@ -13,13 +13,16 @@ namespace BettsTax.Web.Controllers
     {
         private readonly ILogger<ComplianceController> _logger;
         private readonly IComplianceService _complianceService;
+        private readonly IComplianceDashboardService _dashboardService;
 
         public ComplianceController(
             ILogger<ComplianceController> logger,
-            IComplianceService complianceService)
+            IComplianceService complianceService,
+            IComplianceDashboardService dashboardService)
         {
             _logger = logger;
             _complianceService = complianceService;
+            _dashboardService = dashboardService;
         }
 
         /// <summary>
@@ -30,17 +33,7 @@ namespace BettsTax.Web.Controllers
         {
             try
             {
-                // TODO: Implement compliance overview logic
-                var overview = new
-                {
-                    ComplianceScore = 85,
-                    Status = "Good",
-                    LastUpdated = DateTime.UtcNow,
-                    NextDeadline = DateTime.UtcNow.AddDays(30),
-                    PendingTasks = 2,
-                    CompletedTasks = 8
-                };
-
+                var overview = await _dashboardService.GetOverviewAsync();
                 return Ok(overview);
             }
             catch (Exception ex)
@@ -54,38 +47,92 @@ namespace BettsTax.Web.Controllers
         /// Get compliance items/tasks for the current user
         /// </summary>
         [HttpGet("items")]
-        public async Task<IActionResult> GetComplianceItems()
+        public async Task<IActionResult> GetComplianceItems([FromQuery] ComplianceDashboardFilterDto? filters)
         {
             try
             {
-                // TODO: Implement compliance items logic
-                var items = new[]
-                {
-                    new
-                    {
-                        Id = 1,
-                        Title = "File Income Tax Return",
-                        DueDate = DateTime.UtcNow.AddDays(30),
-                        Status = "Pending",
-                        Priority = "High",
-                        Category = "Tax Filing"
-                    },
-                    new
-                    {
-                        Id = 2,
-                        Title = "Submit GST Declaration",
-                        DueDate = DateTime.UtcNow.AddDays(15),
-                        Status = "Pending",
-                        Priority = "Medium",
-                        Category = "Tax Filing"
-                    }
-                };
-
+                filters ??= new ComplianceDashboardFilterDto();
+                var items = await _dashboardService.GetItemsAsync(filters);
                 return Ok(items);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting compliance items");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
+        [HttpGet("by-tax-type")]
+        public async Task<IActionResult> GetComplianceByTaxType()
+        {
+            try
+            {
+                var data = await _dashboardService.GetTaxTypeBreakdownAsync();
+                return Ok(data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting compliance data by tax type");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
+        [HttpGet("filing-checklist-matrix")]
+        public async Task<IActionResult> GetFilingChecklistMatrix([FromQuery] int? year)
+        {
+            try
+            {
+                var matrix = await _dashboardService.GetFilingChecklistMatrixAsync(year);
+                return Ok(matrix);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting filing checklist matrix");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
+        [HttpGet("penalty-warnings")]
+        public async Task<IActionResult> GetPenaltyWarnings([FromQuery] int top = 5)
+        {
+            try
+            {
+                var warnings = await _dashboardService.GetPenaltyWarningsAsync(top);
+                return Ok(warnings);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting penalty warnings");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
+        [HttpGet("document-requirements")]
+        public async Task<IActionResult> GetDocumentRequirements()
+        {
+            try
+            {
+                var documents = await _dashboardService.GetDocumentRequirementsAsync();
+                return Ok(documents);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting document requirements summary");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
+        [HttpGet("timeline")]
+        public async Task<IActionResult> GetTimeline([FromQuery] int top = 5)
+        {
+            try
+            {
+                var events = await _dashboardService.GetTimelineAsync(top);
+                return Ok(events);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting compliance timeline");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }

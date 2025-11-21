@@ -10,6 +10,42 @@ export interface InternalKPIDto {
   period: string;
 }
 
+export interface KpiDashboardSummaryDto {
+  internal: KpiDashboardInternalSummaryDto;
+  client: KpiDashboardClientSummaryDto;
+}
+
+export interface KpiDashboardInternalSummaryDto {
+  totalRevenue: number;
+  revenueCurrency: string;
+  revenueChangePercentage?: number | null;
+  activeClients: number;
+  totalClients: number;
+  complianceRate: number;
+  paymentCompletionRate: number;
+  documentSubmissionRate: number;
+  averageFilingTimelinessDays: number;
+  averageProcessingTimeDays: number;
+  clientEngagementRate: number;
+  referencePeriodLabel: string;
+}
+
+export interface KpiDashboardClientSummaryDto {
+  totalClients: number;
+  activeClients: number;
+  averageComplianceScore: number;
+  averageFilingTimeDays: number;
+  topPerformerName?: string;
+  topPerformerComplianceScore: number;
+  segments: KpiClientSegmentPerformanceDto[];
+}
+
+export interface KpiClientSegmentPerformanceDto {
+  segment: string;
+  complianceRate: number;
+  clientCount: number;
+}
+
 export interface ClientKPIDto {
   myFilingTimeliness: number;
   onTimePaymentPercentage: number;

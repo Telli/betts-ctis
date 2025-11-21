@@ -1,103 +1,108 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { getToken, isAuthenticated, removeToken } from '@/lib/api-client';
-import { useRouter } from 'next/navigation';
+import { AuthService, AuthSession } from '@/lib/services/auth-service';
 
 interface User {
   id: string;
   email: string;
   name: string;
   role: string;
+  roles: string[];
 }
 
 interface AuthContextType {
   isLoggedIn: boolean;
   user: User | null;
-  logout: () => void;
-  checkAuthStatus: () => boolean;
+  logout: () => Promise<void>;
+  checkAuthStatus: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const mapSessionToUser = (session: AuthSession): User => {
+  const findClaim = (keyword: string): string | undefined => {
+    return session.allClaims?.find((claim) =>
+      claim.type?.toLowerCase().includes(keyword)
+    )?.value;
+  };
+
+  const givenName = findClaim('givenname') || findClaim('given_name') || '';
+  const surname = findClaim('surname') || findClaim('familyname') || '';
+  const displayName = `${givenName} ${surname}`.trim() || session.email;
+  const roles = session.roles ?? [];
+
+  return {
+    id: session.userId,
+    email: session.email,
+    name: displayName,
+    role: roles[0] ?? 'User',
+    roles
+  };
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [user, setUser] = useState<User | null>(null);
-  const router = useRouter();
 
-  // Decode JWT token to get user information
-  const decodeToken = useCallback((token: string): User | null => {
+  const syncSession = useCallback(async (): Promise<User | null> => {
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-
-      // Handle role claim - it might be under different keys or as an array
-      let role = payload.role || payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'];
-      if (Array.isArray(role)) {
-        role = role[0]; // Take the first role if multiple
+      const session = await AuthService.getSession();
+      if (!session || !session.userId) {
+        setIsLoggedIn(false);
+        setUser(null);
+        return null;
       }
 
-      return {
-        id: payload.nameid || payload.sub,
-        email: payload.email,
-        name: `${payload.given_name || ''} ${payload.family_name || ''}`.trim() || payload.email,
-        role: role || 'User'
-      };
-    } catch (error) {
-      console.error('Error decoding token:', error);
+      const mappedUser = mapSessionToUser(session);
+      setIsLoggedIn(true);
+      setUser(mappedUser);
+      return mappedUser;
+    } catch (error: any) {
+      if (error?.code !== 'UNAUTHORIZED' && error?.status !== 401) {
+        console.warn('Failed to refresh auth session', error);
+      }
+      setIsLoggedIn(false);
+      setUser(null);
       return null;
     }
   }, []);
 
-  // Check authentication status on initial load
   useEffect(() => {
-    const checkAuth = () => {
-      const authStatus = isAuthenticated();
-      setIsLoggedIn(authStatus);
+    let isMounted = true;
 
-      if (authStatus) {
-        const token = getToken();
-        if (token) {
-          const userData = decodeToken(token);
-          setUser(userData);
-        }
-      } else {
-        setUser(null);
-      }
-
-      return authStatus;
+    const initialize = async () => {
+      if (!isMounted) return;
+      await syncSession();
     };
 
-    checkAuth();
+    void initialize();
 
-    // Also check periodically in case token expires
-    const interval = setInterval(checkAuth, 60000); // Check every minute
+    const interval = setInterval(() => {
+      void syncSession();
+    }, 60000);
 
-    return () => clearInterval(interval);
-  }, [decodeToken]);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [syncSession]);
 
-  const logout = useCallback(() => {
-    removeToken();
-    setIsLoggedIn(false);
-    setUser(null);
-    router.push('/login');
-  }, [router]);
-
-  const checkAuthStatus = useCallback((): boolean => {
-    const status = isAuthenticated();
-    setIsLoggedIn(status);
-
-    if (status) {
-      const token = getToken();
-      if (token) {
-        const userData = decodeToken(token);
-        setUser(userData);
-      }
-    } else {
+  const logout = useCallback(async () => {
+    try {
+      await AuthService.logout();
+    } catch (error) {
+      console.warn('Logout request failed', error);
+    } finally {
+      setIsLoggedIn(false);
       setUser(null);
     }
+  }, []);
 
-    return status;
-  }, [decodeToken]);
+  const checkAuthStatus = useCallback(async (): Promise<boolean> => {
+    const currentUser = await syncSession();
+    return !!currentUser;
+  }, [syncSession]);
 
   return (
     <AuthContext.Provider value={{ isLoggedIn, user, logout, checkAuthStatus }}>

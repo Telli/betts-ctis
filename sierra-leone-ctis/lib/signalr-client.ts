@@ -4,7 +4,6 @@
  */
 
 import * as signalR from "@microsoft/signalr";
-import { getToken } from "./api-client";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
@@ -54,14 +53,9 @@ class SignalRService {
       return this.chatConnection;
     }
 
-    const token = getToken();
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
     this.chatConnection = new signalR.HubConnectionBuilder()
       .withUrl(`${API_BASE_URL}/chathub`, {
-        accessTokenFactory: () => token,
+        withCredentials: true,
         skipNegotiation: false,
         transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.ServerSentEvents | signalR.HttpTransportType.LongPolling
       })
@@ -120,14 +114,9 @@ class SignalRService {
       return this.notificationConnection;
     }
 
-    const token = getToken();
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
     this.notificationConnection = new signalR.HubConnectionBuilder()
       .withUrl(`${API_BASE_URL}/notificationhub`, {
-        accessTokenFactory: () => token,
+        withCredentials: true,
         skipNegotiation: false,
         transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.ServerSentEvents | signalR.HttpTransportType.LongPolling
       })
@@ -333,14 +322,9 @@ class SignalRService {
       return this.paymentConnection;
     }
 
-    const token = getToken();
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
     this.paymentConnection = new signalR.HubConnectionBuilder()
       .withUrl(`${API_BASE_URL}/hubs/payments`, {
-        accessTokenFactory: () => token,
+        withCredentials: true,
         skipNegotiation: false,
         transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.ServerSentEvents | signalR.HttpTransportType.LongPolling
       })

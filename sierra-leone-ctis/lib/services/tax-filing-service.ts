@@ -119,6 +119,36 @@ export interface TaxLiabilityCalculationResponse {
     };
   };
 }
+export interface FilingScheduleDto {
+  id?: number;
+  description: string;
+  amount: number;
+  taxable: number;
+}
+
+export interface FilingAssessmentDto {
+  totalSales: number;
+  taxableSales: number;
+  gstRate: number;
+  outputTax: number;
+  inputTaxCredit: number;
+  penalties: number;
+  totalPayable: number;
+}
+
+export interface FilingHistoryEntryDto {
+  id: number;
+  timestamp: string;
+  user: string;
+  action: string;
+  changes: string;
+}
+
+export interface TaxFilingValidationResultDto {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+}
 
 export const TaxFilingService = {
   /**
@@ -213,13 +243,104 @@ export const TaxFilingService = {
   /**
    * Calculate tax liability
    */
-  calculateTaxLiability: async (request: TaxLiabilityCalculationRequest): Promise<TaxLiabilityCalculationResponse> => {
-    const response = await apiClient.post<TaxLiabilityCalculationResponse>('/api/tax-filings/calculate-liability', request);
+  calculateTaxLiability: async (
+    request: TaxLiabilityCalculationRequest
+  ): Promise<TaxLiabilityCalculationResponse> => {
+    const response = await apiClient.post<TaxLiabilityCalculationResponse>(
+      '/api/tax-filings/calculate-liability',
+      request
+    );
     return response.data;
   },
 
+  /**
+   * Get schedules for a tax filing
+   */
+  getSchedules: async (taxFilingId: number): Promise<FilingScheduleDto[]> => {
+    try {
+      const response = await apiClient.get<{ success: boolean; data: any[] }>(
+        `/api/tax-filings/${taxFilingId}/schedules`
+      );
+      const raw = response.data?.data ?? [];
+
+      return raw.map((item, index) => ({
+        id: item.id ?? item.Id ?? index + 1,
+        description: item.description ?? item.Description ?? '',
+        amount: Number(item.amount ?? item.Amount ?? 0),
+        taxable: Number(item.taxable ?? item.Taxable ?? 0),
+      }));
+    } catch (error) {
+      console.warn('Failed to fetch filing schedules, returning empty array:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Save schedules for a tax filing
+   */
+  saveSchedules: async (
+    taxFilingId: number,
+    schedules: FilingScheduleDto[]
+  ): Promise<{ success: boolean; message?: string }> => {
+    const payload = schedules.map((s) => ({
+      description: s.description?.trim() ?? '',
+      amount: s.amount,
+      taxable: s.taxable,
+    }));
+
+    const response = await apiClient.post<{ success: boolean; message?: string }>(
+      `/api/tax-filings/${taxFilingId}/schedules`,
+      payload
+    );
+
+    return response.data;
+  },
+
+  /**
+   * Get assessment summary for a tax filing
+   */
+  getAssessmentSummary: async (taxFilingId: number): Promise<FilingAssessmentDto> => {
+    const response = await apiClient.get<{ success: boolean; data: any }>(
+      `/api/tax-filings/${taxFilingId}/assessment`
+    );
+    const d = response.data?.data ?? {};
+
+    return {
+      totalSales: Number(d.totalSales ?? d.TotalSales ?? 0),
+      taxableSales: Number(d.taxableSales ?? d.TaxableSales ?? 0),
+      gstRate: Number(d.gstRate ?? d.GstRate ?? 0),
+      outputTax: Number(d.outputTax ?? d.OutputTax ?? 0),
+      inputTaxCredit: Number(d.inputTaxCredit ?? d.InputTaxCredit ?? 0),
+      penalties: Number(d.penalties ?? d.Penalties ?? 0),
+      totalPayable: Number(d.totalPayable ?? d.TotalPayable ?? 0),
+    };
+  },
+
+  /**
+   * Get filing history (audit trail) for a tax filing
+   */
+  getFilingHistory: async (taxFilingId: number): Promise<FilingHistoryEntryDto[]> => {
+    try {
+      const response = await apiClient.get<{ success: boolean; data: any[] }>(
+        `/api/tax-filings/${taxFilingId}/history`
+      );
+      const raw = response.data?.data ?? [];
+
+      return raw.map((item) => ({
+        id: item.id ?? item.Id ?? 0,
+        timestamp: item.timestamp ?? item.Timestamp ?? '',
+        user: item.user ?? item.User ?? 'System',
+        action: item.action ?? item.Action ?? '',
+        changes: item.changes ?? item.Changes ?? '',
+      }));
+    } catch (error) {
+      console.warn('Failed to fetch filing history, returning empty array:', error);
+      return [];
+    }
+  },
+
   // Associate-specific endpoints
-  
+
   /**
    * Get tax filings for clients delegated to current associate
    */
@@ -265,6 +386,97 @@ export const TaxFilingService = {
   submitTaxFilingOnBehalf: async (id: number): Promise<TaxFilingResponse> => {
     const response = await apiClient.post<TaxFilingResponse>(`/api/tax-filings/${id}/submit-on-behalf`);
     return response.data;
+  },
+
+  // Filing Workspace endpoints
+
+  /**
+   * Get complete filing workspace data
+   */
+  getFilingWorkspace: async (id: number): Promise<any> => {
+    const response = await apiClient.get<{ success: boolean; data: any }>(`/api/tax-filings/${id}/workspace`);
+    return response.data.data;
+  },
+
+
+
+  /**
+   * Import schedules from CSV/Excel
+   */
+  importSchedules: async (id: number, file: File): Promise<void> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    await apiClient.post(`/api/tax-filings/${id}/schedules/import`, formData, { isFormData: true });
+  },
+
+  /**
+   * Validate a tax filing before submission
+   */
+  validateTaxFilingForSubmission: async (
+    id: number
+  ): Promise<TaxFilingValidationResultDto> => {
+    const response = await apiClient.get<{
+      success: boolean;
+      data: TaxFilingValidationResultDto;
+    }>(`/api/tax-filings/${id}/validate`);
+    return response.data.data;
+  },
+
+  /**
+   * Get calculated assessment summary
+   */
+  getAssessment: async (id: number): Promise<any> => {
+    const response = await apiClient.get<{ success: boolean; data: any }>(`/api/tax-filings/${id}/assessment`);
+    return response.data.data;
+  },
+
+  /**
+   * Get documents for a filing
+   */
+  getFilingDocuments: async (id: number): Promise<any[]> => {
+    const response = await apiClient.get<{ success: boolean; data: any[] }>(`/api/tax-filings/${id}/documents`);
+    return response.data.data;
+  },
+
+  /**
+   * Upload document for a filing
+   */
+  uploadFilingDocument: async (id: number, file: File): Promise<void> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    await apiClient.post(`/api/tax-filings/${id}/documents`, formData, { isFormData: true });
+  },
+
+  /**
+   * Download filing document
+   */
+  downloadFilingDocument: async (id: number, documentId: number): Promise<void> => {
+    const response = await apiClient.get<Blob>(`/api/tax-filings/${id}/documents/${documentId}`, {
+      responseType: 'blob'
+    });
+    const blob = response.data as Blob;
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `document-${documentId}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  },
+
+
+  /**
+   * Save filing draft
+   */
+  saveDraft: async (id: number, filing: any): Promise<void> => {
+    await apiClient.post(`/api/tax-filings/${id}/save-draft`, filing);
+  },
+
+  /**
+   * Submit filing for review
+   */
+  submitFiling: async (id: number): Promise<void> => {
+    await apiClient.post(`/api/tax-filings/${id}/submit`);
   }
 };
 

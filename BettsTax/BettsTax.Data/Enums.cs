@@ -12,7 +12,7 @@ public enum NotificationType
     KPIAlert = 5,
     SystemMaintenance = 6
 }
-public enum DocumentType { TaxDocument, Receipt, Invoice, Statement, Other }
+public enum DocumentType { TaxDocument, Receipt, Invoice, Statement, Other, TaxReturn, FinancialStatement, SupportingDocument }
 public enum DocumentStatus { Pending, Approved, Rejected, UnderReview }
 public enum AuditAction { 
     Create, 

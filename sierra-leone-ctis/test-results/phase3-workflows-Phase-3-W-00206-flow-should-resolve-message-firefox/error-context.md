@@ -1,0 +1,141 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - link "Skip to navigation" [ref=e3] [cursor=pointer]:
+    - /url: "#navigation"
+  - generic [ref=e4]:
+    - navigation "Main navigation" [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e8]:
+          - generic [ref=e9]:
+            - img "Betts logo" [ref=e10]
+            - generic [ref=e11]:
+              - heading "CTIS" [level=2] [ref=e12]
+              - paragraph [ref=e13]: Sierra Leone
+          - button "Collapse sidebar" [ref=e14] [cursor=pointer]:
+            - img
+        - generic [ref=e15]:
+          - navigation "Main menu" [ref=e16]:
+            - link "Dashboard" [ref=e17] [cursor=pointer]:
+              - /url: /dashboard
+              - button "Dashboard" [ref=e18] [cursor=pointer]:
+                - img [ref=e19] [cursor=pointer]
+                - generic [ref=e24] [cursor=pointer]: Dashboard
+            - link "KPI Dashboard" [ref=e25] [cursor=pointer]:
+              - /url: /kpi-dashboard
+              - button "KPI Dashboard" [ref=e26] [cursor=pointer]:
+                - img [ref=e27] [cursor=pointer]
+                - generic [ref=e30] [cursor=pointer]: KPI Dashboard
+            - link "Clients" [ref=e31] [cursor=pointer]:
+              - /url: /clients
+              - button "Clients" [ref=e32] [cursor=pointer]:
+                - img [ref=e33] [cursor=pointer]
+                - generic [ref=e38] [cursor=pointer]: Clients
+            - link "Tax Filings" [ref=e39] [cursor=pointer]:
+              - /url: /tax-filings
+              - button "Tax Filings" [ref=e40] [cursor=pointer]:
+                - img [ref=e41] [cursor=pointer]
+                - generic [ref=e47] [cursor=pointer]: Tax Filings
+            - link "Payments" [ref=e48] [cursor=pointer]:
+              - /url: /payments
+              - button "Payments" [ref=e49] [cursor=pointer]:
+                - img [ref=e50] [cursor=pointer]
+                - generic [ref=e53] [cursor=pointer]: Payments
+            - link "Compliance" [ref=e54] [cursor=pointer]:
+              - /url: /compliance
+              - button "Compliance" [ref=e55] [cursor=pointer]:
+                - img [ref=e56] [cursor=pointer]
+                - generic [ref=e64] [cursor=pointer]: Compliance
+            - link "Tax Calculator" [ref=e65] [cursor=pointer]:
+              - /url: /tax-calculator
+              - button "Tax Calculator" [ref=e66] [cursor=pointer]:
+                - img [ref=e67] [cursor=pointer]
+                - generic [ref=e78] [cursor=pointer]: Tax Calculator
+            - link "Documents" [ref=e79] [cursor=pointer]:
+              - /url: /documents
+              - button "Documents" [ref=e80] [cursor=pointer]:
+                - img [ref=e81] [cursor=pointer]
+                - generic [ref=e85] [cursor=pointer]: Documents
+            - link "Deadlines" [ref=e86] [cursor=pointer]:
+              - /url: /deadlines
+              - button "Deadlines" [ref=e87] [cursor=pointer]:
+                - img [ref=e88] [cursor=pointer]
+                - generic [ref=e93] [cursor=pointer]: Deadlines
+            - link "Reports" [ref=e94] [cursor=pointer]:
+              - /url: /reports
+              - button "Reports" [ref=e95] [cursor=pointer]:
+                - img [ref=e96] [cursor=pointer]
+                - generic [ref=e102] [cursor=pointer]: Reports
+            - link "Analytics" [ref=e103] [cursor=pointer]:
+              - /url: /analytics
+              - button "Analytics" [ref=e104] [cursor=pointer]:
+                - img [ref=e105] [cursor=pointer]
+                - generic [ref=e110] [cursor=pointer]: Analytics
+            - link "Notifications" [ref=e111] [cursor=pointer]:
+              - /url: /notifications
+              - button "Notifications" [ref=e112] [cursor=pointer]:
+                - img [ref=e113] [cursor=pointer]
+                - generic [ref=e116] [cursor=pointer]: Notifications
+          - generic [ref=e118]:
+            - generic [ref=e119]:
+              - img [ref=e120]
+              - generic [ref=e122]: Admin
+            - navigation "Admin menu" [ref=e123]:
+              - 'link "Admin: Workflow Automation" [ref=e124] [cursor=pointer]':
+                - /url: /admin/workflows
+                - 'button "Admin: Workflow Automation" [ref=e125] [cursor=pointer]':
+                  - img [ref=e126] [cursor=pointer]
+                  - generic [ref=e128] [cursor=pointer]: Workflow Automation
+              - 'link "Admin: Associate Management" [ref=e129] [cursor=pointer]':
+                - /url: /admin/associates
+                - 'button "Admin: Associate Management" [ref=e130] [cursor=pointer]':
+                  - img [ref=e131] [cursor=pointer]
+                  - generic [ref=e143] [cursor=pointer]: Associate Management
+              - 'link "Admin: Admin Settings" [ref=e144] [cursor=pointer]':
+                - /url: /admin/settings
+                - 'button "Admin: Admin Settings" [ref=e145] [cursor=pointer]':
+                  - img [ref=e146] [cursor=pointer]
+                  - generic [ref=e148] [cursor=pointer]: Admin Settings
+        - navigation "User menu" [ref=e150]:
+          - link "Profile" [ref=e151] [cursor=pointer]:
+            - /url: /profile
+            - button "Profile" [ref=e152] [cursor=pointer]:
+              - img [ref=e153] [cursor=pointer]
+              - generic [ref=e158] [cursor=pointer]: Profile
+          - link "Help & Support" [ref=e159] [cursor=pointer]:
+            - /url: /help
+            - button "Help & Support" [ref=e160] [cursor=pointer]:
+              - img [ref=e161] [cursor=pointer]
+              - generic [ref=e165] [cursor=pointer]: Help & Support
+          - button "Logout from application" [ref=e166] [cursor=pointer]:
+            - img [ref=e167] [cursor=pointer]
+            - generic [ref=e169] [cursor=pointer]: Logout
+    - main "Main content" [ref=e170]:
+      - generic [ref=e172]:
+        - generic [ref=e173]:
+          - img [ref=e175]
+          - generic [ref=e179]: Something went wrong
+          - generic [ref=e180]: An unexpected error occurred. Please try refreshing the page or contact support if the problem persists.
+        - generic [ref=e182]:
+          - generic [ref=e183]: "Loading chunk app/dashboard/page failed. (error: http://localhost:3020/_next/static/chunks/app/dashboard/page.js)"
+          - button "Try Again" [ref=e184] [cursor=pointer]:
+            - img
+            - text: Try Again
+  - region "Notifications (F8)":
+    - list
+  - generic [ref=e189] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e190] [cursor=pointer]:
+      - img [ref=e191] [cursor=pointer]
+    - generic [ref=e195] [cursor=pointer]:
+      - button "Open issues overlay" [ref=e196] [cursor=pointer]:
+        - generic [ref=e197] [cursor=pointer]:
+          - generic [ref=e198] [cursor=pointer]: "0"
+          - generic [ref=e199] [cursor=pointer]: "1"
+        - generic [ref=e200] [cursor=pointer]: Issue
+      - button "Collapse issues badge" [ref=e201] [cursor=pointer]:
+        - img [ref=e202] [cursor=pointer]
+  - alert [ref=e204]
+```

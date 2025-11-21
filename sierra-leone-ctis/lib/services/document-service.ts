@@ -2,7 +2,7 @@
  * Enhanced Document service for the BettsTax backend
  */
 
-import { apiClient, getToken } from '../api-client';
+import { apiClient } from '../api-client';
 
 /**
  * Create empty document data for new users or when API is unavailable
@@ -162,10 +162,6 @@ export const DocumentService = {
     return await new Promise<DocumentDto>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', url, true);
-      const token = getToken();
-      if (token) {
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      }
       xhr.withCredentials = true;
       xhr.upload.onprogress = (event: ProgressEvent) => {
         if (event.lengthComputable) {

@@ -1,0 +1,144 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - 'heading "Application error: a client-side exception has occurred while loading localhost (see the browser console for more information)." [level=2] [ref=e4]'
+  - generic [active]:
+    - generic [ref=e9] [cursor=pointer]:
+      - button "Open Next.js Dev Tools" [ref=e10] [cursor=pointer]:
+        - img [ref=e11] [cursor=pointer]
+      - generic [ref=e15] [cursor=pointer]:
+        - button "Open issues overlay" [ref=e16] [cursor=pointer]:
+          - generic [ref=e17] [cursor=pointer]:
+            - generic [ref=e18] [cursor=pointer]: "4"
+            - generic [ref=e19] [cursor=pointer]: "5"
+          - generic [ref=e20] [cursor=pointer]:
+            - text: Issue
+            - generic [ref=e21] [cursor=pointer]: s
+        - button "Collapse issues badge" [ref=e22] [cursor=pointer]:
+          - img [ref=e23] [cursor=pointer]
+    - generic [ref=e27]:
+      - dialog "Unhandled Runtime Error" [ref=e28]:
+        - generic [ref=e30]:
+          - generic [ref=e31]:
+            - generic [ref=e32]:
+              - generic [ref=e33]:
+                - generic [ref=e35]: Unhandled Runtime Error
+                - generic [ref=e36]:
+                  - button "Copy Stack Trace" [ref=e37] [cursor=pointer]:
+                    - img [ref=e38] [cursor=pointer]
+                  - button "No related documentation found" [disabled] [ref=e40]:
+                    - img [ref=e41]
+                  - link "Learn more about enabling Node.js inspector for server code with Chrome DevTools" [ref=e43] [cursor=pointer]:
+                    - /url: https://nextjs.org/docs/app/building-your-application/configuring/debugging#server-side-code
+                    - img [ref=e44] [cursor=pointer]
+              - paragraph [ref=e53]: "Error: missing ] in index expression"
+            - generic [ref=e54]:
+              - generic [ref=e55]:
+                - paragraph [ref=e57]:
+                  - img [ref=e59]
+                  - generic [ref=e62]: app\layout.tsx (44:9) @ RootLayout
+                  - button "Open in editor" [ref=e63] [cursor=pointer]:
+                    - img [ref=e65] [cursor=pointer]
+                - generic [ref=e68]: 42 | Skip to navigation 43 | </a> > 44 | <ErrorBoundary> | ^ 45 | <Providers> 46 | <AuthProvider> 47 | <ConditionalLayout>
+              - generic [ref=e69]:
+                - generic [ref=e70]:
+                  - paragraph [ref=e71]:
+                    - text: Call Stack
+                    - generic [ref=e72]: "23"
+                  - button "Show 3 ignore-listed frame(s)" [ref=e73] [cursor=pointer]:
+                    - text: Show 3 ignore-listed frame(s)
+                    - img [ref=e74] [cursor=pointer]
+                - generic [ref=e76]:
+                  - generic [ref=e77]: ./node_modules/tailwind-merge/dist/bundle-mjs.mjs
+                  - generic [ref=e78]: .next\static\chunks\app\layout.js (1092:1)
+                - generic [ref=e79]:
+                  - generic [ref=e80]: options.factory
+                  - generic [ref=e81]: .next\static\chunks\webpack.js (712:31)
+                - generic [ref=e82]:
+                  - generic [ref=e83]: __webpack_require__
+                  - generic [ref=e84]: .next\static\chunks\webpack.js (37:33)
+                - generic [ref=e85]:
+                  - generic [ref=e86]: fn
+                  - generic [ref=e87]: .next\static\chunks\webpack.js (369:21)
+                - generic [ref=e88]:
+                  - generic [ref=e89]: <unknown>
+                  - generic [ref=e90]: ./lib/utils.ts
+                - generic [ref=e91]:
+                  - generic [ref=e92]: ./lib/utils.ts
+                  - generic [ref=e93]: .next\static\chunks\app\layout.js (183:1)
+                - generic [ref=e94]:
+                  - generic [ref=e95]: options.factory
+                  - generic [ref=e96]: .next\static\chunks\webpack.js (712:31)
+                - generic [ref=e97]:
+                  - generic [ref=e98]: __webpack_require__
+                  - generic [ref=e99]: .next\static\chunks\webpack.js (37:33)
+                - generic [ref=e100]:
+                  - generic [ref=e101]: fn
+                  - generic [ref=e102]: .next\static\chunks\webpack.js (369:21)
+                - generic [ref=e103]:
+                  - generic [ref=e104]: <unknown>
+                  - generic [ref=e105]: ./components/ui/button.tsx
+                - generic [ref=e106]:
+                  - generic [ref=e107]: ./components/ui/button.tsx
+                  - generic [ref=e108]: .next\static\chunks\app\layout.js (62:1)
+                - generic [ref=e109]:
+                  - generic [ref=e110]: options.factory
+                  - generic [ref=e111]: .next\static\chunks\webpack.js (712:31)
+                - generic [ref=e112]:
+                  - generic [ref=e113]: __webpack_require__
+                  - generic [ref=e114]: .next\static\chunks\webpack.js (37:33)
+                - generic [ref=e115]:
+                  - generic [ref=e116]: fn
+                  - generic [ref=e117]: .next\static\chunks\webpack.js (369:21)
+                - generic [ref=e118]:
+                  - generic [ref=e119]: <unknown>
+                  - generic [ref=e120]: ./components/ui/error-boundary.tsx
+                - generic [ref=e121]:
+                  - generic [ref=e122]: ./components/ui/error-boundary.tsx
+                  - generic [ref=e123]: .next\static\chunks\app\layout.js (84:1)
+                - generic [ref=e124]:
+                  - generic [ref=e125]: options.factory
+                  - generic [ref=e126]: .next\static\chunks\webpack.js (712:31)
+                - generic [ref=e127]:
+                  - generic [ref=e128]: __webpack_require__
+                  - generic [ref=e129]: .next\static\chunks\webpack.js (37:33)
+                - generic [ref=e130]:
+                  - generic [ref=e131]: fn
+                  - generic [ref=e132]: .next\static\chunks\webpack.js (369:21)
+                - generic [ref=e133]:
+                  - generic [ref=e134]:
+                    - text: RootLayout
+                    - button [ref=e135] [cursor=pointer]:
+                      - img [ref=e136] [cursor=pointer]
+                  - generic [ref=e138]: app\layout.tsx (44:9)
+          - contentinfo [ref=e140]:
+            - region "Error feedback" [ref=e141]:
+              - paragraph [ref=e142]:
+                - link "Was this helpful?" [ref=e143] [cursor=pointer]:
+                  - /url: https://nextjs.org/telemetry#error-feedback
+              - button "Mark as helpful" [disabled] [ref=e144]:
+                - img [ref=e145]
+              - button "Mark as not helpful" [disabled] [ref=e148]:
+                - img [ref=e149]
+          - generic [ref=e151]:
+            - generic [ref=e152]: "1"
+            - generic [ref=e153]: "2"
+      - generic [ref=e154]:
+        - generic [ref=e155]:
+          - navigation [ref=e156]:
+            - button "previous" [disabled] [ref=e157]:
+              - img "previous" [ref=e158]
+            - generic [ref=e160]:
+              - generic [ref=e161]: 1/
+              - generic [ref=e162]: "5"
+            - button "next" [ref=e163] [cursor=pointer]:
+              - img "next" [ref=e164] [cursor=pointer]
+          - img
+        - generic [ref=e166]:
+          - link "Next.js 15.2.4 (outdated)" [ref=e167] [cursor=pointer]:
+            - /url: https://nextjs.org/docs/messages/version-staleness
+            - img [ref=e168] [cursor=pointer]
+            - generic "An outdated version detected (latest is 16.0.1), upgrade is highly recommended!" [ref=e170] [cursor=pointer]: Next.js 15.2.4 (outdated)
+          - img
+```

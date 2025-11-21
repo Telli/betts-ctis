@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -15,8 +15,9 @@ import { DocumentService, type DocumentUploadCategory } from '@/lib/services'
 import type { WithholdingTaxType } from '@/lib/services/tax-calculation-service'
 import { FileUpload, type FileUploadFile } from '@/components/ui/file-upload'
 import { Textarea } from '@/components/ui/textarea'
-import { CalendarIcon, Calculator, CheckCircle2 } from 'lucide-react'
-import { Calendar } from '@/components/ui/calendar'
+import { CalendarIcon, Calculator, CheckCircle2, Plus, Trash2 } from 'lucide-react'
+// Deprecated Calendar removed; using DatePicker instead
+import { DatePicker } from '@/components/ui/date-picker'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
@@ -43,6 +44,41 @@ interface TaxFilingFormProps {
   initialData?: Partial<CreateTaxFilingDto>
 }
 
+type AdditionalField = {
+  id: string
+  key: string
+  value: string
+}
+
+type AdditionalFieldUpdater = AdditionalField[] | ((prev: AdditionalField[]) => AdditionalField[])
+
+const generateFieldId = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return Math.random().toString(36).slice(2, 10)
+}
+
+const parseAdditionalDataString = (raw?: string | null): AdditionalField[] => {
+  if (!raw) {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return Object.entries(parsed).map(([key, value]) => ({
+        id: generateFieldId(),
+        key,
+        value: typeof value === 'string' ? value : JSON.stringify(value),
+      }))
+    }
+  } catch (error) {
+    console.warn('Unable to parse additional data JSON', error)
+  }
+
+  return []
+}
 
 export default function TaxFilingForm({ onSuccess, initialData }: TaxFilingFormProps) {
   const { toast } = useToast()
@@ -56,6 +92,7 @@ export default function TaxFilingForm({ onSuccess, initialData }: TaxFilingFormP
   const [requirements, setRequirements] = useState<Array<{ category: string; required: boolean; description: string; acceptedFormats: string[]; maxSizeMb: number }>>([])
   const [withholdingType, setWithholdingType] = useState<WithholdingTaxType>('ProfessionalFees')
   const [isResident, setIsResident] = useState<boolean>(true)
+  const [additionalFields, setAdditionalFields] = useState<AdditionalField[]>([])
 
   const form = useForm<TaxFilingFormData>({
     resolver: zodResolver(taxFilingSchema),
@@ -69,13 +106,115 @@ export default function TaxFilingForm({ onSuccess, initialData }: TaxFilingFormP
       filingPeriod: '',
       penaltyAmount: undefined,
       interestAmount: undefined,
-      additionalData: '',
+      additionalData: initialData?.additionalData ?? '',
     },
   })
+
+  const updateAdditionalFields = useCallback((updater: AdditionalFieldUpdater, options?: { markPristine?: boolean }) => {
+    let nextJson = ''
+
+    setAdditionalFields(prev => {
+      const next = typeof updater === 'function'
+        ? (updater as (prev: AdditionalField[]) => AdditionalField[])(prev)
+        : updater
+
+      const entries = next
+        .map(item => ({ key: item.key.trim(), value: item.value.trim() }))
+        .filter(item => item.key.length > 0 || item.value.length > 0)
+
+      const dataObj: Record<string, string> = {}
+      entries.forEach(item => {
+        if (item.key.length > 0) {
+          dataObj[item.key] = item.value
+        }
+      })
+
+      nextJson = Object.keys(dataObj).length > 0
+        ? JSON.stringify(dataObj, null, 2)
+        : ''
+
+      return next
+    })
+
+    const currentValue = form.getValues('additionalData') ?? ''
+    const setValueOptions = options?.markPristine
+      ? { shouldDirty: false, shouldTouch: false }
+      : { shouldDirty: true, shouldTouch: true }
+
+    if (currentValue !== nextJson || options?.markPristine) {
+      form.setValue('additionalData', nextJson, setValueOptions)
+    }
+
+    if (!options?.markPristine) {
+      form.clearErrors('additionalData')
+    }
+
+    return nextJson
+  }, [form])
+
+  const handleAddAdditionalField = useCallback(() => {
+    updateAdditionalFields(prev => [...prev, { id: generateFieldId(), key: '', value: '' }])
+  }, [updateAdditionalFields])
+
+  const handleAdditionalFieldChange = useCallback((id: string, fieldKey: 'key' | 'value', value: string) => {
+    updateAdditionalFields(prev => prev.map(item => item.id === id ? { ...item, [fieldKey]: value } : item))
+  }, [updateAdditionalFields])
+
+  const handleRemoveAdditionalField = useCallback((id: string) => {
+    updateAdditionalFields(prev => prev.filter(item => item.id !== id))
+  }, [updateAdditionalFields])
+
+  const earliestDueDate = useMemo(() => new Date(2000, 0, 1), [])
+  const latestDueDate = useMemo(() => {
+    const currentYear = new Date().getFullYear()
+    return new Date(currentYear + 10, 11, 31)
+  }, [])
+
+  const resetAdditionalDataToInitial = useCallback(() => {
+    const entries = parseAdditionalDataString(initialData?.additionalData ?? '')
+    updateAdditionalFields(() => entries, { markPristine: true })
+    form.clearErrors('additionalData')
+  }, [initialData?.additionalData, updateAdditionalFields, form])
 
   // Load clients
   useEffect(() => {
     const loadClients = async () => {
+    type AdditionalField = {
+      id: string
+      key: string
+      value: string
+    }
+
+    type AdditionalFieldUpdater = AdditionalField[] | ((prev: AdditionalField[]) => AdditionalField[])
+
+    const generateFieldId = (): string => {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID()
+      }
+      return Math.random().toString(36).slice(2, 10)
+    }
+
+    const parseAdditionalDataString = (raw?: string | null): AdditionalField[] => {
+      if (!raw) {
+        return []
+      }
+
+      try {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return Object.entries(parsed).map(([key, value]) => ({
+            id: generateFieldId(),
+            key,
+            value: typeof value === 'string' ? value : JSON.stringify(value),
+          }))
+        }
+      } catch (error) {
+        console.warn('Unable to parse additional data JSON', error)
+      }
+
+      return []
+    }
+
       try {
         const clientsData = await ClientService.getAll()
         setClients(clientsData || [])
@@ -90,6 +229,10 @@ export default function TaxFilingForm({ onSuccess, initialData }: TaxFilingFormP
     }
     loadClients()
   }, [toast])
+
+  useEffect(() => {
+    resetAdditionalDataToInitial()
+  }, [resetAdditionalDataToInitial])
 
   // Helpers for categories
   const serverCategoryToFrontend = (cat: string): DocumentUploadCategory => {
@@ -451,37 +594,14 @@ export default function TaxFilingForm({ onSuccess, initialData }: TaxFilingFormP
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Due Date</FormLabel>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <FormControl>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full pl-3 text-left font-normal",
-                          !field.value && "text-muted-foreground"
-                        )}
-                      >
-                        {field.value ? (
-                          format(field.value, "PPP")
-                        ) : (
-                          <span>Pick a date</span>
-                        )}
-                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                      </Button>
-                    </FormControl>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={field.value}
-                      onSelect={field.onChange}
-                      disabled={(date) =>
-                        date < new Date()
-                      }
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                <FormControl>
+                  <DatePicker
+                    value={field.value}
+                    onChange={field.onChange}
+                    minDate={earliestDueDate}
+                    maxDate={latestDueDate}
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -627,9 +747,87 @@ export default function TaxFilingForm({ onSuccess, initialData }: TaxFilingFormP
           name="additionalData"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Additional Data (JSON, optional)</FormLabel>
+              <FormLabel>Additional Details (optional)</FormLabel>
               <FormControl>
-                <Textarea rows={4} placeholder='{"note":"..."}' {...field} />
+                <div className="space-y-3">
+                  {additionalFields.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Add quick reference items like payment IDs, submission notes, or approval contacts. We will format everything for you automatically.
+                    </p>
+                  ) : (
+                    additionalFields.map((item) => (
+                      <div key={item.id} className="grid gap-3 md:grid-cols-[minmax(0,220px)_1fr_auto]">
+                        <div>
+                          <Label
+                            htmlFor={`additional-label-${item.id}`}
+                            className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                          >
+                            Label
+                          </Label>
+                          <Input
+                            id={`additional-label-${item.id}`}
+                            placeholder="e.g., referenceNumber"
+                            value={item.key}
+                            onChange={(e) => handleAdditionalFieldChange(item.id, 'key', e.target.value)}
+                            onBlur={field.onBlur}
+                          />
+                          {item.key.trim().length === 0 && item.value.trim().length > 0 && (
+                            <p className="mt-1 text-xs text-amber-600">Add a label so this detail is saved.</p>
+                          )}
+                        </div>
+                        <div>
+                          <Label
+                            htmlFor={`additional-value-${item.id}`}
+                            className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                          >
+                            Value
+                          </Label>
+                          <Textarea
+                            id={`additional-value-${item.id}`}
+                            rows={2}
+                            placeholder="Enter value"
+                            value={item.value}
+                            onChange={(e) => handleAdditionalFieldChange(item.id, 'value', e.target.value)}
+                            onBlur={field.onBlur}
+                          />
+                        </div>
+                        <div className="flex items-end justify-end md:justify-start">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Remove detail"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={() => handleRemoveAdditionalField(item.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={handleAddAdditionalField}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add detail
+                    </Button>
+                    {field.value && field.value.trim().length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        Stored with the filing as structured metadata.
+                      </span>
+                    )}
+                  </div>
+
+                  {field.value && field.value.trim().length > 0 && (
+                    <div className="rounded-md border bg-muted/40 p-3">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Preview</div>
+                      <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs font-mono">
+                        {field.value}
+                      </pre>
+                    </div>
+                  )}
+                </div>
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -707,7 +905,14 @@ export default function TaxFilingForm({ onSuccess, initialData }: TaxFilingFormP
         </div>
 
         <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" onClick={() => form.reset()}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              form.reset()
+              resetAdditionalDataToInitial()
+            }}
+          >
             Reset
           </Button>
           <Button type="submit" disabled={loading} className="bg-sierra-blue hover:bg-sierra-blue/90">

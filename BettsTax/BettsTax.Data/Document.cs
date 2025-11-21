@@ -22,6 +22,16 @@ namespace BettsTax.Data
         public bool IsDeleted { get; set; } = false;
         public int CurrentVersionNumber { get; set; } = 0;
 
+        // Additional properties for DbSeeder compatibility
+        public string FilePath { get; set; } = string.Empty;
+        public long FileSize { get; set; }
+        public DocumentVerificationStatus VerificationStatus { get; set; } = DocumentVerificationStatus.NotRequested;
+        public string? VerifiedById { get; set; }
+        public DateTime? VerifiedAt { get; set; }
+        public List<string> Tags { get; set; } = new();
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
         // Associate delegation fields
         public string? UploadedByAssociateId { get; set; }
         public ApplicationUser? UploadedByAssociate { get; set; }

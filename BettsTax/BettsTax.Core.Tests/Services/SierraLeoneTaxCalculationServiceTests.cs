@@ -11,11 +11,20 @@ namespace BettsTax.Core.Tests.Services
     {
         private readonly SierraLeoneTaxCalculationService _service;
         private readonly Mock<ILogger<SierraLeoneTaxCalculationService>> _mockLogger;
+        private readonly Mock<ISystemSettingService> _mockSettingService;
 
         public SierraLeoneTaxCalculationServiceTests()
         {
             _mockLogger = new Mock<ILogger<SierraLeoneTaxCalculationService>>();
-            _service = new SierraLeoneTaxCalculationService(_mockLogger.Object);
+            _mockSettingService = new Mock<ISystemSettingService>();
+            _mockSettingService
+                .Setup(s => s.GetSettingAsync<decimal?>(It.IsAny<string>()))
+                .ReturnsAsync((decimal?)null);
+            _mockSettingService
+                .Setup(s => s.GetSettingAsync(It.IsAny<string>()))
+                .ReturnsAsync((string?)null);
+
+            _service = new SierraLeoneTaxCalculationService(_mockLogger.Object, _mockSettingService.Object);
         }
 
         [Fact]
@@ -221,9 +230,6 @@ namespace BettsTax.Core.Tests.Services
                 taxableAmount, taxType, category, dueDate, annualTurnover, isIndividual);
 
             // Assert
-            decimal calculatedTax = 250_000m; // 25% of 1M
-            decimal minimumTax = 500_000m; // 0.5% of 100M turnover
-            
             result.BaseTax.Should().Be(500_000m); // Should use minimum tax
             result.MinimumTax.Should().Be(500_000m);
             result.TotalTaxLiability.Should().Be(500_000m);

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -23,6 +24,53 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
 
     private record LoginResponse(string token, string[] roles);
 
+    private static JsonElement GetResponseData(JsonElement element)
+    {
+        return TryGetPropertyCaseInsensitive(element, "data", out var dataElement)
+            ? dataElement
+            : element;
+    }
+
+    private static JsonElement GetRequiredProperty(JsonElement element, string propertyName)
+    {
+        if (TryGetPropertyCaseInsensitive(element, propertyName, out var value))
+        {
+            return value;
+        }
+
+        throw new KeyNotFoundException($"{propertyName} property not found in JSON payload.");
+    }
+
+    private static int GetClientId(JsonElement element)
+    {
+        var payload = GetResponseData(element);
+
+        if (TryGetPropertyCaseInsensitive(payload, "clientId", out var value))
+        {
+            return value.GetInt32();
+        }
+
+        throw new KeyNotFoundException("clientId property not found in JSON payload.");
+    }
+
+    private static bool TryGetPropertyCaseInsensitive(JsonElement element, string propertyName, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
     [Fact]
     public async Task Approving_payment_creates_receipt_document()
     {
@@ -43,8 +91,7 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         int clientId;
         if (clientsJson.RootElement.ValueKind == JsonValueKind.Array && clientsJson.RootElement.GetArrayLength() > 0)
         {
-            // API uses camelCase (PropertyNamingPolicy = CamelCase)
-            clientId = clientsJson.RootElement[0].GetProperty("clientId").GetInt32();
+            clientId = GetClientId(clientsJson.RootElement[0]);
         }
         else
         {
@@ -64,7 +111,7 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
             var createClientResp = await client.PostAsJsonAsync("/api/clients", newClient);
             createClientResp.EnsureSuccessStatusCode();
             var created = JsonDocument.Parse(await createClientResp.Content.ReadAsStringAsync());
-            clientId = created.RootElement.GetProperty("clientId").GetInt32();
+            clientId = GetClientId(created.RootElement);
         }
 
         // 3) Create payment (Pending)
@@ -78,9 +125,10 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         var createPayResp = await client.PostAsJsonAsync("/api/payments", createPayment);
         createPayResp.EnsureSuccessStatusCode();
         var createdPaymentJson = JsonDocument.Parse(await createPayResp.Content.ReadAsStringAsync());
+        var createdPaymentData = GetResponseData(createdPaymentJson.RootElement);
 
         // API returns: { "success": true, "data": { "paymentId": ... } } (camelCase)
-        var paymentId = createdPaymentJson.RootElement.GetProperty("data").GetProperty("paymentId").GetInt32();
+        var paymentId = GetRequiredProperty(createdPaymentData, "paymentId").GetInt32();
 
         // 4) Approve payment
         var approveResp = await client.PostAsJsonAsync($"/api/payments/{paymentId}/approve", new { Comments = "E2E approval" });
@@ -95,10 +143,10 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
             var docsResp = await client.GetAsync($"/api/documents?category=2&clientId={clientId}");
             docsResp.EnsureSuccessStatusCode();
             var docsJson = JsonDocument.Parse(await docsResp.Content.ReadAsStringAsync());
-            var items = docsJson.RootElement.GetProperty("data");
+            var items = GetResponseData(docsJson.RootElement);
             hasReceipt = items.EnumerateArray().Any(d =>
             {
-                var catProp = d.GetProperty("category");  // camelCase
+                var catProp = GetRequiredProperty(d, "category");  // camelCase
                 return (catProp.ValueKind == JsonValueKind.String && catProp.GetString() == "Receipt")
                        || (catProp.ValueKind == JsonValueKind.Number && catProp.GetInt32() == 2);
             });
@@ -126,7 +174,7 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         int clientId;
         if (clientsJson.RootElement.ValueKind == JsonValueKind.Array && clientsJson.RootElement.GetArrayLength() > 0)
         {
-            clientId = clientsJson.RootElement[0].GetProperty("clientId").GetInt32();
+            clientId = GetClientId(clientsJson.RootElement[0]);
         }
         else
         {
@@ -146,7 +194,7 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
             var createClientResp = await client.PostAsJsonAsync("/api/clients", newClient);
             createClientResp.EnsureSuccessStatusCode();
             var created = JsonDocument.Parse(await createClientResp.Content.ReadAsStringAsync());
-            clientId = created.RootElement.GetProperty("clientId").GetInt32();
+            clientId = GetClientId(created.RootElement);
         }
 
         // 3) Create payment (Pending)
@@ -160,7 +208,8 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         var createPayResp = await client.PostAsJsonAsync("/api/payments", createPayment);
         createPayResp.EnsureSuccessStatusCode();
         var createdPaymentJson = JsonDocument.Parse(await createPayResp.Content.ReadAsStringAsync());
-        var paymentId = createdPaymentJson.RootElement.GetProperty("data").GetProperty("paymentId").GetInt32();
+        var createdPaymentData = GetResponseData(createdPaymentJson.RootElement);
+        var paymentId = GetRequiredProperty(createdPaymentData, "paymentId").GetInt32();
 
         // 4) Approve payment first time
         var approveResp1 = await client.PostAsJsonAsync($"/api/payments/{paymentId}/approve", new { Comments = "First approval" });
@@ -175,10 +224,10 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
             var docsResp1 = await client.GetAsync($"/api/documents?category=2&clientId={clientId}");
             docsResp1.EnsureSuccessStatusCode();
             var docsJson1 = JsonDocument.Parse(await docsResp1.Content.ReadAsStringAsync());
-            var items1 = docsJson1.RootElement.GetProperty("data");
+            var items1 = GetResponseData(docsJson1.RootElement);
             receiptCount1 = items1.EnumerateArray().Count(d =>
             {
-                var catProp = d.GetProperty("category");
+                var catProp = GetRequiredProperty(d, "category");
                 return (catProp.ValueKind == JsonValueKind.String && catProp.GetString() == "Receipt")
                        || (catProp.ValueKind == JsonValueKind.Number && catProp.GetInt32() == 2);
             });
@@ -192,10 +241,10 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         var docsResp2 = await client.GetAsync($"/api/documents?category=2&clientId={clientId}");
         docsResp2.EnsureSuccessStatusCode();
         var docsJson2 = JsonDocument.Parse(await docsResp2.Content.ReadAsStringAsync());
-        var items2 = docsJson2.RootElement.GetProperty("data");
+        var items2 = GetResponseData(docsJson2.RootElement);
         int receiptCount2 = items2.EnumerateArray().Count(d =>
         {
-            var catProp = d.GetProperty("category");
+            var catProp = GetRequiredProperty(d, "category");
             return (catProp.ValueKind == JsonValueKind.String && catProp.GetString() == "Receipt")
                    || (catProp.ValueKind == JsonValueKind.Number && catProp.GetInt32() == 2);
         });
@@ -224,7 +273,7 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         int clientId;
         if (clientsJson.RootElement.ValueKind == JsonValueKind.Array && clientsJson.RootElement.GetArrayLength() > 0)
         {
-            clientId = clientsJson.RootElement[0].GetProperty("clientId").GetInt32();
+            clientId = GetClientId(clientsJson.RootElement[0]);
         }
         else
         {
@@ -244,7 +293,7 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
             var createClientResp = await client.PostAsJsonAsync("/api/clients", newClient);
             createClientResp.EnsureSuccessStatusCode();
             var created = JsonDocument.Parse(await createClientResp.Content.ReadAsStringAsync());
-            clientId = created.RootElement.GetProperty("clientId").GetInt32();
+            clientId = GetClientId(created.RootElement);
         }
 
         // 3) Create payment (BankTransfer method to require evidence)
@@ -258,7 +307,8 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         var createPayResp = await client.PostAsJsonAsync("/api/payments", createPayment);
         createPayResp.EnsureSuccessStatusCode();
         var createdPaymentJson = JsonDocument.Parse(await createPayResp.Content.ReadAsStringAsync());
-        var paymentId = createdPaymentJson.RootElement.GetProperty("data").GetProperty("paymentId").GetInt32();
+        var createdPaymentData = GetResponseData(createdPaymentJson.RootElement);
+        var paymentId = GetRequiredProperty(createdPaymentData, "paymentId").GetInt32();
 
         // 4) Create a dummy evidence file
         var fileContent = System.Text.Encoding.UTF8.GetBytes("Bank transfer slip content for payment evidence");
@@ -278,18 +328,19 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         uploadResp.EnsureSuccessStatusCode();
         var uploadJson = JsonDocument.Parse(await uploadResp.Content.ReadAsStringAsync());
         uploadJson.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
-        var documentId = uploadJson.RootElement.GetProperty("data").GetProperty("documentId").GetInt32();
+        var uploadData = GetResponseData(uploadJson.RootElement);
+        var documentId = GetRequiredProperty(uploadData, "documentId").GetInt32();
 
         // 6) Verify document was created with correct category (PaymentEvidence)
         var docResp = await client.GetAsync($"/api/documents/{documentId}");
         docResp.EnsureSuccessStatusCode();
         var docJson = JsonDocument.Parse(await docResp.Content.ReadAsStringAsync());
-        var docData = docJson.RootElement.GetProperty("data");
-        docData.GetProperty("clientId").GetInt32().Should().Be(clientId);
-        docData.GetProperty("description").GetString().Should().Contain("evidence");
+        var docData = GetResponseData(docJson.RootElement);
+        GetClientId(docData).Should().Be(clientId);
+        GetRequiredProperty(docData, "description").GetString().Should().Contain("evidence");
 
         // Verify category is PaymentEvidence (4)
-        var categoryProp = docData.GetProperty("category");
+        var categoryProp = GetRequiredProperty(docData, "category");
         bool isPaymentEvidence = (categoryProp.ValueKind == JsonValueKind.String && categoryProp.GetString() == "PaymentEvidence")
                                 || (categoryProp.ValueKind == JsonValueKind.Number && categoryProp.GetInt32() == 4);
         isPaymentEvidence.Should().BeTrue();
@@ -315,7 +366,7 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         int clientId;
         if (clientsJson.RootElement.ValueKind == JsonValueKind.Array && clientsJson.RootElement.GetArrayLength() > 0)
         {
-            clientId = clientsJson.RootElement[0].GetProperty("clientId").GetInt32();
+            clientId = GetClientId(clientsJson.RootElement[0]);
         }
         else
         {
@@ -335,7 +386,7 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
             var createClientResp = await client.PostAsJsonAsync("/api/clients", newClient);
             createClientResp.EnsureSuccessStatusCode();
             var created = JsonDocument.Parse(await createClientResp.Content.ReadAsStringAsync());
-            clientId = created.RootElement.GetProperty("clientId").GetInt32();
+            clientId = GetClientId(created.RootElement);
         }
 
         // 3) Create and approve a payment
@@ -349,7 +400,8 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         var createPayResp = await client.PostAsJsonAsync("/api/payments", createPayment);
         createPayResp.EnsureSuccessStatusCode();
         var createdPaymentJson = JsonDocument.Parse(await createPayResp.Content.ReadAsStringAsync());
-        var paymentId = createdPaymentJson.RootElement.GetProperty("data").GetProperty("paymentId").GetInt32();
+        var createdPaymentData = GetResponseData(createdPaymentJson.RootElement);
+        var paymentId = GetRequiredProperty(createdPaymentData, "paymentId").GetInt32();
 
         // Approve the payment first
         var approveResp = await client.PostAsJsonAsync($"/api/payments/{paymentId}/approve", new { Comments = "Approved for reconciliation test" });
@@ -373,10 +425,10 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         var paymentResp = await client.GetAsync($"/api/payments/{paymentId}");
         paymentResp.EnsureSuccessStatusCode();
         var paymentJson = JsonDocument.Parse(await paymentResp.Content.ReadAsStringAsync());
-        var paymentData = paymentJson.RootElement.GetProperty("data");
+        var paymentData = GetResponseData(paymentJson.RootElement);
 
         // Check status is Completed (3)
-        var statusProp = paymentData.GetProperty("status");
+        var statusProp = GetRequiredProperty(paymentData, "status");
         bool isCompleted = (statusProp.ValueKind == JsonValueKind.String && statusProp.GetString() == "Completed")
                           || (statusProp.ValueKind == JsonValueKind.Number && statusProp.GetInt32() == 3);
         isCompleted.Should().BeTrue("Payment should be marked as Completed after reconciliation");
@@ -402,7 +454,7 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         int clientId;
         if (clientsJson.RootElement.ValueKind == JsonValueKind.Array && clientsJson.RootElement.GetArrayLength() > 0)
         {
-            clientId = clientsJson.RootElement[0].GetProperty("clientId").GetInt32();
+            clientId = GetClientId(clientsJson.RootElement[0]);
         }
         else
         {
@@ -422,7 +474,7 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
             var createClientResp = await client.PostAsJsonAsync("/api/clients", newClient);
             createClientResp.EnsureSuccessStatusCode();
             var created = JsonDocument.Parse(await createClientResp.Content.ReadAsStringAsync());
-            clientId = created.RootElement.GetProperty("clientId").GetInt32();
+            clientId = GetClientId(created.RootElement);
         }
 
         // 3) Create payment (Pending)
@@ -436,7 +488,8 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         var createPayResp = await client.PostAsJsonAsync("/api/payments", createPayment);
         createPayResp.EnsureSuccessStatusCode();
         var createdPaymentJson = JsonDocument.Parse(await createPayResp.Content.ReadAsStringAsync());
-        var paymentId = createdPaymentJson.RootElement.GetProperty("data").GetProperty("paymentId").GetInt32();
+        var createdPaymentData = GetResponseData(createdPaymentJson.RootElement);
+        var paymentId = GetRequiredProperty(createdPaymentData, "paymentId").GetInt32();
 
         // 4) Approve payment - this should succeed even if receipt generation fails
         var approveResp = await client.PostAsJsonAsync($"/api/payments/{paymentId}/approve", new { Comments = "Approval with report failure test" });
@@ -446,11 +499,12 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         var paymentResp = await client.GetAsync($"/api/payments/{paymentId}");
         paymentResp.EnsureSuccessStatusCode();
         var paymentJson = JsonDocument.Parse(await paymentResp.Content.ReadAsStringAsync());
-        var statusElement = paymentJson.RootElement.GetProperty("data").GetProperty("status");
-        string status = statusElement.ValueKind == JsonValueKind.String
-            ? statusElement.GetString()!
-            : statusElement.GetInt32().ToString();
-        status.Should().Be("1", "Payment should be approved even if receipt generation fails");
+        var paymentData = GetResponseData(paymentJson.RootElement);
+        var statusElement = GetRequiredProperty(paymentData, "status");
+        bool isApproved = statusElement.ValueKind == JsonValueKind.String
+            ? string.Equals(statusElement.GetString(), "Approved", StringComparison.OrdinalIgnoreCase)
+            : statusElement.GetInt32() == 1;
+        isApproved.Should().BeTrue("Payment should be approved even if receipt generation fails");
 
         // 6) Check that no receipts were created (since report generation would fail in this test scenario)
         // Note: In a real test, we'd mock IReportGenerator to throw, but for this integration test,
@@ -458,10 +512,10 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         var docsResp = await client.GetAsync($"/api/documents?category=2&clientId={clientId}");
         docsResp.EnsureSuccessStatusCode();
         var docsJson = JsonDocument.Parse(await docsResp.Content.ReadAsStringAsync());
-        var items = docsJson.RootElement.GetProperty("data");
+        var items = GetResponseData(docsJson.RootElement);
         int receiptCount = items.EnumerateArray().Count(d =>
         {
-            var catProp = d.GetProperty("category");
+            var catProp = GetRequiredProperty(d, "category");
             return (catProp.ValueKind == JsonValueKind.String && catProp.GetString() == "Receipt")
                    || (catProp.ValueKind == JsonValueKind.Number && catProp.GetInt32() == 2);
         });
@@ -490,7 +544,7 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         int clientId;
         if (clientsJson.RootElement.ValueKind == JsonValueKind.Array && clientsJson.RootElement.GetArrayLength() > 0)
         {
-            clientId = clientsJson.RootElement[0].GetProperty("clientId").GetInt32();
+            clientId = GetClientId(clientsJson.RootElement[0]);
         }
         else
         {
@@ -510,7 +564,7 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
             var createClientResp = await client.PostAsJsonAsync("/api/clients", newClient);
             createClientResp.EnsureSuccessStatusCode();
             var created = JsonDocument.Parse(await createClientResp.Content.ReadAsStringAsync());
-            clientId = created.RootElement.GetProperty("clientId").GetInt32();
+            clientId = GetClientId(created.RootElement);
         }
 
         // 3) Create payment (Pending)
@@ -524,7 +578,8 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         var createPayResp = await client.PostAsJsonAsync("/api/payments", createPayment);
         createPayResp.EnsureSuccessStatusCode();
         var createdPaymentJson = JsonDocument.Parse(await createPayResp.Content.ReadAsStringAsync());
-        var paymentId = createdPaymentJson.RootElement.GetProperty("data").GetProperty("paymentId").GetInt32();
+        var createdPaymentData = GetResponseData(createdPaymentJson.RootElement);
+        var paymentId = GetRequiredProperty(createdPaymentData, "paymentId").GetInt32();
 
         // 4) Reject payment
         var rejectResp = await client.PostAsJsonAsync($"/api/payments/{paymentId}/reject", new { RejectionReason = "Test rejection" });
@@ -534,10 +589,10 @@ public class ReceiptApprovalE2ETests : IClassFixture<IntegrationTestFixture>
         var docsResp = await client.GetAsync($"/api/documents?category=2&clientId={clientId}");
         docsResp.EnsureSuccessStatusCode();
         var docsJson = JsonDocument.Parse(await docsResp.Content.ReadAsStringAsync());
-        var items = docsJson.RootElement.GetProperty("data");
+        var items = GetResponseData(docsJson.RootElement);
         bool hasReceipt = items.EnumerateArray().Any(d =>
         {
-            var catProp = d.GetProperty("category");
+            var catProp = GetRequiredProperty(d, "category");
             return (catProp.ValueKind == JsonValueKind.String && catProp.GetString() == "Receipt")
                    || (catProp.ValueKind == JsonValueKind.Number && catProp.GetInt32() == 2);
         });

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Calendar } from '@/components/ui/calendar'
+import { CalendarDisplay } from '@/components/ui/calendar-display'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/components/ui/use-toast'
 import { ClientPortalService } from '@/lib/services/client-portal-service'
@@ -233,16 +233,11 @@ export default function ClientDeadlinesPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Calendar
-              mode="single"
+            <CalendarDisplay
               selected={selectedDate}
               onSelect={(date) => date && setSelectedDate(date)}
-              modifiers={{
-                hasDeadline: (date) => hasDeadlineOnDate(date)
-              }}
-              modifiersStyles={{
-                hasDeadline: { backgroundColor: '#fef3c7' }
-              }}
+              highlightDates={deadlines.map(d => d.dueDate)}
+              highlightClassName="highlighted-date"
               className="rounded-md border"
             />
             

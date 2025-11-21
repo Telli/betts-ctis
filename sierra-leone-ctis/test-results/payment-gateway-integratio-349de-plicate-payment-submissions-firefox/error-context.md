@@ -1,0 +1,48 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - link "Skip to navigation" [ref=e3] [cursor=pointer]:
+    - /url: "#navigation"
+  - main "Main content" [ref=e5]:
+    - generic [ref=e7]:
+      - img "Betts logo" [ref=e9]
+      - heading "The Betts Firm CTIS" [level=1] [ref=e10]
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic [ref=e13]: Log in
+          - generic [ref=e14]: Enter your email and password to log in to your account
+        - generic [ref=e15]:
+          - generic [ref=e16]:
+            - generic [ref=e17]:
+              - generic [ref=e18]: Email
+              - textbox "Email" [ref=e19]
+            - generic [ref=e20]:
+              - generic [ref=e21]:
+                - generic [ref=e22]: Password
+                - link "Forgot password?" [ref=e23] [cursor=pointer]:
+                  - /url: /forgot-password
+              - textbox "Password" [ref=e24]
+          - generic [ref=e25]:
+            - button "Log in" [ref=e26] [cursor=pointer]
+            - generic [ref=e27]:
+              - text: Don't have an account?
+              - link "Register" [ref=e28] [cursor=pointer]:
+                - /url: /register
+  - region "Notifications (F8)":
+    - list
+  - generic [ref=e33] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e34] [cursor=pointer]:
+      - img [ref=e35] [cursor=pointer]
+    - generic [ref=e39] [cursor=pointer]:
+      - button "Open issues overlay" [ref=e40] [cursor=pointer]:
+        - generic [ref=e41] [cursor=pointer]:
+          - generic [ref=e42] [cursor=pointer]: "0"
+          - generic [ref=e43] [cursor=pointer]: "1"
+        - generic [ref=e44] [cursor=pointer]: Issue
+      - button "Collapse issues badge" [ref=e45] [cursor=pointer]:
+        - img [ref=e46] [cursor=pointer]
+  - alert [ref=e48]
+```

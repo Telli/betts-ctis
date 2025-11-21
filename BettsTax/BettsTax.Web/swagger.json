@@ -1,0 +1,182 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Betts CTIS API",
+    "version": "1.0.0",
+    "description": "OpenAPI specification (generated) for key Betts CTIS endpoints: auth, clients, kpis, reports, compliance, payments, tax, documents, health."
+  },
+  "servers": [
+    { "url": "http://localhost:5001", "description": "Local development" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "AuthRequest": {
+        "type": "object",
+        "properties": {
+          "username": { "type": "string" },
+          "password": { "type": "string" }
+        },
+        "required": ["username","password"]
+      },
+      "AuthResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string" },
+          "expiresIn": { "type": "integer", "format": "int32" }
+        }
+      },
+      "Client": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "taxId": { "type": "string" },
+          "category": { "type": "string", "enum": ["Large","Medium","Small","Micro"] },
+          "email": { "type": "string", "format": "email" }
+        }
+      },
+      "KPI": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "value": { "type": "number" }
+        }
+      },
+      "ReportRequest": {
+        "type": "object",
+        "properties": {
+          "reportType": { "type": "string" },
+          "from": { "type": "string", "format": "date" },
+          "to": { "type": "string", "format": "date" }
+        },
+        "required": ["reportType","from","to"]
+      },
+      "PaymentRequest": {
+        "type": "object",
+        "properties": {
+          "clientId": { "type": "string" },
+          "amount": { "type": "number" },
+          "provider": { "type": "string", "example": "OrangeMoney" },
+          "metadata": { "type": "object", "additionalProperties": true }
+        },
+        "required": ["clientId","amount","provider"]
+      },
+      "TaxCalculationRequest": {
+        "type": "object",
+        "properties": {
+          "clientId": { "type": "string" },
+          "taxYear": { "type": "integer" },
+          "income": { "type": "number" }
+        },
+        "required": ["clientId","taxYear","income"]
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" }
+        }
+      }
+    }
+  },
+  "security": [ { "bearerAuth": [] } ],
+  "paths": {
+    "/api/auth/login": {
+      "post": {
+        "summary": "Authenticate and receive JWT",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthResponse" } } } },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    },
+    "/api/clients": {
+      "get": {
+        "summary": "List clients",
+        "responses": {
+          "200": { "description": "A list of clients", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Client" } } } } }
+        }
+      },
+      "post": {
+        "summary": "Create client",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Client" } } } },
+        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Client" } } } } }
+      }
+    },
+    "/api/clients/{id}": {
+      "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } } ],
+      "get": {
+        "summary": "Get client by id",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Client" } } } }, "404": { "description": "Not Found" } }
+      },
+      "put": {
+        "summary": "Update client",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Client" } } } },
+        "responses": { "204": { "description": "No Content" }, "404": { "description": "Not Found" } }
+      }
+    },
+    "/api/kpis": {
+      "get": {
+        "summary": "Get KPI metrics",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/KPI" } } } } }
+      }
+    },
+    "/api/reports/generate": {
+      "post": {
+        "summary": "Request report generation",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReportRequest" } } } },
+        "responses": { "202": { "description": "Accepted - report generation queued" } }
+      }
+    },
+    "/api/compliance/status/{clientId}": {
+      "get": {
+        "summary": "Get compliance status for a client",
+        "parameters": [ { "name": "clientId", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } }, "404": { "description": "Not Found" } }
+      }
+    },
+    "/api/payments/initiate": {
+      "post": {
+        "summary": "Initiate a payment via selected provider",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentRequest" } } } },
+        "responses": { "200": { "description": "Payment initiated", "content": { "application/json": { "schema": { "type": "object", "properties": { "paymentId": { "type": "string" }, "redirectUrl": { "type": "string" } } } } } }
+      }
+    },
+    "/api/payments/webhook": {
+      "post": {
+        "summary": "Payment provider webhook endpoint",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } },
+        "responses": { "200": { "description": "Processed" } }
+      }
+    },
+    "/api/tax/calculate": {
+      "post": {
+        "summary": "Calculate tax for a client",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TaxCalculationRequest" } } } },
+        "responses": { "200": { "description": "Calculation result", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } } }
+      }
+    },
+    "/api/documents/upload": {
+      "post": {
+        "summary": "Upload a document (multipart/form-data)",
+        "requestBody": { "required": true, "content": { "multipart/form-data": { "schema": { "type": "object", "properties": { "file": { "type": "string", "format": "binary" }, "clientId": { "type": "string" } }, "required": ["file"] } } } },
+        "responses": { "201": { "description": "Uploaded", "content": { "application/json": { "schema": { "type": "object", "properties": { "documentId": { "type": "string" } } } } } }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": { "200": { "description": "Healthy", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } } } }
+    }
+  }
+}

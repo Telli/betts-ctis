@@ -1,3 +1,4 @@
+using BettsTax.Data.Models.Security;
 using Microsoft.AspNetCore.Identity;
 
 namespace BettsTax.Data
@@ -50,5 +51,7 @@ namespace BettsTax.Data
         // SAML authentication properties
         public bool IsSamlUser { get; set; } = false;
         public string? SamlNameId { get; set; }
+
+        public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
     }
 }

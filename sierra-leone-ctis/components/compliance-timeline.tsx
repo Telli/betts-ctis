@@ -3,53 +3,14 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, XCircle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-export interface TimelineEvent {
-  date: string;
-  event: string;
-  status: 'success' | 'warning' | 'error';
-  details?: string;
-}
+import type { ComplianceTimelineEvent } from '@/lib/services/compliance-service';
 
 export interface ComplianceTimelineProps {
-  events?: TimelineEvent[];
+  events?: ComplianceTimelineEvent[];
 }
 
-export function ComplianceTimeline({ events }: ComplianceTimelineProps) {
-  // Mock data - in real implementation, this would come from API
-  const defaultEvents: TimelineEvent[] = [
-    {
-      date: 'Oct 5, 2025',
-      event: 'GST Return Q3 filed on time',
-      status: 'success',
-      details: 'Filed 8 days before deadline',
-    },
-    {
-      date: 'Sep 28, 2025',
-      event: 'Payroll tax payment processed',
-      status: 'success',
-      details: 'Payment of SLE 45,000 confirmed',
-    },
-    {
-      date: 'Sep 15, 2025',
-      event: 'Income tax filed 5 days early',
-      status: 'success',
-      details: 'Early bird bonus applied',
-    },
-    {
-      date: 'Aug 30, 2025',
-      event: 'GST Return Q2 filed on time',
-      status: 'success',
-    },
-    {
-      date: 'Aug 20, 2025',
-      event: 'Excise Duty payment delayed',
-      status: 'warning',
-      details: 'Payment received 3 days late',
-    },
-  ];
-
-  const displayEvents = events || defaultEvents;
+export function ComplianceTimeline({ events = [] }: ComplianceTimelineProps) {
+  const displayEvents = events;
 
   const getStatusIcon = (status: string) => {
     switch (status) {

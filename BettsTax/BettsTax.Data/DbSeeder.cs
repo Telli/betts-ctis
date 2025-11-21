@@ -609,7 +609,7 @@ namespace BettsTax.Data
                     documents.Add(new Document
                     {
                         ClientId = client.ClientId,
-                        DocumentType = docType,
+                        DocumentType = docType.ToString(),
                         OriginalFileName = $"{client.BusinessName.Replace(" ", "_")}_{docType}_{i + 1}.pdf",
                         StoredFileName = $"{Guid.NewGuid()}.pdf",
                         FilePath = $"/documents/{client.ClientId}/{Guid.NewGuid()}.pdf",
@@ -620,7 +620,7 @@ namespace BettsTax.Data
                         VerificationStatus = i < 2 ? DocumentVerificationStatus.Verified : DocumentVerificationStatus.NotRequested,
                         VerifiedById = i < 2 ? associate!.Id : null,
                         VerifiedAt = i < 2 ? uploadDate.AddDays(1) : null,
-                        TaxYear = currentYear - (i % 2),
+                        TaxYearId = currentYear - (i % 2),
                         Tags = new List<string> { docType.ToString(), client.TaxpayerCategory.ToString() },
                         CreatedAt = uploadDate,
                         UpdatedAt = uploadDate

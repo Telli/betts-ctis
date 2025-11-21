@@ -105,6 +105,51 @@ export interface ComplianceOverviewData {
   totalAlerts: number;
 }
 
+export interface ComplianceTaxTypeSummary {
+  taxType: string;
+  clientCount: number;
+  complianceRate: number;
+  averageScore: number;
+  outstandingAmount: number;
+}
+
+export type FilingStatusValue = 'filed' | 'complete' | 'pending' | 'overdue' | 'upcoming' | 'n/a';
+
+export interface FilingChecklistMatrixRow {
+  taxType: string;
+  status: {
+    q1: FilingStatusValue;
+    q2: FilingStatusValue;
+    q3: FilingStatusValue;
+    q4: FilingStatusValue;
+  };
+}
+
+export interface PenaltyWarningSummary {
+  type: string;
+  reason: string;
+  estimatedAmount: number;
+  daysOverdue: number;
+  clientName?: string;
+  filingId?: number;
+  paymentId?: number;
+}
+
+export interface DocumentRequirementSummary {
+  name: string;
+  required: number;
+  submitted: number;
+  approved: number;
+  progress: number;
+}
+
+export interface ComplianceTimelineEvent {
+  date: string;
+  event: string;
+  status: 'success' | 'warning' | 'error';
+  details?: string;
+}
+
 /**
  * Compliance Service for tracking tax compliance
  */
@@ -275,26 +320,150 @@ export const ComplianceService = {
   /**
    * Get compliance by tax type breakdown
    */
-  getComplianceByTaxType: async (clientId?: string): Promise<Array<{
-    taxType: string;
-    compliant: number;
-    nonCompliant: number;
-    complianceRate: number;
-  }>> => {
-    const url = clientId 
-      ? `/api/compliance/by-tax-type?clientId=${clientId}`
-      : '/api/compliance/by-tax-type';
-    
-    const response = await apiClient.get<{ 
-      success: boolean; 
-      data: Array<{
-        taxType: string;
-        compliant: number;
-        nonCompliant: number;
-        complianceRate: number;
-      }> 
-    }>(url);
-    return response.data.data;
+  getComplianceByTaxType: async (): Promise<ComplianceTaxTypeSummary[]> => {
+    try {
+      const response = await apiClient.get<any[]>('/api/compliance/by-tax-type');
+      const raw = Array.isArray(response.data) ? response.data : response.data?.data;
+
+      if (!Array.isArray(raw)) {
+        return [];
+      }
+
+      return raw.map((item) => ({
+        taxType: item.taxType ?? item.TaxType ?? 'Unknown',
+        clientCount: Number(item.clientCount ?? item.ClientCount ?? 0) || 0,
+        complianceRate: Number(item.complianceRate ?? item.ComplianceRate ?? 0) || 0,
+        averageScore: Number(item.averageScore ?? item.AverageScore ?? 0) || 0,
+        outstandingAmount: Number(item.outstandingAmount ?? item.OutstandingAmount ?? 0) || 0,
+      }));
+    } catch (error) {
+      console.warn('Failed to load compliance by tax type', error);
+      return [];
+    }
+  },
+
+  getFilingChecklistMatrix: async (year?: number): Promise<FilingChecklistMatrixRow[]> => {
+    try {
+      const params = year ? `?year=${year}` : '';
+      const response = await apiClient.get<any[]>(`/api/compliance/filing-checklist-matrix${params}`);
+      const raw = Array.isArray(response.data) ? response.data : response.data?.data;
+
+      if (!Array.isArray(raw)) {
+        return [];
+      }
+
+      const normaliseStatus = (value: unknown): FilingStatusValue => {
+        const status = (value as string | undefined)?.toLowerCase();
+        switch (status) {
+          case 'filed':
+          case 'complete':
+            return 'complete';
+          case 'pending':
+            return 'pending';
+          case 'overdue':
+            return 'overdue';
+          case 'upcoming':
+            return 'upcoming';
+          case 'n/a':
+            return 'n/a';
+          default:
+            return 'pending';
+        }
+      };
+
+      return raw.map((row) => ({
+        taxType: row.taxType ?? row.TaxType ?? 'Unknown',
+        status: {
+          q1: normaliseStatus(row.status?.q1 ?? row.Status?.Q1),
+          q2: normaliseStatus(row.status?.q2 ?? row.Status?.Q2),
+          q3: normaliseStatus(row.status?.q3 ?? row.Status?.Q3),
+          q4: normaliseStatus(row.status?.q4 ?? row.Status?.Q4),
+        },
+      }));
+    } catch (error) {
+      console.warn('Failed to load filing checklist matrix', error);
+      return [];
+    }
+  },
+
+  getPenaltyWarnings: async (top = 5): Promise<PenaltyWarningSummary[]> => {
+    try {
+      const response = await apiClient.get<any[]>(`/api/compliance/penalty-warnings?top=${top}`);
+      const raw = Array.isArray(response.data) ? response.data : response.data?.data;
+
+      if (!Array.isArray(raw)) {
+        return [];
+      }
+
+      return raw.map((item) => ({
+        type: item.type ?? item.Type ?? 'Penalty Warning',
+        reason: item.reason ?? item.Reason ?? 'Pending reason',
+        estimatedAmount: Number(item.estimatedAmount ?? item.EstimatedAmount ?? 0) || 0,
+        daysOverdue: Number(item.daysOverdue ?? item.DaysOverdue ?? 0) || 0,
+        clientName: item.clientName ?? item.ClientName,
+        filingId: item.filingId ?? item.FilingId,
+        paymentId: item.paymentId ?? item.PaymentId,
+      }));
+    } catch (error) {
+      console.warn('Failed to load penalty warnings', error);
+      return [];
+    }
+  },
+
+  getDocumentSubmissionSummary: async (): Promise<DocumentRequirementSummary[]> => {
+    try {
+      const response = await apiClient.get<any[]>(`/api/compliance/document-requirements`);
+      const raw = Array.isArray(response.data) ? response.data : response.data?.data;
+
+      if (!Array.isArray(raw)) {
+        return [];
+      }
+
+      return raw.map((item) => {
+        const required = Number(item.required ?? item.Required ?? 0) || 0;
+        const submitted = Number(item.submitted ?? item.Submitted ?? 0) || 0;
+        const approved = Number(item.approved ?? item.Approved ?? 0) || 0;
+        const progress = Number(
+          item.progress ??
+          item.Progress ??
+          (required === 0 ? 100 : Math.min(100, Math.round((submitted / Math.max(required, 1)) * 100)))
+        );
+
+        return {
+          name: item.name ?? item.Name ?? 'Requirement',
+          required,
+          submitted,
+          approved,
+          progress,
+        };
+      });
+    } catch (error) {
+      console.warn('Failed to load document submission summary', error);
+      return [];
+    }
+  },
+
+  getComplianceTimeline: async (top = 5): Promise<ComplianceTimelineEvent[]> => {
+    try {
+      const response = await apiClient.get<any[]>(`/api/compliance/timeline?top=${top}`);
+      const raw = Array.isArray(response.data) ? response.data : response.data?.data;
+
+      if (!Array.isArray(raw)) {
+        return [];
+      }
+
+      return raw.map((item) => ({
+        date: new Date(item.date ?? item.Date ?? Date.now()).toISOString(),
+        event: item.event ?? item.Event ?? 'Compliance activity',
+        status: (item.status ?? item.Status ?? 'success')
+          .toString()
+          .toLowerCase() as ComplianceTimelineEvent['status'],
+        details: item.details ?? item.Details,
+      }));
+    } catch (error) {
+      console.warn('Failed to load compliance timeline', error);
+      return [];
+    }
   },
 
   /**

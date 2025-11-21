@@ -2,36 +2,20 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, Clock, AlertTriangle, Minus } from 'lucide-react';
+import type { FilingChecklistMatrixRow } from '@/lib/services/compliance-service';
 
 export interface FilingChecklistMatrixProps {
   year?: number;
+  rows?: FilingChecklistMatrixRow[];
 }
 
-interface FilingStatus {
-  q1: 'filed' | 'pending' | 'overdue' | 'upcoming' | 'n/a';
-  q2: 'filed' | 'pending' | 'overdue' | 'upcoming' | 'n/a';
-  q3: 'filed' | 'pending' | 'overdue' | 'upcoming' | 'n/a';
-  q4: 'filed' | 'pending' | 'overdue' | 'upcoming' | 'n/a';
-}
-
-interface TaxTypeRow {
-  type: string;
-  status: FilingStatus;
-}
-
-export function FilingChecklistMatrix({ year = 2025 }: FilingChecklistMatrixProps) {
-  // Mock data - in real implementation, this would come from API
-  const filingData: TaxTypeRow[] = [
-    { type: 'GST Returns', status: { q1: 'filed', q2: 'filed', q3: 'pending', q4: 'upcoming' } },
-    { type: 'PAYE Returns', status: { q1: 'filed', q2: 'filed', q3: 'filed', q4: 'upcoming' } },
-    { type: 'Income Tax', status: { q1: 'filed', q2: 'n/a', q3: 'n/a', q4: 'n/a' } },
-    { type: 'Excise Duty', status: { q1: 'filed', q2: 'filed', q3: 'overdue', q4: 'upcoming' } },
-    { type: 'Withholding Tax', status: { q1: 'filed', q2: 'filed', q3: 'filed', q4: 'pending' } },
-  ];
+export function FilingChecklistMatrix({ year = new Date().getFullYear(), rows = [] }: FilingChecklistMatrixProps) {
+  const filingData = rows;
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'filed':
+      case 'complete':
         return <div title="Filed"><CheckCircle className="w-5 h-5 text-green-600" /></div>;
       case 'pending':
         return <div title="Pending"><Clock className="w-5 h-5 text-amber-500" /></div>;
@@ -68,13 +52,19 @@ export function FilingChecklistMatrix({ year = 2025 }: FilingChecklistMatrixProp
               key={index}
               className="grid grid-cols-5 gap-4 items-center py-2 hover:bg-gray-50 rounded-lg transition-colors"
             >
-              <div className="font-medium text-gray-900">{item.type}</div>
+              <div className="font-medium text-gray-900">{item.taxType}</div>
               <div className="flex justify-center">{getStatusIcon(item.status.q1)}</div>
               <div className="flex justify-center">{getStatusIcon(item.status.q2)}</div>
               <div className="flex justify-center">{getStatusIcon(item.status.q3)}</div>
               <div className="flex justify-center">{getStatusIcon(item.status.q4)}</div>
             </div>
           ))}
+
+          {filingData.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              <p>No filing activity recorded for {year} yet.</p>
+            </div>
+          )}
         </div>
 
         {/* Legend */}

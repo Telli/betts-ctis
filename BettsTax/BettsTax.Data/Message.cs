@@ -61,6 +61,11 @@ namespace BettsTax.Data
         [ForeignKey("ClientId")]
         public virtual Client? Client { get; set; }
 
+        // Conversation association
+        public int? ConversationId { get; set; }
+        [ForeignKey("ConversationId")]
+        public virtual Models.Conversation? Conversation { get; set; }
+
         // Tax filing association
         public int? TaxFilingId { get; set; }
         [ForeignKey("TaxFilingId")]
@@ -94,6 +99,7 @@ namespace BettsTax.Data
         public bool IsArchived { get; set; }
         public bool IsDeleted { get; set; }
         public bool HasAttachments { get; set; }
+        public bool IsInternal { get; set; } // Internal notes not visible to clients
 
         // System generated
         public bool IsSystemMessage { get; set; }

@@ -16,6 +16,7 @@ import { useAuthGuard } from '@/hooks/use-auth-guard'
 import { PageHeader } from '@/components/page-header'
 import { MetricCard } from '@/components/metric-card'
 import { CheckCircle, Clock, DollarSign, FileText, RefreshCw } from 'lucide-react'
+import { getNumericDefault, getArrayDefault, getObjectDefault } from '@/lib/utils/data-defaults'
 
 function DashboardPage() {
   const { isLoading: authLoading, isAuthorized } = useAuthGuard({ requireAuth: true })
@@ -102,7 +103,7 @@ function DashboardPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <MetricCard
               title="Compliance Rate"
-              value={`${dashboardData.metrics?.complianceRate ?? 0}%`}
+              value={`${getNumericDefault(dashboardData.metrics?.complianceRate)}%`}
               trend={dashboardData.metrics?.complianceRateTrendUp ? "up" : "down"}
               trendValue={dashboardData.metrics?.complianceRateTrend ?? "0%"}
               subtitle="vs last month"
@@ -111,7 +112,7 @@ function DashboardPage() {
             />
             <MetricCard
               title="Filing Timeliness"
-              value={`${dashboardData.metrics?.filingTimelinessAvgDays ?? 0} days`}
+              value={`${getNumericDefault(dashboardData.metrics?.filingTimelinessAvgDays)} days`}
               trend={dashboardData.metrics?.filingTimelinessTrendUp ? "up" : "down"}
               trendValue={dashboardData.metrics?.filingTimelinessTrend ?? "0 days"}
               subtitle="avg before deadline"
@@ -120,7 +121,7 @@ function DashboardPage() {
             />
             <MetricCard
               title="Payment Status"
-              value={`${dashboardData.metrics?.paymentOnTimeRate ?? 0}%`}
+              value={`${getNumericDefault(dashboardData.metrics?.paymentOnTimeRate)}%`}
               trend={dashboardData.metrics?.paymentOnTimeRateTrendUp ? "up" : "down"}
               trendValue={dashboardData.metrics?.paymentOnTimeRateTrend ?? "0%"}
               subtitle="on-time payments"
@@ -129,7 +130,7 @@ function DashboardPage() {
             />
             <MetricCard
               title="Documents"
-              value={`${dashboardData.metrics?.documentSubmissionRate ?? 0}%`}
+              value={`${getNumericDefault(dashboardData.metrics?.documentSubmissionRate)}%`}
               trend={dashboardData.metrics?.documentSubmissionRateTrendUp ? "up" : "down"}
               trendValue={dashboardData.metrics?.documentSubmissionRateTrend ?? "0%"}
               subtitle="submission rate"
@@ -171,17 +172,17 @@ function DashboardPage() {
                 />
                 <UpcomingDeadlines
                   className="col-span-3"
-                  deadlines={dashboardData.upcomingDeadlines ?? []}
+                  deadlines={getArrayDefault(dashboardData.upcomingDeadlines)}
                 />
               </div>
             </TabsContent>
             
             <TabsContent value="activity" className="space-y-4">
-              <RecentActivityList activities={dashboardData.recentActivity ?? []} />
+              <RecentActivityList activities={getArrayDefault(dashboardData.recentActivity)} />
             </TabsContent>
             
             <TabsContent value="approvals" className="space-y-4">
-              <PendingApprovals approvals={dashboardData.pendingApprovals ?? []} />
+              <PendingApprovals approvals={getArrayDefault(dashboardData.pendingApprovals)} />
             </TabsContent>
           </Tabs>
         </div>

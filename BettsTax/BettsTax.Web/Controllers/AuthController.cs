@@ -1,7 +1,12 @@
+using BettsTax.Core.DTOs.Auth;
 using BettsTax.Core.Services;
+using BettsTax.Core.Services.Interfaces;
 using BettsTax.Data;
+using BettsTax.Web.Constants;
 using BettsTax.Web.Services;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -17,14 +22,18 @@ namespace BettsTax.Web.Controllers
         private readonly IActivityTimelineService _activityService;
         private readonly ApplicationDbContext _context;
         private readonly ISamlAuthenticationService _samlService;
+        private readonly IRefreshTokenService _refreshTokenService;
+        private readonly IAntiforgery _antiforgery;
         private readonly ILogger<AuthController> _logger;
 
         public AuthController(
-            UserManager<ApplicationUser> userManager, 
+            UserManager<ApplicationUser> userManager,
             JwtTokenGenerator jwtGenerator,
             IActivityTimelineService activityService,
             ApplicationDbContext context,
             ISamlAuthenticationService samlService,
+            IRefreshTokenService refreshTokenService,
+            IAntiforgery antiforgery,
             ILogger<AuthController> logger)
         {
             _userManager = userManager;
@@ -32,10 +41,54 @@ namespace BettsTax.Web.Controllers
             _activityService = activityService;
             _context = context;
             _samlService = samlService;
+            _refreshTokenService = refreshTokenService;
+            _antiforgery = antiforgery;
             _logger = logger;
         }
 
+        private static CookieOptions BuildHttpOnlyCookieOptions(DateTimeOffset expires, bool httpOnly = true)
+        {
+            return new CookieOptions
+            {
+                HttpOnly = httpOnly,
+                SameSite = SameSiteMode.Strict,
+                Secure = true,
+                Expires = expires,
+                Path = "/"
+            };
+        }
+
+        private void AppendAccessTokenCookie(string token)
+        {
+            var expires = DateTimeOffset.UtcNow.AddMinutes(30);
+            Response.Cookies.Append(
+                AuthConstants.AccessTokenCookieName,
+                token,
+                BuildHttpOnlyCookieOptions(expires));
+        }
+
+        private void AppendRefreshTokenCookie(string token, DateTime expiresAt)
+        {
+            var expires = DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc);
+            Response.Cookies.Append(
+                AuthConstants.RefreshTokenCookieName,
+                token,
+                BuildHttpOnlyCookieOptions(expires, httpOnly: true));
+        }
+
+        private void ClearAuthCookies()
+        {
+            var expired = DateTimeOffset.UtcNow.AddDays(-1);
+            Response.Cookies.Append(AuthConstants.AccessTokenCookieName, string.Empty, BuildHttpOnlyCookieOptions(expired));
+            Response.Cookies.Append(AuthConstants.RefreshTokenCookieName, string.Empty, BuildHttpOnlyCookieOptions(expired));
+        }
+
+        private string GetClientIp() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+        private string GetUserAgent() => Request.Headers["User-Agent"].ToString();
+
         [HttpPost("register")]
+        [AllowAnonymous]
         public async Task<IActionResult> Register([FromBody] RegisterDto dto)
         {
             var user = new ApplicationUser { UserName = dto.Email, Email = dto.Email, FirstName = dto.FirstName, LastName = dto.LastName };
@@ -50,6 +103,7 @@ namespace BettsTax.Web.Controllers
         }
 
         [HttpPost("login")]
+        [AllowAnonymous]
         public async Task<IActionResult> Login([FromBody] LoginDto dto)
         {
             try
@@ -91,14 +145,120 @@ namespace BettsTax.Web.Controllers
                     }
                 }
                 
+                var refreshToken = await _refreshTokenService.CreateAsync(user, GetClientIp(), GetUserAgent());
+                AppendAccessTokenCookie(token);
+                AppendRefreshTokenCookie(refreshToken.RawToken, refreshToken.Entity.ExpiresAt);
+
                 _logger.LogInformation("Login successful for: {Email}", dto.Email);
-                return Ok(new { token, roles }); // Include roles in response for debugging
+                return Ok(new { token, roles });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Login failed for email: {Email}", dto.Email);
                 return StatusCode(500, new { error = ex.Message, stackTrace = ex.StackTrace });
             }
+        }
+
+        [HttpPost("refresh")]
+        [AllowAnonymous]
+        public async Task<IActionResult> RefreshToken()
+        {
+            if (!Request.Cookies.TryGetValue(AuthConstants.RefreshTokenCookieName, out var rawRefreshToken) || string.IsNullOrWhiteSpace(rawRefreshToken))
+            {
+                return Unauthorized();
+            }
+
+            var existingToken = await _refreshTokenService.GetValidTokenAsync(rawRefreshToken);
+            if (existingToken?.User == null)
+            {
+                ClearAuthCookies();
+                return Unauthorized();
+            }
+
+            var roles = await _userManager.GetRolesAsync(existingToken.User);
+            var jwt = _jwtGenerator.GenerateToken(existingToken.User.Id, existingToken.User.Email!, roles);
+
+            var rotated = await _refreshTokenService.RotateAsync(existingToken, GetClientIp(), GetUserAgent());
+            AppendAccessTokenCookie(jwt);
+            AppendRefreshTokenCookie(rotated.RawToken, rotated.Entity.ExpiresAt);
+
+            return Ok(new { token = jwt, roles });
+        }
+
+        [HttpPost("logout")]
+        [Authorize]
+        public async Task<IActionResult> Logout()
+        {
+            try
+            {
+                if (Request.Cookies.TryGetValue(AuthConstants.RefreshTokenCookieName, out var rawRefreshToken) && !string.IsNullOrWhiteSpace(rawRefreshToken))
+                {
+                    var existingToken = await _refreshTokenService.GetValidTokenAsync(rawRefreshToken);
+                    if (existingToken != null)
+                    {
+                        await _refreshTokenService.RevokeAsync(existingToken, "User logout", GetClientIp(), GetUserAgent());
+                    }
+                }
+
+                ClearAuthCookies();
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Logout failed for user {UserId}", User?.Identity?.Name);
+                return StatusCode(500, "Logout failed");
+            }
+        }
+
+        [HttpPost("change-password")]
+        [Authorize]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null)
+            {
+                return Unauthorized();
+            }
+
+            var result = await _userManager.ChangePasswordAsync(user, dto.CurrentPassword, dto.NewPassword);
+            if (!result.Succeeded)
+            {
+                return BadRequest(result.Errors);
+            }
+
+            var activeTokens = await _context.RefreshTokens
+                .Where(r => r.UserId == user.Id && !r.RevokedAt.HasValue && r.ExpiresAt > DateTime.UtcNow)
+                .ToListAsync();
+
+            foreach (var token in activeTokens)
+            {
+                await _refreshTokenService.RevokeAsync(token, "Password changed", GetClientIp(), GetUserAgent(), compromised: false);
+            }
+
+            ClearAuthCookies();
+            return Ok(new { message = "Password updated. Please log in again." });
+        }
+
+        [HttpGet("csrf-token")]
+        [AllowAnonymous]
+        public IActionResult GetCsrfToken()
+        {
+            var tokens = _antiforgery.GetAndStoreTokens(HttpContext);
+            if (!string.IsNullOrWhiteSpace(tokens.RequestToken))
+            {
+                Response.Cookies.Append(
+                    AuthConstants.CsrfCookieName,
+                    tokens.RequestToken,
+                    new CookieOptions
+                    {
+                        HttpOnly = false,
+                        SameSite = SameSiteMode.Strict,
+                        Secure = true,
+                        Path = "/"
+                    });
+            }
+
+            return Ok(new { token = tokens.RequestToken });
         }
 
         [HttpGet("me")]
@@ -191,6 +351,4 @@ namespace BettsTax.Web.Controllers
         }
     }
 
-    public record RegisterDto(string FirstName, string LastName, string Email, string Password);
-    public record LoginDto(string Email, string Password);
 }

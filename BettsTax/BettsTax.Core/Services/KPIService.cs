@@ -6,7 +6,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
+using DeadlinePriorityDto = BettsTax.Core.DTOs.KPI.DeadlinePriority;
+using FilingStatusDto = BettsTax.Data.FilingStatus;
 
 namespace BettsTax.Core.Services;
 
@@ -48,43 +51,6 @@ public class KPIService : IKPIService
         _kpiAlertService = kpiAlertService;
     }
 
-    public async Task<InternalKPIDto> GetInternalKPIsAsync(DateTime? fromDate = null, DateTime? toDate = null)
-    {
-        try
-        {
-            var cacheKey = $"{INTERNAL_KPI_CACHE_KEY}_{fromDate:yyyyMMdd}_{toDate:yyyyMMdd}";
-            var cachedData = await _cache.GetStringAsync(cacheKey);
-
-            if (!string.IsNullOrEmpty(cachedData))
-            {
-                var cached = JsonSerializer.Deserialize<InternalKPIDto>(cachedData);
-                if (cached != null)
-                {
-                    _logger.LogInformation("Retrieved internal KPIs from cache");
-                    return cached;
-                }
-            }
-
-            var kpiData = await CalculateInternalKPIsAsync(fromDate, toDate);
-
-            // Cache for 15 minutes
-            var cacheOptions = new DistributedCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(CACHE_EXPIRY_MINUTES)
-            };
-
-            await _cache.SetStringAsync(cacheKey, JsonSerializer.Serialize(kpiData), cacheOptions);
-
-            _logger.LogInformation("Calculated and cached internal KPIs");
-            return kpiData;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving internal KPIs");
-            throw;
-        }
-    }
-
     public async Task<ClientKPIDto> GetClientKPIsAsync(int clientId, DateTime? fromDate = null, DateTime? toDate = null)
     {
         try
@@ -121,6 +87,205 @@ public class KPIService : IKPIService
         }
     }
 
+    public async Task<InternalKPIDto> GetInternalKPIsAsync(DateTime? fromDate = null, DateTime? toDate = null)
+    {
+        try
+        {
+            var cacheKey = $"{INTERNAL_KPI_CACHE_KEY}_{fromDate:yyyyMMdd}_{toDate:yyyyMMdd}";
+            var cachedData = await _cache.GetStringAsync(cacheKey);
+
+            if (!string.IsNullOrEmpty(cachedData))
+            {
+                var cached = JsonSerializer.Deserialize<InternalKPIDto>(cachedData);
+                if (cached != null)
+                {
+                    _logger.LogInformation("Retrieved internal KPIs from cache for range {FromDate} to {ToDate}", fromDate, toDate);
+                    return cached;
+                }
+            }
+
+            var kpiData = await CalculateInternalKPIsAsync(fromDate, toDate);
+
+            var cacheOptions = new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(CACHE_EXPIRY_MINUTES)
+            };
+
+            await _cache.SetStringAsync(cacheKey, JsonSerializer.Serialize(kpiData), cacheOptions);
+            _logger.LogInformation("Calculated and cached internal KPIs for range {FromDate} to {ToDate}", fromDate, toDate);
+
+            return kpiData;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving internal KPIs for range {FromDate} to {ToDate}", fromDate, toDate);
+            throw;
+        }
+    }
+
+    public async Task<KpiDashboardSummaryDto> GetDashboardSummaryAsync(DateTime? fromDate = null, DateTime? toDate = null)
+    {
+        try
+        {
+            var periodEnd = toDate?.ToUniversalTime() ?? DateTime.UtcNow;
+            var periodStart = fromDate?.ToUniversalTime() ?? periodEnd.AddMonths(-3);
+
+            if (periodEnd < periodStart)
+            {
+                (periodStart, periodEnd) = (periodEnd, periodStart);
+            }
+
+            var internalKpis = await GetInternalKPIsAsync(periodStart, periodEnd);
+
+            var payments = await _context.Payments
+                .AsNoTracking()
+                .Where(p => p.Status == PaymentStatus.Approved &&
+                            p.PaymentDate >= periodStart &&
+                            p.PaymentDate <= periodEnd)
+                .Select(p => new { p.Amount, p.Currency })
+                .ToListAsync();
+
+            var totalRevenue = payments.Sum(p => p.Amount);
+            var revenueCurrency = payments
+                .Select(p => p.Currency)
+                .FirstOrDefault(c => !string.IsNullOrWhiteSpace(c)) ?? "SLE";
+
+            var periodLengthDays = Math.Max(1d, (periodEnd - periodStart).TotalDays);
+            var previousEnd = periodStart;
+            var previousStart = periodStart.AddDays(-periodLengthDays);
+
+            var previousPayments = await _context.Payments
+                .AsNoTracking()
+                .Where(p => p.Status == PaymentStatus.Approved &&
+                            p.PaymentDate >= previousStart &&
+                            p.PaymentDate < previousEnd)
+                .Select(p => p.Amount)
+                .ToListAsync();
+
+            var previousRevenue = previousPayments.Sum();
+            decimal? revenueChange = null;
+            if (previousRevenue > 0)
+            {
+                revenueChange = Math.Round(((totalRevenue - previousRevenue) / previousRevenue) * 100m, 1);
+            }
+
+            var activeClientsCount = await _context.Clients.CountAsync(c => c.Status == ClientStatus.Active);
+            var totalClientsCount = await _context.Clients.CountAsync();
+
+            var processedFilings = await _context.TaxFilings
+                .AsNoTracking()
+                .Where(tf => tf.SubmittedDate != null &&
+                             tf.ReviewedDate != null &&
+                             tf.SubmittedDate >= periodStart &&
+                             tf.ReviewedDate <= periodEnd)
+                .Select(tf => new { tf.SubmittedDate, tf.ReviewedDate })
+                .ToListAsync();
+
+            double averageProcessingDays = processedFilings.Any()
+                ? processedFilings.Average(tf => (tf.ReviewedDate!.Value - tf.SubmittedDate!.Value).TotalDays)
+                : 0d;
+
+            if (averageProcessingDays <= 0)
+            {
+                var fallbackFilings = await _context.TaxFilings
+                    .AsNoTracking()
+                    .Where(tf => tf.SubmittedDate != null &&
+                                 tf.SubmittedDate >= periodStart &&
+                                 tf.SubmittedDate <= periodEnd)
+                    .Select(tf => new { tf.SubmittedDate, tf.CreatedDate })
+                    .ToListAsync();
+
+                if (fallbackFilings.Any())
+                {
+                    averageProcessingDays = fallbackFilings.Average(tf => (tf.SubmittedDate!.Value - tf.CreatedDate).TotalDays);
+                }
+            }
+
+            averageProcessingDays = Math.Round(averageProcessingDays, 2, MidpointRounding.AwayFromZero);
+
+            var complianceScores = await _context.ComplianceScores
+                .AsNoTracking()
+                .Include(cs => cs.Client)
+                .ToListAsync();
+
+            var latestScores = complianceScores
+                .GroupBy(cs => cs.ClientId)
+                .Select(g => g.OrderByDescending(x => x.CalculatedAt).First())
+                .ToList();
+
+            var averageCompliance = latestScores.Any()
+                ? Math.Round(latestScores.Average(cs => cs.OverallScore), 1, MidpointRounding.AwayFromZero)
+                : 0m;
+
+            var topScore = latestScores
+                .OrderByDescending(cs => cs.OverallScore)
+                .FirstOrDefault();
+
+            var clients = await _context.Clients.AsNoTracking().ToListAsync();
+            var segments = clients
+                .GroupBy(c => c.TaxpayerCategory)
+                .Select(g =>
+                {
+                    var clientIds = g.Select(c => c.ClientId).ToHashSet();
+                    var segmentScores = latestScores.Where(cs => clientIds.Contains(cs.ClientId)).ToList();
+                    var complianceRate = segmentScores.Any()
+                        ? Math.Round(segmentScores.Average(cs => cs.OverallScore), 1, MidpointRounding.AwayFromZero)
+                        : 0m;
+
+                    return new KpiClientSegmentPerformanceDto
+                    {
+                        Segment = g.Key.ToString(),
+                        ComplianceRate = complianceRate,
+                        ClientCount = g.Count()
+                    };
+                })
+                .OrderByDescending(s => s.ComplianceRate)
+                .ToList();
+
+            var summary = new KpiDashboardSummaryDto
+            {
+                Internal = new KpiDashboardInternalSummaryDto
+                {
+                    TotalRevenue = Math.Round(totalRevenue, 2, MidpointRounding.AwayFromZero),
+                    RevenueCurrency = revenueCurrency,
+                    RevenueChangePercentage = revenueChange,
+                    ActiveClients = activeClientsCount,
+                    TotalClients = totalClientsCount,
+                    ComplianceRate = Math.Round(internalKpis.ClientComplianceRate, 1, MidpointRounding.AwayFromZero),
+                    PaymentCompletionRate = Math.Round(internalKpis.PaymentCompletionRate, 1, MidpointRounding.AwayFromZero),
+                    DocumentSubmissionRate = Math.Round(internalKpis.DocumentSubmissionCompliance, 1, MidpointRounding.AwayFromZero),
+                    AverageFilingTimelinessDays = Math.Round(internalKpis.AverageFilingTimeliness, 2, MidpointRounding.AwayFromZero),
+                    AverageProcessingTimeDays = averageProcessingDays,
+                    ClientEngagementRate = Math.Round(internalKpis.ClientEngagementRate, 1, MidpointRounding.AwayFromZero),
+                    ReferencePeriodLabel = $"{periodStart:MMM dd, yyyy} - {periodEnd:MMM dd, yyyy}"
+                },
+                Client = new KpiDashboardClientSummaryDto
+                {
+                    TotalClients = totalClientsCount,
+                    ActiveClients = activeClientsCount,
+                    AverageComplianceScore = averageCompliance,
+                    AverageFilingTimeDays = Math.Round(internalKpis.AverageFilingTimeliness, 2, MidpointRounding.AwayFromZero),
+                    TopPerformerName = topScore?.Client?.BusinessName ?? topScore?.Client?.CompanyName ?? topScore?.Client?.FirstName ?? topScore?.Client?.LastName,
+                    TopPerformerComplianceScore = topScore != null ? Math.Round(topScore.OverallScore, 1, MidpointRounding.AwayFromZero) : 0m,
+                    Segments = segments
+                }
+            };
+
+            if (summary.Client.TopPerformerComplianceScore > 0 && string.IsNullOrWhiteSpace(summary.Client.TopPerformerName))
+            {
+                var topClient = clients.FirstOrDefault(c => c.ClientId == topScore!.ClientId);
+                summary.Client.TopPerformerName = topClient?.BusinessName ?? topClient?.CompanyName ?? topClient?.FirstName ?? "Top Performer";
+            }
+
+            return summary;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving KPI dashboard summary");
+            throw;
+        }
+    }
+
     public async Task<List<KPIAlertDto>> GetKPIAlertsAsync(int? clientId = null)
     {
         try
@@ -142,20 +307,40 @@ public class KPIService : IKPIService
                 .ThenByDescending(a => a.CreatedAt)
                 .ToListAsync();
 
-            alerts.AddRange(kpiAlerts.Select(a => new KPIAlertDto
+            alerts.AddRange(kpiAlerts.Select(a =>
             {
-                Id = a.Id,
-                AlertType = (KPIAlertType)Enum.Parse(typeof(KPIAlertType), a.AlertType),
-                Title = a.Message.Split(':')[0], // Extract title from message
-                Message = a.Message,
-                Severity = (KPIAlertSeverity)a.Severity,
-                ClientId = a.ClientId,
-                ClientName = a.Client?.BusinessName ?? a.Client?.FirstName + " " + a.Client?.LastName,
-                CreatedAt = a.CreatedAt,
-                IsRead = false // KpiAlert doesn't track read status
+                var parsedType = Enum.TryParse<KPIAlertType>(a.AlertType, out var alertType)
+                    ? alertType
+                    : KPIAlertType.ComplianceThreshold;
+
+                return new KPIAlertDto
+                {
+                    Id = a.Id,
+                    AlertType = parsedType,
+                    Title = a.Message.Split(':')[0], // Extract title from message
+                    Message = a.Message,
+                    Severity = Enum.IsDefined(typeof(KPIAlertSeverity), (int)a.Severity)
+                        ? (KPIAlertSeverity)a.Severity
+                        : KPIAlertSeverity.Info,
+                    ClientId = a.ClientId,
+                    ClientName = a.Client?.BusinessName
+                        ?? a.Client?.CompanyName
+                        ?? string.Join(" ", new[] { a.Client?.FirstName, a.Client?.LastName }.Where(s => !string.IsNullOrWhiteSpace(s))),
+                    CreatedAt = a.CreatedAt,
+                    IsRead = false // KpiAlert doesn't track read status
+                };
             }));
 
-            return alerts.OrderByDescending(a => a.CreatedAt).ToList();
+            var overdueFilings = await GetOverdueFilingsAsync(clientId);
+            alerts.AddRange(overdueFilings);
+
+            var upcomingDeadlines = await GetUpcomingDeadlineAlertsAsync(clientId);
+            alerts.AddRange(upcomingDeadlines);
+
+            return alerts
+                .OrderByDescending(a => a.Severity)
+                .ThenByDescending(a => a.CreatedAt)
+                .ToList();
         }
         catch (Exception ex)
         {
@@ -381,141 +566,678 @@ public class KPIService : IKPIService
     // Helper methods for calculations
     private async Task<double> CalculateAverageFilingTimelinessAsync(DateTime? fromDate, DateTime? toDate)
     {
-        // Implementation would calculate average days between filing due dates and actual filing dates
-        // This is a simplified version
-        return 5.2; // Average of 5.2 days delay
+        var query = _context.TaxYears
+            .AsNoTracking()
+            .Where(ty => ty.DateFiled != null && ty.FilingDeadline != null);
+
+        if (fromDate.HasValue)
+        {
+            query = query.Where(ty => ty.DateFiled >= fromDate.Value);
+        }
+
+        if (toDate.HasValue)
+        {
+            query = query.Where(ty => ty.DateFiled <= toDate.Value);
+        }
+
+        var filings = await query
+            .Select(ty => new { ty.DateFiled, ty.FilingDeadline })
+            .ToListAsync();
+
+        if (!filings.Any())
+        {
+            return 0d;
+        }
+
+        var averageDays = filings.Average(ty => (ty.FilingDeadline!.Value - ty.DateFiled!.Value).TotalDays);
+        return Math.Round(averageDays, 2, MidpointRounding.AwayFromZero);
     }
 
     private async Task<decimal> CalculatePaymentCompletionRateAsync(DateTime? fromDate, DateTime? toDate)
     {
-        // Implementation would calculate percentage of payments completed on time
-        return 87.5m;
+        var query = _context.Payments
+            .AsNoTracking()
+            .Where(p => p.DueDate != null);
+
+        if (fromDate.HasValue)
+        {
+            query = query.Where(p => p.DueDate >= fromDate.Value);
+        }
+
+        if (toDate.HasValue)
+        {
+            query = query.Where(p => p.DueDate <= toDate.Value);
+        }
+
+        var payments = await query
+            .Select(p => new { p.Status, p.PaymentDate, p.DueDate })
+            .ToListAsync();
+
+        if (!payments.Any())
+        {
+            return 0m;
+        }
+
+        var onTimePayments = payments.Count(p => p.Status == PaymentStatus.Approved && p.PaymentDate <= p.DueDate);
+        return Math.Round((decimal)onTimePayments * 100 / payments.Count, 1, MidpointRounding.AwayFromZero);
     }
 
     private async Task<decimal> CalculateDocumentComplianceAsync(DateTime? fromDate, DateTime? toDate)
     {
-        // Implementation would calculate percentage of required documents submitted
-        return 92.3m;
+        var taxYearQuery = _context.TaxYears.AsNoTracking();
+
+        if (fromDate.HasValue)
+        {
+            taxYearQuery = taxYearQuery.Where(ty => ty.FilingDeadline == null || ty.FilingDeadline >= fromDate.Value);
+        }
+
+        if (toDate.HasValue)
+        {
+            taxYearQuery = taxYearQuery.Where(ty => ty.FilingDeadline == null || ty.FilingDeadline <= toDate.Value);
+        }
+
+        var taxYearIds = await taxYearQuery
+            .Select(ty => ty.TaxYearId)
+            .ToListAsync();
+
+        if (!taxYearIds.Any())
+        {
+            return 100m;
+        }
+
+        var taxYearsWithDocuments = await _context.Documents
+            .AsNoTracking()
+            .Where(d => d.TaxYearId != null && taxYearIds.Contains(d.TaxYearId.Value))
+            .Select(d => d.TaxYearId!.Value)
+            .Distinct()
+            .CountAsync();
+
+        var compliance = (decimal)taxYearsWithDocuments * 100 / taxYearIds.Count;
+        return Math.Round(compliance, 1, MidpointRounding.AwayFromZero);
     }
 
     private async Task<decimal> CalculateClientEngagementRateAsync(DateTime? fromDate, DateTime? toDate)
     {
-        // Implementation would calculate client login frequency and interaction rates
-        return 78.9m;
+        var activeClients = await _context.Clients
+            .AsNoTracking()
+            .Where(c => c.Status == ClientStatus.Active)
+            .ToListAsync();
+
+        if (!activeClients.Any())
+        {
+            return 0m;
+        }
+
+        var activeClientIds = activeClients.Select(c => c.ClientId).ToHashSet();
+
+        var start = fromDate ?? DateTime.UtcNow.AddMonths(-3);
+        var end = toDate ?? DateTime.UtcNow;
+
+        if (end < start)
+        {
+            (start, end) = (end, start);
+        }
+
+        var clientUserIds = activeClients
+            .Where(c => !string.IsNullOrWhiteSpace(c.UserId))
+            .Select(c => c.UserId!)
+            .Distinct()
+            .ToList();
+
+        var engagedClientIds = new HashSet<int>();
+
+        if (clientUserIds.Any())
+        {
+            var engagedUsers = await _context.AuditLogs
+                .AsNoTracking()
+                .Where(log => log.UserId != null &&
+                             clientUserIds.Contains(log.UserId) &&
+                             log.Timestamp >= start &&
+                             log.Timestamp <= end)
+                .Select(log => log.UserId!)
+                .Distinct()
+                .ToListAsync();
+
+            foreach (var userId in engagedUsers)
+            {
+                var client = activeClients.FirstOrDefault(c => c.UserId == userId);
+                if (client != null)
+                {
+                    engagedClientIds.Add(client.ClientId);
+                }
+            }
+        }
+
+        var documentClientIds = await _context.Documents
+            .AsNoTracking()
+            .Where(d => d.UploadedAt >= start && d.UploadedAt <= end)
+            .Select(d => d.ClientId)
+            .Distinct()
+            .ToListAsync();
+
+        foreach (var clientId in documentClientIds)
+        {
+            if (activeClientIds.Contains(clientId))
+            {
+                engagedClientIds.Add(clientId);
+            }
+        }
+
+        var paymentClientIds = await _context.Payments
+            .AsNoTracking()
+            .Where(p => p.CreatedAt >= start && p.CreatedAt <= end)
+            .Select(p => p.ClientId)
+            .Distinct()
+            .ToListAsync();
+
+        foreach (var clientId in paymentClientIds)
+        {
+            if (activeClientIds.Contains(clientId))
+            {
+                engagedClientIds.Add(clientId);
+            }
+        }
+
+        var engagedCount = engagedClientIds.Count;
+        return Math.Round((decimal)engagedCount * 100 / activeClients.Count, 1, MidpointRounding.AwayFromZero);
     }
 
     private async Task<List<TrendDataPoint>> CalculateComplianceTrendAsync(DateTime? fromDate, DateTime? toDate)
     {
-        // Implementation would return historical compliance trend data
-        return new List<TrendDataPoint>
+        var end = toDate ?? DateTime.UtcNow;
+        var start = fromDate ?? end.AddMonths(-5);
+
+        if (end < start)
         {
-            new() { Date = DateTime.Now.AddMonths(-3), Value = 82.5m, Label = "Q1" },
-            new() { Date = DateTime.Now.AddMonths(-2), Value = 85.1m, Label = "Q2" },
-            new() { Date = DateTime.Now.AddMonths(-1), Value = 87.3m, Label = "Q3" },
-            new() { Date = DateTime.Now, Value = 89.2m, Label = "Current" }
-        };
+            (start, end) = (end, start);
+        }
+
+        var filings = await _context.TaxYears
+            .AsNoTracking()
+            .Where(ty => ty.DateFiled != null &&
+                         ty.FilingDeadline != null &&
+                         ty.DateFiled >= start &&
+                         ty.DateFiled <= end)
+            .Select(ty => new { ty.DateFiled, ty.FilingDeadline })
+            .ToListAsync();
+
+        var result = new List<TrendDataPoint>();
+        var cursor = new DateTime(start.Year, start.Month, 1);
+
+        while (cursor <= end)
+        {
+            var monthStart = cursor;
+            var monthEnd = cursor.AddMonths(1).AddTicks(-1);
+
+            var monthFilings = filings
+                .Where(f => f.DateFiled >= monthStart && f.DateFiled <= monthEnd)
+                .ToList();
+
+            var compliance = monthFilings.Any()
+                ? Math.Round((decimal)monthFilings.Count(f => f.FilingDeadline >= f.DateFiled) * 100 / monthFilings.Count, 1, MidpointRounding.AwayFromZero)
+                : 0m;
+
+            result.Add(new TrendDataPoint
+            {
+                Date = monthEnd,
+                Value = compliance,
+                Label = monthStart.ToString("MMM yy", CultureInfo.InvariantCulture)
+            });
+
+            cursor = cursor.AddMonths(1);
+        }
+
+        if (!result.Any())
+        {
+            result.Add(new TrendDataPoint
+            {
+                Date = end,
+                Value = 0m,
+                Label = end.ToString("MMM yy", CultureInfo.InvariantCulture)
+            });
+        }
+
+        return result;
     }
 
     private async Task<List<TaxTypeMetrics>> CalculateTaxTypeBreakdownAsync(DateTime? fromDate, DateTime? toDate)
     {
-        // Implementation would return metrics broken down by tax type
-        return new List<TaxTypeMetrics>
+        var filingsQuery = _context.TaxFilings.AsNoTracking();
+
+        if (fromDate.HasValue)
         {
-            new() { TaxType = TaxType.GST, TotalFilings = 45, OnTimeFilings = 42, ComplianceRate = 93.3m, TotalAmount = 125000m, ClientCount = 15 },
-            new() { TaxType = TaxType.IncomeTax, TotalFilings = 30, OnTimeFilings = 27, ComplianceRate = 90.0m, TotalAmount = 250000m, ClientCount = 30 },
-            new() { TaxType = TaxType.PayrollTax, TotalFilings = 60, OnTimeFilings = 58, ComplianceRate = 96.7m, TotalAmount = 80000m, ClientCount = 20 }
-        };
+            filingsQuery = filingsQuery.Where(tf => tf.FilingDate >= fromDate.Value);
+        }
+
+        if (toDate.HasValue)
+        {
+            filingsQuery = filingsQuery.Where(tf => tf.FilingDate <= toDate.Value);
+        }
+
+        var filings = await filingsQuery
+            .Select(tf => new { tf.TaxType, tf.FilingDate, tf.DueDate, tf.ClientId, tf.TaxAmount })
+            .ToListAsync();
+
+        if (!filings.Any())
+        {
+            return new List<TaxTypeMetrics>();
+        }
+
+        return filings
+            .GroupBy(tf => tf.TaxType)
+            .Select(group =>
+            {
+                var total = group.Count();
+                var onTime = group.Count(f => f.DueDate == null || f.FilingDate <= f.DueDate);
+                var compliance = total > 0 ? Math.Round(onTime * 100m / total, 1, MidpointRounding.AwayFromZero) : 0m;
+                var totalAmount = Math.Round(group.Sum(f => f.TaxAmount), 2, MidpointRounding.AwayFromZero);
+                var dtoTaxType = Enum.TryParse<TaxType>(group.Key.ToString(), out var parsed) ? parsed : TaxType.IncomeTax;
+
+                return new TaxTypeMetrics
+                {
+                    TaxType = dtoTaxType,
+                    TotalFilings = total,
+                    OnTimeFilings = onTime,
+                    ComplianceRate = compliance,
+                    TotalAmount = totalAmount,
+                    ClientCount = group.Select(f => f.ClientId).Distinct().Count()
+                };
+            })
+            .OrderByDescending(m => m.TotalFilings)
+            .ToList();
     }
 
     private async Task<double> CalculateClientFilingTimelinessAsync(int clientId, DateTime? fromDate, DateTime? toDate)
     {
-        // Implementation would calculate average filing timeliness for specific client
-        return 3.5; // 3.5 days average delay
+        var query = _context.TaxYears
+            .AsNoTracking()
+            .Where(ty => ty.ClientId == clientId && ty.DateFiled != null && ty.FilingDeadline != null);
+
+        if (fromDate.HasValue)
+        {
+            query = query.Where(ty => ty.DateFiled >= fromDate.Value);
+        }
+
+        if (toDate.HasValue)
+        {
+            query = query.Where(ty => ty.DateFiled <= toDate.Value);
+        }
+
+        var filings = await query
+            .Select(ty => new { ty.DateFiled, ty.FilingDeadline })
+            .ToListAsync();
+
+        if (!filings.Any())
+        {
+            return 0d;
+        }
+
+        var averageDays = filings.Average(ty => (ty.FilingDeadline!.Value - ty.DateFiled!.Value).TotalDays);
+        return Math.Round(averageDays, 2, MidpointRounding.AwayFromZero);
     }
 
     private async Task<decimal> CalculateClientPaymentPercentageAsync(int clientId, DateTime? fromDate, DateTime? toDate)
     {
-        // Implementation would calculate on-time payment percentage for specific client
-        return 91.7m;
+        var query = _context.Payments
+            .AsNoTracking()
+            .Where(p => p.ClientId == clientId && p.DueDate != null);
+
+        if (fromDate.HasValue)
+        {
+            query = query.Where(p => p.DueDate >= fromDate.Value);
+        }
+
+        if (toDate.HasValue)
+        {
+            query = query.Where(p => p.DueDate <= toDate.Value);
+        }
+
+        var payments = await query
+            .Select(p => new { p.Status, p.PaymentDate, p.DueDate })
+            .ToListAsync();
+
+        if (!payments.Any())
+        {
+            return 0m;
+        }
+
+        var onTimePayments = payments.Count(p => p.Status == PaymentStatus.Approved && p.PaymentDate <= p.DueDate);
+        return Math.Round((decimal)onTimePayments * 100 / payments.Count, 1, MidpointRounding.AwayFromZero);
     }
 
     private async Task<decimal> CalculateClientDocumentReadinessAsync(int clientId)
     {
-        // Implementation would calculate document readiness score for specific client
-        return 88.5m;
+        var taxYearIds = await _context.TaxYears
+            .AsNoTracking()
+            .Where(ty => ty.ClientId == clientId)
+            .Select(ty => ty.TaxYearId)
+            .ToListAsync();
+
+        if (!taxYearIds.Any())
+        {
+            return 100m;
+        }
+
+        var taxYearsWithDocuments = await _context.Documents
+            .AsNoTracking()
+            .Where(d => d.ClientId == clientId && d.TaxYearId != null && taxYearIds.Contains(d.TaxYearId.Value))
+            .Select(d => d.TaxYearId!.Value)
+            .Distinct()
+            .CountAsync();
+
+        var readiness = (decimal)taxYearsWithDocuments * 100 / taxYearIds.Count;
+        return Math.Round(readiness, 1, MidpointRounding.AwayFromZero);
     }
 
     private async Task<List<DeadlineMetric>> GetClientUpcomingDeadlinesAsync(int clientId)
     {
-        // Implementation would return upcoming tax deadlines for specific client
-        return new List<DeadlineMetric>
+        var upcoming = await _context.TaxYears
+            .AsNoTracking()
+            .Where(ty => ty.ClientId == clientId &&
+                         ty.FilingDeadline != null &&
+                         ty.FilingDeadline >= DateTime.UtcNow.AddDays(-1) &&
+                         (ty.Status == TaxYearStatus.Draft || ty.Status == TaxYearStatus.Pending))
+            .OrderBy(ty => ty.FilingDeadline)
+            .Take(10)
+            .Select(ty => new { ty.TaxYearId, ty.FilingDeadline, ty.Status })
+            .ToListAsync();
+
+        if (!upcoming.Any())
         {
-            new() 
-            { 
-                Id = 1, 
-                TaxType = TaxType.GST, 
-                DueDate = DateTime.Now.AddDays(15), 
-                DaysRemaining = 15, 
-                Priority = (BettsTax.Core.DTOs.KPI.DeadlinePriority)BettsTax.Data.DeadlinePriority.Medium, 
-                Status = FilingStatus.Submitted,
-                EstimatedAmount = 25000m,
-                DocumentsReady = true
-            },
-            new() 
-            { 
-                Id = 2, 
-                TaxType = TaxType.IncomeTax, 
-                DueDate = DateTime.Now.AddDays(45), 
-                DaysRemaining = 45, 
-                Priority = (BettsTax.Core.DTOs.KPI.DeadlinePriority)BettsTax.Data.DeadlinePriority.Low, 
-                Status = FilingStatus.Draft,
-                EstimatedAmount = 75000m,
-                DocumentsReady = false
-            }
+            return new List<DeadlineMetric>();
+        }
+
+        var taxYearIds = upcoming.Select(u => u.TaxYearId).ToList();
+
+        var filingTypes = await _context.TaxFilings
+            .AsNoTracking()
+            .Where(tf => tf.ClientId == clientId && taxYearIds.Contains(tf.TaxYearId))
+            .GroupBy(tf => tf.TaxYearId)
+            .ToDictionaryAsync(g => g.Key, g => g.OrderByDescending(tf => tf.UpdatedDate).First().TaxType);
+
+        var documentsLookup = await _context.Documents
+            .AsNoTracking()
+            .Where(d => d.ClientId == clientId && d.TaxYearId != null && taxYearIds.Contains(d.TaxYearId.Value))
+            .GroupBy(d => d.TaxYearId!.Value)
+            .ToDictionaryAsync(g => g.Key, g => g.Any());
+
+        return upcoming.Select(item =>
+        {
+            var dueDate = item.FilingDeadline!.Value;
+            var daysRemaining = (int)Math.Ceiling((dueDate - DateTime.UtcNow).TotalDays);
+            var priority = daysRemaining switch
+            {
+                <= 0 => DeadlinePriorityDto.Critical,
+                <= 7 => DeadlinePriorityDto.High,
+                <= 14 => DeadlinePriorityDto.Medium,
+                _ => DeadlinePriorityDto.Low
+            };
+
+            var dtoTaxType = filingTypes.TryGetValue(item.TaxYearId, out var taxType)
+                ? Enum.TryParse<TaxType>(taxType.ToString(), out var parsed) ? parsed : TaxType.IncomeTax
+                : TaxType.IncomeTax;
+
+            return new DeadlineMetric
+            {
+                Id = item.TaxYearId,
+                TaxType = dtoTaxType,
+                DueDate = dueDate,
+                DaysRemaining = daysRemaining,
+                Priority = priority,
+                Status = MapTaxYearStatus(item.Status),
+                EstimatedAmount = null,
+                DocumentsReady = documentsLookup.ContainsKey(item.TaxYearId) && documentsLookup[item.TaxYearId]
+            };
+        }).ToList();
+    }
+
+    private FilingStatusDto MapTaxYearStatus(TaxYearStatus status)
+    {
+        return status switch
+        {
+            TaxYearStatus.Pending => FilingStatusDto.Submitted,
+            TaxYearStatus.Filed => FilingStatusDto.Filed,
+            TaxYearStatus.Paid => FilingStatusDto.Approved,
+            TaxYearStatus.Overdue => FilingStatusDto.Submitted,
+            TaxYearStatus.Draft => FilingStatusDto.Draft,
+            _ => FilingStatusDto.Draft
         };
     }
 
     private async Task<List<TrendDataPoint>> GetClientFilingHistoryAsync(int clientId, DateTime? fromDate, DateTime? toDate)
     {
-        // Implementation would return client's filing history trend
-        return new List<TrendDataPoint>
+        var end = toDate ?? DateTime.UtcNow;
+        var start = fromDate ?? end.AddMonths(-5);
+
+        if (end < start)
         {
-            new() { Date = DateTime.Now.AddMonths(-3), Value = 5.2m, Label = "3 months ago" },
-            new() { Date = DateTime.Now.AddMonths(-2), Value = 3.8m, Label = "2 months ago" },
-            new() { Date = DateTime.Now.AddMonths(-1), Value = 2.1m, Label = "Last month" },
-            new() { Date = DateTime.Now, Value = 1.5m, Label = "This month" }
-        };
+            (start, end) = (end, start);
+        }
+
+        var filings = await _context.TaxYears
+            .AsNoTracking()
+            .Where(ty => ty.ClientId == clientId &&
+                         ty.DateFiled != null &&
+                         ty.FilingDeadline != null &&
+                         ty.DateFiled >= start &&
+                         ty.DateFiled <= end)
+            .Select(ty => new { ty.DateFiled, ty.FilingDeadline })
+            .ToListAsync();
+
+        var result = new List<TrendDataPoint>();
+        var cursor = new DateTime(start.Year, start.Month, 1);
+
+        while (cursor <= end)
+        {
+            var monthStart = cursor;
+            var monthEnd = cursor.AddMonths(1).AddTicks(-1);
+
+            var monthFilings = filings
+                .Where(f => f.DateFiled >= monthStart && f.DateFiled <= monthEnd)
+                .ToList();
+
+            var averageDelay = monthFilings.Any()
+                ? Math.Round(monthFilings.Average(f => (f.FilingDeadline!.Value - f.DateFiled!.Value).TotalDays), 2, MidpointRounding.AwayFromZero)
+                : 0d;
+
+            result.Add(new TrendDataPoint
+            {
+                Date = monthEnd,
+                Value = (decimal)averageDelay,
+                Label = monthStart.ToString("MMM yy", CultureInfo.InvariantCulture)
+            });
+
+            cursor = cursor.AddMonths(1);
+        }
+
+        if (!result.Any())
+        {
+            result.Add(new TrendDataPoint
+            {
+                Date = end,
+                Value = 0m,
+                Label = end.ToString("MMM yy", CultureInfo.InvariantCulture)
+            });
+        }
+
+        return result;
     }
 
     private async Task<List<TrendDataPoint>> GetClientPaymentHistoryAsync(int clientId, DateTime? fromDate, DateTime? toDate)
     {
-        // Implementation would return client's payment timeliness trend
-        return new List<TrendDataPoint>
+        var end = toDate ?? DateTime.UtcNow;
+        var start = fromDate ?? end.AddMonths(-5);
+
+        if (end < start)
         {
-            new() { Date = DateTime.Now.AddMonths(-3), Value = 85.5m, Label = "3 months ago" },
-            new() { Date = DateTime.Now.AddMonths(-2), Value = 88.2m, Label = "2 months ago" },
-            new() { Date = DateTime.Now.AddMonths(-1), Value = 91.1m, Label = "Last month" },
-            new() { Date = DateTime.Now, Value = 94.3m, Label = "This month" }
-        };
+            (start, end) = (end, start);
+        }
+
+        var payments = await _context.Payments
+            .AsNoTracking()
+            .Where(p => p.ClientId == clientId &&
+                        p.DueDate != null &&
+                        p.DueDate >= start &&
+                        p.DueDate <= end)
+            .Select(p => new { p.DueDate, p.PaymentDate, p.Status })
+            .ToListAsync();
+
+        var result = new List<TrendDataPoint>();
+        var cursor = new DateTime(start.Year, start.Month, 1);
+
+        while (cursor <= end)
+        {
+            var monthStart = cursor;
+            var monthEnd = cursor.AddMonths(1).AddTicks(-1);
+
+            var monthPayments = payments
+                .Where(p => p.DueDate >= monthStart && p.DueDate <= monthEnd)
+                .ToList();
+
+            var onTime = monthPayments.Count(p => p.Status == PaymentStatus.Approved && p.PaymentDate <= p.DueDate);
+            var percentage = monthPayments.Any()
+                ? Math.Round((decimal)onTime * 100 / monthPayments.Count, 1, MidpointRounding.AwayFromZero)
+                : 0m;
+
+            result.Add(new TrendDataPoint
+            {
+                Date = monthEnd,
+                Value = percentage,
+                Label = monthStart.ToString("MMM yy", CultureInfo.InvariantCulture)
+            });
+
+            cursor = cursor.AddMonths(1);
+        }
+
+        if (!result.Any())
+        {
+            result.Add(new TrendDataPoint
+            {
+                Date = end,
+                Value = 0m,
+                Label = end.ToString("MMM yy", CultureInfo.InvariantCulture)
+            });
+        }
+
+        return result;
     }
 
     private async Task<List<KPIAlertDto>> GetOverdueFilingsAsync(int? clientId)
     {
-        // Implementation would return overdue filing alerts
-        var alerts = new List<KPIAlertDto>();
-        
-        // This would typically query the tax filing system for overdue items
-        if (!clientId.HasValue || clientId == 1) // Example for client 1
+        var query = _context.TaxYears
+            .AsNoTracking()
+            .Include(ty => ty.Client)
+            .Where(ty => ty.FilingDeadline != null &&
+                         ty.FilingDeadline < DateTime.UtcNow &&
+                         ty.Status != TaxYearStatus.Filed &&
+                         ty.Status != TaxYearStatus.Paid);
+
+        if (clientId.HasValue)
         {
+            query = query.Where(ty => ty.ClientId == clientId.Value);
+        }
+
+        var overdueItems = await query.ToListAsync();
+        var alerts = new List<KPIAlertDto>();
+
+        foreach (var item in overdueItems)
+        {
+            var daysOverdue = (int)Math.Floor((DateTime.UtcNow - item.FilingDeadline!.Value).TotalDays);
+            var severity = daysOverdue switch
+            {
+                >= 14 => KPIAlertSeverity.Critical,
+                >= 7 => KPIAlertSeverity.Error,
+                >= 1 => KPIAlertSeverity.Warning,
+                _ => KPIAlertSeverity.Warning
+            };
+
             alerts.Add(new KPIAlertDto
             {
                 AlertType = KPIAlertType.FilingOverdue,
-                Title = "GST Filing Overdue",
-                Message = "GST filing for Q4 2024 is overdue by 5 days",
-                Severity = KPIAlertSeverity.Error,
-                ClientId = 1,
-                ClientName = "Sample Client",
-                CreatedAt = DateTime.Now.AddDays(-5)
+                Title = $"Filing overdue: {item.Year}",
+                Message = $"Tax filing for {item.Year} is overdue by {daysOverdue} day{(daysOverdue == 1 ? string.Empty : "s")}",
+                Severity = severity,
+                ClientId = item.ClientId,
+                ClientName = item.Client?.BusinessName ?? item.Client?.CompanyName ?? item.Client?.FirstName ?? item.Client?.LastName,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        return alerts;
+    }
+
+    private async Task<List<KPIAlertDto>> GetUpcomingDeadlineAlertsAsync(int? clientId)
+    {
+        var now = DateTime.UtcNow;
+        var horizon = now.AddDays(14);
+
+        var query = _context.TaxYears
+            .AsNoTracking()
+            .Include(ty => ty.Client)
+            .Where(ty => ty.FilingDeadline != null &&
+                         ty.FilingDeadline >= now &&
+                         ty.FilingDeadline <= horizon &&
+                         (ty.Status == TaxYearStatus.Draft || ty.Status == TaxYearStatus.Pending));
+
+        if (clientId.HasValue)
+        {
+            query = query.Where(ty => ty.ClientId == clientId.Value);
+        }
+
+        var upcoming = await query.ToListAsync();
+
+        if (!upcoming.Any())
+        {
+            return new List<KPIAlertDto>();
+        }
+
+        var taxYearIds = upcoming.Select(ty => ty.TaxYearId).ToList();
+
+        var filingTypes = await _context.TaxFilings
+            .AsNoTracking()
+            .Where(tf => taxYearIds.Contains(tf.TaxYearId))
+            .GroupBy(tf => tf.TaxYearId)
+            .Select(g => new { TaxYearId = g.Key, TaxType = g.OrderByDescending(tf => tf.UpdatedDate).First().TaxType })
+            .ToDictionaryAsync(x => x.TaxYearId, x => x.TaxType);
+
+        var alerts = new List<KPIAlertDto>();
+
+        foreach (var item in upcoming)
+        {
+            var dueDate = item.FilingDeadline!.Value;
+            var daysRemaining = (int)Math.Ceiling((dueDate - now).TotalDays);
+            if (daysRemaining < 0)
+            {
+                daysRemaining = 0;
+            }
+
+            var severity = daysRemaining switch
+            {
+                <= 3 => KPIAlertSeverity.Critical,
+                <= 7 => KPIAlertSeverity.Error,
+                <= 14 => KPIAlertSeverity.Warning,
+                _ => KPIAlertSeverity.Info
+            };
+
+            var taxTypeName = filingTypes.TryGetValue(item.TaxYearId, out var taxType)
+                ? taxType.ToString()
+                : "Tax";
+
+            alerts.Add(new KPIAlertDto
+            {
+                AlertType = KPIAlertType.UpcomingDeadline,
+                Title = $"{taxTypeName} filing due soon",
+                Message = $"{taxTypeName} filing for tax year {item.Year} is due on {dueDate:MMM dd, yyyy} ({daysRemaining} day{(daysRemaining == 1 ? string.Empty : "s")} remaining).",
+                Severity = severity,
+                ClientId = item.ClientId,
+                ClientName = item.Client?.BusinessName
+                    ?? item.Client?.CompanyName
+                    ?? string.Join(" ", new[] { item.Client?.FirstName, item.Client?.LastName }.Where(s => !string.IsNullOrWhiteSpace(s))),
+                CreatedAt = DateTime.UtcNow,
+                IsRead = false,
+                ActionUrl = clientId.HasValue
+                    ? $"/client-portal/tax-years/{item.TaxYearId}"
+                    : $"/clients/{item.ClientId}/tax-years/{item.TaxYearId}"
             });
         }
 

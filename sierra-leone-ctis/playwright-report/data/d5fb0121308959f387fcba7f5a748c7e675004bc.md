@@ -1,0 +1,122 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - link "Skip to navigation" [ref=e3] [cursor=pointer]:
+    - /url: "#navigation"
+  - generic [ref=e4]:
+    - navigation "Main navigation" [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e8]:
+          - generic [ref=e9]:
+            - img "Betts logo" [ref=e10]
+            - generic [ref=e11]:
+              - heading "CTIS" [level=2] [ref=e12]
+              - paragraph [ref=e13]: Sierra Leone
+          - button "Collapse sidebar" [ref=e14] [cursor=pointer]:
+            - img
+        - generic [ref=e15]:
+          - navigation "Main menu" [ref=e16]:
+            - link "Dashboard" [ref=e17] [cursor=pointer]:
+              - /url: /dashboard
+              - button "Dashboard" [ref=e18] [cursor=pointer]:
+                - img [ref=e19] [cursor=pointer]
+                - generic [ref=e21] [cursor=pointer]: Dashboard
+            - link "KPI Dashboard" [ref=e22] [cursor=pointer]:
+              - /url: /kpi-dashboard
+              - button "KPI Dashboard" [ref=e23] [cursor=pointer]:
+                - img [ref=e24] [cursor=pointer]
+                - generic [ref=e27] [cursor=pointer]: KPI Dashboard
+            - link "Clients" [ref=e28] [cursor=pointer]:
+              - /url: /clients
+              - button "Clients" [ref=e29] [cursor=pointer]:
+                - img [ref=e30] [cursor=pointer]
+                - generic [ref=e35] [cursor=pointer]: Clients
+            - link "Tax Filings" [ref=e36] [cursor=pointer]:
+              - /url: /tax-filings
+              - button "Tax Filings" [ref=e37] [cursor=pointer]:
+                - img [ref=e38] [cursor=pointer]
+                - generic [ref=e41] [cursor=pointer]: Tax Filings
+            - link "Payments" [ref=e42] [cursor=pointer]:
+              - /url: /payments
+              - button "Payments" [ref=e43] [cursor=pointer]:
+                - img [ref=e44] [cursor=pointer]
+                - generic [ref=e46] [cursor=pointer]: Payments
+            - link "Compliance" [ref=e47] [cursor=pointer]:
+              - /url: /compliance
+              - button "Compliance" [ref=e48] [cursor=pointer]:
+                - img [ref=e49] [cursor=pointer]
+                - generic [ref=e53] [cursor=pointer]: Compliance
+            - link "Tax Calculator" [ref=e54] [cursor=pointer]:
+              - /url: /tax-calculator
+              - button "Tax Calculator" [ref=e55] [cursor=pointer]:
+                - img [ref=e56] [cursor=pointer]
+                - generic [ref=e58] [cursor=pointer]: Tax Calculator
+            - link "Documents" [ref=e59] [cursor=pointer]:
+              - /url: /documents
+              - button "Documents" [ref=e60] [cursor=pointer]:
+                - img [ref=e61] [cursor=pointer]
+                - generic [ref=e64] [cursor=pointer]: Documents
+            - link "Deadlines" [ref=e65] [cursor=pointer]:
+              - /url: /deadlines
+              - button "Deadlines" [ref=e66] [cursor=pointer]:
+                - img [ref=e67] [cursor=pointer]
+                - generic [ref=e69] [cursor=pointer]: Deadlines
+            - link "Reports" [ref=e70] [cursor=pointer]:
+              - /url: /reports
+              - button "Reports" [ref=e71] [cursor=pointer]:
+                - img [ref=e72] [cursor=pointer]
+                - generic [ref=e75] [cursor=pointer]: Reports
+            - link "Analytics" [ref=e76] [cursor=pointer]:
+              - /url: /analytics
+              - button "Analytics" [ref=e77] [cursor=pointer]:
+                - img [ref=e78] [cursor=pointer]
+                - generic [ref=e80] [cursor=pointer]: Analytics
+            - link "Notifications" [ref=e81] [cursor=pointer]:
+              - /url: /notifications
+              - button "Notifications" [ref=e82] [cursor=pointer]:
+                - img [ref=e83] [cursor=pointer]
+                - generic [ref=e86] [cursor=pointer]: Notifications
+          - generic [ref=e88]:
+            - generic [ref=e89]:
+              - img [ref=e90]
+              - generic [ref=e92]: Admin
+            - navigation "Admin menu" [ref=e93]:
+              - 'link "Admin: Workflow Automation" [ref=e94] [cursor=pointer]':
+                - /url: /admin/workflows
+                - 'button "Admin: Workflow Automation" [ref=e95] [cursor=pointer]':
+                  - img [ref=e96] [cursor=pointer]
+                  - generic [ref=e98] [cursor=pointer]: Workflow Automation
+              - 'link "Admin: Associate Management" [ref=e99] [cursor=pointer]':
+                - /url: /admin/associates
+                - 'button "Admin: Associate Management" [ref=e100] [cursor=pointer]':
+                  - img [ref=e101] [cursor=pointer]
+                  - generic [ref=e113] [cursor=pointer]: Associate Management
+              - 'link "Admin: Admin Settings" [ref=e114] [cursor=pointer]':
+                - /url: /admin/settings
+                - 'button "Admin: Admin Settings" [ref=e115] [cursor=pointer]':
+                  - img [ref=e116] [cursor=pointer]
+                  - generic [ref=e118] [cursor=pointer]: Admin Settings
+        - navigation "User menu" [ref=e120]:
+          - link "Profile" [ref=e121] [cursor=pointer]:
+            - /url: /profile
+            - button "Profile" [ref=e122] [cursor=pointer]:
+              - img [ref=e123] [cursor=pointer]
+              - generic [ref=e128] [cursor=pointer]: Profile
+          - link "Help & Support" [ref=e129] [cursor=pointer]:
+            - /url: /help
+            - button "Help & Support" [ref=e130] [cursor=pointer]:
+              - img [ref=e131] [cursor=pointer]
+              - generic [ref=e134] [cursor=pointer]: Help & Support
+          - button "Logout from application" [ref=e135] [cursor=pointer]:
+            - img [ref=e136] [cursor=pointer]
+            - generic [ref=e138] [cursor=pointer]: Logout
+    - main "Main content" [ref=e139]
+  - region "Notifications (F8)":
+    - list
+  - button "Open Next.js Dev Tools" [ref=e145] [cursor=pointer]:
+    - img [ref=e146] [cursor=pointer]
+  - alert [ref=e149]
+```

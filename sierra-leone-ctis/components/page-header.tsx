@@ -39,7 +39,7 @@ export function PageHeader({ title, breadcrumbs, actions, description }: PageHea
       )}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+          <h1 className="text-2xl font-bold text-sierra-blue-900">{title}</h1>
           {description && (
             <p className="text-sm text-gray-600 mt-1">{description}</p>
           )}

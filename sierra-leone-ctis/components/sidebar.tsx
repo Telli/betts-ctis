@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
@@ -36,9 +36,24 @@ export function Sidebar() {
   const { isLoggedIn, logout, user } = useAuth()
   const { counts, loading } = useNavigationCounts()
   
-  const handleLogout = () => {
-    logout();
+  // Prevent clients from seeing admin sidebar - redirect to client portal
+  const isClientUser = user?.role === 'Client'
+  
+  // If client user somehow accesses admin sidebar, redirect them
+  useEffect(() => {
+    if (isClientUser && isLoggedIn) {
+      router.push('/client-portal/dashboard')
+    }
+  }, [isClientUser, isLoggedIn, router])
+  
+  const handleLogout = async () => {
+    await logout();
     router.push('/login');
+  }
+  
+  // Don't render admin sidebar for client users
+  if (isClientUser) {
+    return null
   }
 
   const navigation = [

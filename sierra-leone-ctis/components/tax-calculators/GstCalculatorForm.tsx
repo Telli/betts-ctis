@@ -13,22 +13,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DatePicker } from '@/components/ui/date-picker';
 import { 
   Calculator, 
   TrendingUp, 
   AlertTriangle, 
   Info,
-  CalendarIcon,
   FileText,
   DollarSign,
   ArrowUpDown,
   Import,
   Upload
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { TaxCalculationService, GstCalculationRequest, GstCalculation } from '@/lib/services/tax-calculation-service';
 
@@ -426,62 +422,20 @@ export default function GstCalculatorForm({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>GST Due Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !form.watch('dueDate') && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {form.watch('dueDate') ? (
-                            format(form.watch('dueDate')!, "PPP")
-                          ) : (
-                            <span>Pick due date</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={form.watch('dueDate')}
-                          onSelect={(date) => form.setValue('dueDate', date)}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <DatePicker
+                      value={form.watch('dueDate') ?? null}
+                      onChange={(date) => form.setValue('dueDate', date || undefined)}
+                      placeholder="Pick due date"
+                    />
                   </div>
 
                   <div className="space-y-2">
                     <Label>Filing Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !form.watch('filingDate') && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {form.watch('filingDate') ? (
-                            format(form.watch('filingDate')!, "PPP")
-                          ) : (
-                            <span>Pick filing date</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={form.watch('filingDate')}
-                          onSelect={(date) => form.setValue('filingDate', date)}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <DatePicker
+                      value={form.watch('filingDate') ?? null}
+                      onChange={(date) => form.setValue('filingDate', date || undefined)}
+                      placeholder="Pick filing date"
+                    />
                   </div>
                 </div>
               </TabsContent>

@@ -14,8 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DatePicker } from '@/components/ui/date-picker';
 import { 
   CalendarIcon, 
   FileText, 
@@ -43,8 +42,8 @@ const reportGenerationSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().optional(),
   format: z.enum(['PDF', 'Excel', 'CSV']),
-  dateFrom: z.date({ required_error: 'Start date is required' }),
-  dateTo: z.date({ required_error: 'End date is required' }),
+  dateFrom: z.date().optional(),
+  dateTo: z.date().optional(),
   clientId: z.string().optional(),
   includeCharts: z.boolean().default(true),
   includeDetails: z.boolean().default(true),
@@ -231,8 +230,8 @@ export default function ReportGenerator({
         parameters: {
           ...data.parameters,
           clientId: data.clientId || undefined,
-          dateFrom: data.dateFrom.toISOString(),
-          dateTo: data.dateTo.toISOString(),
+          dateFrom: data.dateFrom ? data.dateFrom.toISOString() : undefined,
+          dateTo: data.dateTo ? data.dateTo.toISOString() : undefined,
           includeDetails: data.includeDetails,
           includeCharts: data.includeCharts,
           format: data.format,
@@ -423,71 +422,26 @@ export default function ReportGenerator({
                 />
               </div>
 
-              {/* Date Range */}
+              {/* Date Range (optional) */}
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>From Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !form.watch('dateFrom') && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {form.watch('dateFrom') ? (
-                          format(form.watch('dateFrom'), "PPP")
-                        ) : (
-                          <span>Pick start date</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={form.watch('dateFrom')}
-                        onSelect={(date) => form.setValue('dateFrom', date!)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  {form.formState.errors.dateFrom && (
-                    <p className="text-sm text-red-600">{form.formState.errors.dateFrom.message}</p>
-                  )}
+                  <Label>From Date (optional)</Label>
+                  <DatePicker
+                    value={form.watch('dateFrom') ?? null}
+                    onChange={(d) => form.setValue('dateFrom', d || undefined)}
+                    placeholder="Pick start date"
+                  />
                 </div>
-
                 <div className="space-y-2">
-                  <Label>To Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !form.watch('dateTo') && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {form.watch('dateTo') ? (
-                          format(form.watch('dateTo'), "PPP")
-                        ) : (
-                          <span>Pick end date</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={form.watch('dateTo')}
-                        onSelect={(date) => form.setValue('dateTo', date!)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  {form.formState.errors.dateTo && (
-                    <p className="text-sm text-red-600">{form.formState.errors.dateTo.message}</p>
+                  <Label>To Date (optional)</Label>
+                  <DatePicker
+                    value={form.watch('dateTo') ?? null}
+                    onChange={(d) => form.setValue('dateTo', d || undefined)}
+                    placeholder="Pick end date"
+                    minDate={form.watch('dateFrom') ?? undefined}
+                  />
+                  {form.watch('dateFrom') && form.watch('dateTo') && form.watch('dateTo')! < form.watch('dateFrom')! && (
+                    <p className="text-xs text-red-600">End date should be after start date.</p>
                   )}
                 </div>
               </div>

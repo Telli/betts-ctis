@@ -18,7 +18,7 @@ export default function ClientsKPIDashboardPage() {
             </Button>
           </Link>
           <div>
-            <h2 className="text-3xl font-bold tracking-tight text-sierra-gold">Client Performance Dashboard</h2>
+            <h2 className="text-3xl font-bold tracking-tight text-sierra-blue-900">Client Performance Dashboard</h2>
             <p className="text-muted-foreground">
               Your personal tax compliance metrics and performance indicators
             </p>

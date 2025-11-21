@@ -31,8 +31,8 @@ export default function ClientPortalReportsPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
   const [filters, setFilters] = useState({
-    status: '',
-    type: '',
+    status: 'all',
+    type: 'all',
     dateFrom: '',
     dateTo: '',
     search: ''
@@ -51,7 +51,13 @@ export default function ClientPortalReportsPage() {
   }, [])
 
   const fetchReports = async () => {
-    const result = await reportService.getReports({ ...filters, page, pageSize, sortBy, sortDir })
+    // Transform filters for API: convert "all" to empty string
+    const apiFilters = {
+      ...filters,
+      status: filters.status === 'all' ? '' : filters.status,
+      type: filters.type === 'all' ? '' : filters.type,
+    }
+    const result = await reportService.getReports({ ...apiFilters, page, pageSize, sortBy, sortDir })
     if (result.success && result.data) {
       setReports(result.data)
       const p = result.pagination
@@ -183,7 +189,7 @@ export default function ClientPortalReportsPage() {
                   <SelectValue placeholder="All Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Status</SelectItem>
+                  <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="Pending">Pending</SelectItem>
                   <SelectItem value="Processing">Processing</SelectItem>
                   <SelectItem value="Completed">Completed</SelectItem>
@@ -198,7 +204,7 @@ export default function ClientPortalReportsPage() {
                   <SelectValue placeholder="All Report Types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Types</SelectItem>
+                  <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="TaxSummary">Tax Summary</SelectItem>
                   <SelectItem value="ComplianceStatus">Compliance Status</SelectItem>
                   <SelectItem value="PaymentHistory">Payment History</SelectItem>

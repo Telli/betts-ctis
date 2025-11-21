@@ -201,7 +201,7 @@ export default function PaymentsPage() {
       {/* Header - Always Visible */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-sierra-blue">Payments</h2>
+          <h2 className="text-3xl font-bold tracking-tight text-sierra-blue-900">Payments</h2>
           <p className="text-muted-foreground">
             Manage payment records and approvals for Sierra Leone tax compliance
           </p>

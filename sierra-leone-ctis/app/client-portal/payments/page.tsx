@@ -24,6 +24,7 @@ import { ClientPortalService, ClientPayment } from '@/lib/services/client-portal
 import { useToast } from '@/hooks/use-toast'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePaymentStatus } from '@/hooks/useSignalR'
+import { getNumericDefault, getStringDefault } from '@/lib/utils/data-defaults'
 
 // Using ClientPayment from service
 
@@ -153,15 +154,34 @@ export default function ClientPaymentsPage() {
     ? payments 
     : payments.filter(payment => payment.status === filterStatus)
 
+  // Calculate preferred payment method from actual payment history
+  const calculatePreferredPaymentMethod = (): string => {
+    const confirmedPayments = payments.filter(p => p.status === 'confirmed')
+    if (confirmedPayments.length === 0) return 'Not available'
+    
+    const methodCounts: Record<string, number> = {}
+    confirmedPayments.forEach(p => {
+      const method = getStringDefault(p.method || p.paymentMethod)
+      if (method !== 'N/A') {
+        methodCounts[method] = (methodCounts[method] || 0) + 1
+      }
+    })
+    
+    const sortedMethods = Object.entries(methodCounts).sort((a, b) => b[1] - a[1])
+    return sortedMethods.length > 0 ? sortedMethods[0][0] : 'Not available'
+  }
+
+  const preferredPaymentMethod = calculatePreferredPaymentMethod()
+
   const stats = {
     total: payments.length,
     confirmed: payments.filter(p => p.status === 'confirmed').length,
     processing: payments.filter(p => p.status === 'processing').length,
     failed: payments.filter(p => p.status === 'failed').length,
-    totalAmount: payments.filter(p => p.status === 'confirmed').reduce((sum, p) => sum + p.amount, 0),
-    thisYearAmount: thisYearPayments.filter(p => p.status === 'confirmed').reduce((sum, p) => sum + p.amount, 0),
+    totalAmount: payments.filter(p => p.status === 'confirmed').reduce((sum, p) => sum + getNumericDefault(p.amount), 0),
+    thisYearAmount: thisYearPayments.filter(p => p.status === 'confirmed').reduce((sum, p) => sum + getNumericDefault(p.amount), 0),
     averagePayment: payments.length > 0 
-      ? payments.filter(p => p.status === 'confirmed').reduce((sum, p) => sum + p.amount, 0) / payments.filter(p => p.status === 'confirmed').length 
+      ? payments.filter(p => p.status === 'confirmed').reduce((sum, p) => sum + getNumericDefault(p.amount), 0) / Math.max(1, payments.filter(p => p.status === 'confirmed').length)
       : 0
   }
 
@@ -201,9 +221,6 @@ export default function ClientPaymentsPage() {
                 <DialogTitle>Submit New Payment</DialogTitle>
               </DialogHeader>
               <PaymentGatewayForm 
-                amount={50000} // Default amount, user can change
-                taxType="Income Tax"
-                taxYear={2024}
                 onSuccess={(paymentReference) => {
                   setShowCreateDialog(false)
                   toast({
@@ -315,40 +332,40 @@ export default function ClientPaymentsPage() {
                         </div>
                         
                         <div className="text-sm text-muted-foreground">
-                          {payment.taxType} • Tax Year {payment.taxYear}
+                          {getStringDefault(payment.taxType)} • Tax Year {payment.taxYear || 'N/A'}
                         </div>
                         
-                        <div className="flex items-center gap-4 text-sm">
-                          <span className="font-medium">
-                            Le {payment.amount.toLocaleString()}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            {getMethodIcon(payment.method)}
-                            {getMethodName(payment.method)}
-                          </span>
-                          <span>
-                            {payment.paymentDate ? format(new Date(payment.paymentDate), 'MMM d, yyyy') : 'No date'}
-                          </span>
-                        </div>
-                        
-                        {payment.originalAmount && payment.originalCurrency && (
-                          <div className="text-sm text-muted-foreground">
-                            Original: {payment.originalCurrency} {payment.originalAmount} 
-                            (Rate: {payment.exchangeRate})
+                          <div className="flex items-center gap-4 text-sm">
+                            <span className="font-medium">
+                              Le {getNumericDefault(payment.amount).toLocaleString()}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              {getMethodIcon(payment.method)}
+                              {getMethodName(payment.method)}
+                            </span>
+                            <span>
+                              {payment.paymentDate ? format(new Date(payment.paymentDate), 'MMM d, yyyy') : 'Not available'}
+                            </span>
                           </div>
-                        )}
-                        
-                        {payment.feeAmount && (
-                          <div className="text-sm text-muted-foreground">
-                            Transaction Fee: Le {payment.feeAmount.toLocaleString()}
-                          </div>
-                        )}
-                        
-                        {payment.notes && (
-                          <div className="text-sm text-muted-foreground italic">
-                            {payment.notes}
-                          </div>
-                        )}
+                          
+                          {payment.originalAmount && payment.originalCurrency && (
+                            <div className="text-sm text-muted-foreground">
+                              Original: {getStringDefault(payment.originalCurrency)} {getNumericDefault(payment.originalAmount).toLocaleString()} 
+                              {payment.exchangeRate && ` (Rate: ${getNumericDefault(payment.exchangeRate)})`}
+                            </div>
+                          )}
+                          
+                          {payment.feeAmount && (
+                            <div className="text-sm text-muted-foreground">
+                              Transaction Fee: Le {getNumericDefault(payment.feeAmount).toLocaleString()}
+                            </div>
+                          )}
+                          
+                          {payment.notes && (
+                            <div className="text-sm text-muted-foreground italic">
+                              {payment.notes}
+                            </div>
+                          )}
                       </div>
                       
                       <div className="flex gap-2">
@@ -402,12 +419,12 @@ export default function ClientPaymentsPage() {
                           </div>
                           
                           <div className="text-sm text-muted-foreground">
-                            {payment.taxType} • {payment.paymentDate ? format(new Date(payment.paymentDate), 'MMMM d, yyyy') : 'No date'}
+                            {getStringDefault(payment.taxType)} • {payment.paymentDate ? format(new Date(payment.paymentDate), 'MMMM d, yyyy') : 'Not available'}
                           </div>
                           
                           <div className="flex items-center gap-4 text-sm">
                             <span className="font-medium">
-                              Le {payment.amount.toLocaleString()}
+                              Le {getNumericDefault(payment.amount).toLocaleString()}
                             </span>
                             <span className="flex items-center gap-1">
                               {getMethodIcon(payment.method)}
@@ -491,19 +508,19 @@ export default function ClientPaymentsPage() {
                           </div>
                           
                           <div className="text-sm text-muted-foreground">
-                            {payment.taxType} • Tax Year {payment.taxYear}
+                            {getStringDefault(payment.taxType)} • Tax Year {payment.taxYear || 'N/A'}
                           </div>
                           
                           <div className="flex items-center gap-4 text-sm">
                             <span className="font-medium">
-                              Le {payment.amount.toLocaleString()}
+                              Le {getNumericDefault(payment.amount).toLocaleString()}
                             </span>
                             <span className="flex items-center gap-1">
                               {getMethodIcon(payment.method)}
                               {getMethodName(payment.method)}
                             </span>
                             <span>
-                              {payment.paymentDate ? format(new Date(payment.paymentDate), 'MMM d, yyyy') : 'No date'}
+                              {payment.paymentDate ? format(new Date(payment.paymentDate), 'MMM d, yyyy') : 'Not available'}
                             </span>
                           </div>
                           
@@ -539,8 +556,8 @@ export default function ClientPaymentsPage() {
               <CardContent>
                 <div className="space-y-4">
                   {['bank-transfer', 'orange-money', 'africell-money', 'paypal', 'stripe'].map((method) => {
-                    const methodPayments = payments.filter(p => p.method === method && p.status === 'confirmed')
-                    const totalAmount = methodPayments.reduce((sum, p) => sum + p.amount, 0)
+                    const methodPayments = payments.filter(p => (p.method === method || p.paymentMethod === method) && p.status === 'confirmed')
+                    const totalAmount = methodPayments.reduce((sum, p) => sum + getNumericDefault(p.amount), 0)
                     
                     return (
                       <div key={method} className="flex items-center justify-between">
@@ -572,7 +589,7 @@ export default function ClientPaymentsPage() {
                   <div>
                     <h4 className="font-medium mb-2">Preferred Payment Method</h4>
                     <p className="text-sm text-muted-foreground">
-                      Based on your payment history, you prefer Bank Transfer
+                      Based on your payment history, you prefer {preferredPaymentMethod}
                     </p>
                   </div>
                   

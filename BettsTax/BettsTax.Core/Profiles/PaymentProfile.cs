@@ -8,7 +8,13 @@ namespace BettsTax.Core.Profiles
     {
         public PaymentProfile()
         {
-            CreateMap<Payment, PaymentDto>().ReverseMap();
+            CreateMap<Payment, PaymentDto>()
+                .ForMember(dto => dto.ClientName,
+                    opt => opt.MapFrom(src => src.Client != null ? src.Client.BusinessName ?? string.Empty : string.Empty))
+                .ForMember(dto => dto.ClientNumber,
+                    opt => opt.MapFrom(src => src.Client != null ? src.Client.ClientNumber ?? string.Empty : string.Empty))
+                .ReverseMap()
+                .ForMember(entity => entity.Client, opt => opt.Ignore());
             CreateMap<CreatePaymentDto, Payment>();
             CreateMap<PaymentTransaction, PaymentTransactionDto>()
                 .ForMember(dto => dto.ProviderName, opt => opt.Ignore())

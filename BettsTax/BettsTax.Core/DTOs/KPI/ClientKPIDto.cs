@@ -55,7 +55,8 @@ public enum KPIAlertType
     FilingOverdue = 2,
     PaymentDelayed = 3,
     DocumentMissing = 4,
-    ClientInactive = 5
+    ClientInactive = 5,
+    UpcomingDeadline = 6
 }
 
 public enum KPIAlertSeverity

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Calendar } from '@/components/ui/calendar'
+import { CalendarDisplay } from '@/components/ui/calendar-display'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AlertTriangle, Calendar as CalendarIcon, Clock, CheckCircle, Bell, Filter } from 'lucide-react'
 import { format, isAfter, isBefore, addDays, startOfToday } from 'date-fns'
@@ -243,21 +243,14 @@ export default function DeadlinesPage() {
                 <CardDescription>Click on a date to view deadlines</CardDescription>
               </CardHeader>
               <CardContent>
-                <Calendar
-                  mode="single"
+                <CalendarDisplay
                   selected={selectedDate}
-                  onSelect={setSelectedDate}
+                  onSelect={(date) => {
+                    setSelectedDate(date || undefined);
+                  }}
+                  highlightDates={deadlines.map(d => new Date(d.dueDate))}
+                  highlightClassName="highlighted-date"
                   className="rounded-md border"
-                  modifiers={{
-                    hasDeadline: (date) => hasDeadlineOnDate(date)
-                  }}
-                  modifiersStyles={{
-                    hasDeadline: { 
-                      backgroundColor: '#fef3c7', 
-                      color: '#d97706',
-                      fontWeight: 'bold'
-                    }
-                  }}
                 />
               </CardContent>
             </Card>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { AlertCircle, Upload, Plus, Trash2 } from 'lucide-react';
 import type { TaxFilingDto } from '@/lib/services';
+import { TaxFilingService } from '@/lib/services/tax-filing-service';
 
 export interface SchedulesTabProps {
   filing?: TaxFilingDto;
@@ -25,13 +26,11 @@ export function SchedulesTab({ filing, mode = 'edit' }: SchedulesTabProps) {
   const isReadOnly = mode === 'view';
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  
-  // Mock data - in real implementation, this would come from API
-  const [scheduleData, setScheduleData] = useState<ScheduleItem[]>([
-    { id: 1, description: 'Sales Revenue', amount: 250000, taxable: 250000 },
-    { id: 2, description: 'Cost of Goods Sold', amount: 150000, taxable: 0 },
-    { id: 3, description: 'Operating Expenses', amount: 50000, taxable: 0 },
-  ]);
+  const [scheduleData, setScheduleData] = useState<ScheduleItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const filingId = filing?.taxFilingId;
 
   const handleAddRow = () => {
     const newId = Math.max(...scheduleData.map(s => s.id), 0) + 1;
@@ -41,6 +40,78 @@ export function SchedulesTab({ filing, mode = 'edit' }: SchedulesTabProps) {
   const handleDeleteRow = (id: number) => {
     setScheduleData(scheduleData.filter(item => item.id !== id));
   };
+
+  useEffect(() => {
+    const loadSchedules = async () => {
+      if (!filingId) {
+        // For new/unsaved filings there is nothing to load from the server yet
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+        const schedules = await TaxFilingService.getSchedules(filingId);
+        const mapped: ScheduleItem[] = schedules.map((s, index) => ({
+          id: s.id ?? index + 1,
+          description: s.description,
+          amount: s.amount,
+          taxable: s.taxable,
+        }));
+        setScheduleData(mapped);
+      } catch (err) {
+        console.error('Failed to load schedules', err);
+        setError('Failed to load schedules.');
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Failed to load schedules.',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSchedules();
+  }, [filingId, toast]);
+
+  const handleSaveSchedules = async () => {
+    if (!filingId) {
+      toast({
+        variant: 'destructive',
+        title: 'Cannot save schedules yet',
+        description: 'Please save the filing first before saving schedules.',
+      });
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const result = await TaxFilingService.saveSchedules(filingId, scheduleData);
+      if (result?.success) {
+        toast({
+          title: 'Schedules saved',
+          description: result.message ?? 'Schedule data saved successfully.',
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: result?.message ?? 'Failed to save schedules.',
+        });
+      }
+    } catch (err) {
+      console.error('Failed to save schedules', err);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to save schedules.',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
 
   const parseCsv = (text: string): Array<{ description: string; amount: number; taxable: number }> => {
     const rows: Array<{ description: string; amount: number; taxable: number }> = [];
@@ -125,6 +196,14 @@ export function SchedulesTab({ filing, mode = 'edit' }: SchedulesTabProps) {
           <div className="flex gap-2">
             {!isReadOnly && (
               <>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleSaveSchedules}
+                  disabled={isSaving || !filingId}
+                >
+                  {isSaving ? 'Saving...' : 'Save Schedules'}
+                </Button>
                 <Button variant="outline" size="sm" onClick={handleAddRow}>
                   <Plus className="w-4 h-4 mr-2" />
                   Add Row
@@ -144,6 +223,19 @@ export function SchedulesTab({ filing, mode = 'edit' }: SchedulesTabProps) {
             )}
           </div>
         </div>
+
+        {loading && (
+          <div className="mb-4 text-sm text-gray-500">
+            Loading schedule data...
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="mb-4 text-sm text-red-600">
+            {error}
+          </div>
+        )}
+
       </CardHeader>
       <CardContent>
         <Alert className="mb-6">
@@ -174,7 +266,7 @@ export function SchedulesTab({ filing, mode = 'edit' }: SchedulesTabProps) {
                         type="text"
                         value={row.description}
                         onChange={(e) => {
-                          setScheduleData(scheduleData.map(item => 
+                          setScheduleData(scheduleData.map(item =>
                             item.id === row.id ? { ...item, description: e.target.value } : item
                           ));
                         }}
@@ -191,7 +283,7 @@ export function SchedulesTab({ filing, mode = 'edit' }: SchedulesTabProps) {
                         type="number"
                         value={row.amount}
                         onChange={(e) => {
-                          setScheduleData(scheduleData.map(item => 
+                          setScheduleData(scheduleData.map(item =>
                             item.id === row.id ? { ...item, amount: parseFloat(e.target.value) || 0 } : item
                           ));
                         }}
@@ -207,7 +299,7 @@ export function SchedulesTab({ filing, mode = 'edit' }: SchedulesTabProps) {
                         type="number"
                         value={row.taxable}
                         onChange={(e) => {
-                          setScheduleData(scheduleData.map(item => 
+                          setScheduleData(scheduleData.map(item =>
                             item.id === row.id ? { ...item, taxable: parseFloat(e.target.value) || 0 } : item
                           ));
                         }}

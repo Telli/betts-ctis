@@ -23,7 +23,9 @@ import {
 import { format } from 'date-fns'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import ClientTaxFilingForm from '@/components/client-portal/forms/tax-filing-form'
-import { ClientPortalService } from '@/lib/services/client-portal-service'
+import { ClientPortalService, ClientTaxFiling, ClientPayment } from '@/lib/services/client-portal-service'
+import { DocumentService } from '@/lib/services/document-service'
+import { getNumericDefault, getArrayDefault, getDateDefault } from '@/lib/utils/data-defaults'
 
 interface TaxFiling {
   id: string
@@ -55,8 +57,31 @@ export default function ClientTaxFilingsPage() {
       try {
         setLoading(true)
         setError(null)
-        const res = await ClientPortalService.getTaxFilings(1, 100)
-        const mapped: TaxFiling[] = (res.items || []).map((f) => {
+        
+        // Fetch filings, payments, and documents in parallel
+        const [filingsRes, paymentsRes] = await Promise.all([
+          ClientPortalService.getTaxFilings(1, 100),
+          ClientPortalService.getPayments(1, 100).catch(() => ({ items: [], totalCount: 0, page: 1, pageSize: 100, totalPages: 1, hasNextPage: false, hasPreviousPage: false }))
+        ])
+        
+        const filings = filingsRes.items || []
+        const payments = paymentsRes.items || []
+        
+        // Fetch documents for each filing
+        const filingsWithData = await Promise.all(filings.map(async (f) => {
+          let documents: string[] = []
+          try {
+            const docs = await DocumentService.getDocumentsByFiling(f.taxFilingId)
+            documents = docs.map(d => d.originalName || d.filename || '')
+          } catch (err) {
+            console.warn(`Failed to fetch documents for filing ${f.taxFilingId}:`, err)
+            documents = []
+          }
+          
+          // Calculate amountPaid from payments for this filing
+          const filingPayments = payments.filter(p => p.taxFilingId === f.taxFilingId && p.status === 'confirmed')
+          const amountPaid = filingPayments.reduce((sum, p) => sum + getNumericDefault(p.amount), 0)
+          
           const mapStatus = (s: string): TaxFiling['status'] => {
             const n = (s || '').toLowerCase()
             if (n === 'draft') return 'draft'
@@ -67,25 +92,29 @@ export default function ClientTaxFilingsPage() {
             if (n === 'overdue') return 'overdue'
             return 'draft'
           }
+          
           const status = mapStatus(String(f.status))
           const completion = status === 'filed' ? 100 : status === 'approved' ? 95 : status === 'under-review' ? 85 : status === 'submitted' ? 75 : 60
+          const taxLiability = getNumericDefault(f.taxLiability)
+          
           return {
             id: String(f.taxFilingId),
-            taxType: f.taxType,
-            taxYear: f.taxYear,
+            taxType: f.taxType || 'N/A',
+            taxYear: f.taxYear || new Date().getFullYear(),
             status,
-            submittedDate: undefined,
-            dueDate: f.dueDate ? new Date(f.dueDate) : new Date(),
-            filedDate: f.filingDate ? new Date(f.filingDate) : undefined,
-            taxLiability: f.taxLiability,
-            amountPaid: 0,
-            outstandingBalance: Math.max(0, (f.taxLiability || 0) - 0),
-            documents: [],
+            submittedDate: f.filingDate ? getDateDefault(f.filingDate) : undefined,
+            dueDate: f.dueDate ? getDateDefault(f.dueDate)! : new Date(),
+            filedDate: f.filingDate ? getDateDefault(f.filingDate) : undefined,
+            taxLiability,
+            amountPaid,
+            outstandingBalance: Math.max(0, taxLiability - amountPaid),
+            documents: getArrayDefault(documents),
             reviewComments: undefined,
             completionPercentage: completion,
           } as TaxFiling
-        })
-        setFilings(mapped)
+        }))
+        
+        setFilings(filingsWithData)
       } catch (e: any) {
         setError('Failed to load tax filings')
         setFilings([])
@@ -95,7 +124,7 @@ export default function ClientTaxFilingsPage() {
       }
     }
     load()
-  }, [])
+  }, [toast])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -143,9 +172,9 @@ export default function ClientTaxFilingsPage() {
     total: filings.length,
     filed: filings.filter(f => f.status === 'filed').length,
     pending: filings.filter(f => ['draft', 'submitted', 'under-review'].includes(f.status)).length,
-    totalLiability: filings.reduce((sum, f) => sum + f.taxLiability, 0),
-    totalPaid: filings.reduce((sum, f) => sum + f.amountPaid, 0),
-    outstanding: filings.reduce((sum, f) => sum + f.outstandingBalance, 0)
+    totalLiability: filings.reduce((sum, f) => sum + getNumericDefault(f.taxLiability), 0),
+    totalPaid: filings.reduce((sum, f) => sum + getNumericDefault(f.amountPaid), 0),
+    outstanding: filings.reduce((sum, f) => sum + getNumericDefault(f.outstandingBalance), 0)
   }
 
   if (loading) {
@@ -188,21 +217,60 @@ export default function ClientTaxFilingsPage() {
                   toast({ title: 'Tax filing created', description: 'Your filing has been created successfully.' })
                   try {
                     setLoading(true)
-                    const res = await ClientPortalService.getTaxFilings(1, 100)
-                    const mapped: TaxFiling[] = (res.items || []).map((f) => ({
-                      id: String(f.taxFilingId),
-                      taxType: f.taxType,
-                      taxYear: f.taxYear,
-                      status: 'draft',
-                      dueDate: f.dueDate ? new Date(f.dueDate) : new Date(),
-                      filedDate: f.filingDate ? new Date(f.filingDate) : undefined,
-                      taxLiability: f.taxLiability,
-                      amountPaid: 0,
-                      outstandingBalance: Math.max(0, (f.taxLiability || 0) - 0),
-                      documents: [],
-                      completionPercentage: 60,
+                    // Refresh filings with all data
+                    const [filingsRes, paymentsRes] = await Promise.all([
+                      ClientPortalService.getTaxFilings(1, 100),
+                      ClientPortalService.getPayments(1, 100).catch(() => ({ items: [], totalCount: 0, page: 1, pageSize: 100, totalPages: 1, hasNextPage: false, hasPreviousPage: false }))
+                    ])
+                    
+                    const filings = filingsRes.items || []
+                    const payments = paymentsRes.items || []
+                    
+                    const filingsWithData = await Promise.all(filings.map(async (f) => {
+                      let documents: string[] = []
+                      try {
+                        const docs = await DocumentService.getDocumentsByFiling(f.taxFilingId)
+                        documents = docs.map(d => d.originalName || d.filename || '')
+                      } catch (err) {
+                        documents = []
+                      }
+                      
+                      const filingPayments = payments.filter(p => p.taxFilingId === f.taxFilingId && p.status === 'confirmed')
+                      const amountPaid = filingPayments.reduce((sum, p) => sum + getNumericDefault(p.amount), 0)
+                      const taxLiability = getNumericDefault(f.taxLiability)
+                      
+                      const mapStatus = (s: string): TaxFiling['status'] => {
+                        const n = (s || '').toLowerCase()
+                        if (n === 'draft') return 'draft'
+                        if (n === 'submitted') return 'submitted'
+                        if (n === 'underreview' || n === 'under-review') return 'under-review'
+                        if (n === 'approved') return 'approved'
+                        if (n === 'filed') return 'filed'
+                        if (n === 'overdue') return 'overdue'
+                        return 'draft'
+                      }
+                      
+                      const status = mapStatus(String(f.status))
+                      const completion = status === 'filed' ? 100 : status === 'approved' ? 95 : status === 'under-review' ? 85 : status === 'submitted' ? 75 : 60
+                      
+                      return {
+                        id: String(f.taxFilingId),
+                        taxType: f.taxType || 'N/A',
+                        taxYear: f.taxYear || new Date().getFullYear(),
+                        status,
+                        submittedDate: f.filingDate ? getDateDefault(f.filingDate) : undefined,
+                        dueDate: f.dueDate ? getDateDefault(f.dueDate)! : new Date(),
+                        filedDate: f.filingDate ? getDateDefault(f.filingDate) : undefined,
+                        taxLiability,
+                        amountPaid,
+                        outstandingBalance: Math.max(0, taxLiability - amountPaid),
+                        documents: getArrayDefault(documents),
+                        reviewComments: undefined,
+                        completionPercentage: completion,
+                      } as TaxFiling
                     }))
-                    setFilings(mapped)
+                    
+                    setFilings(filingsWithData)
                   } finally {
                     setLoading(false)
                   }

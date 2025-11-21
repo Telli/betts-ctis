@@ -15,9 +15,11 @@ namespace BettsTax.Core.Services
         Task<TaxFilingDto> SubmitTaxFilingAsync(int id, string userId);
         Task<TaxFilingDto> ReviewTaxFilingAsync(int id, ReviewTaxFilingDto reviewDto, string userId);
         Task<List<TaxFilingDto>> GetUpcomingDeadlinesAsync(int days = 30);
+	        Task<TaxFilingValidationResultDto> ValidateTaxFilingForSubmissionAsync(int id);
+
         Task<decimal> CalculateTaxLiabilityAsync(int clientId, TaxType taxType, int taxYear, decimal taxableAmount, decimal annualTurnover = 0, bool isIndividual = false);
         Task<TaxCalculationResult> CalculateComprehensiveTaxLiabilityAsync(int clientId, TaxType taxType, int taxYear, decimal taxableAmount, DateTime dueDate, decimal annualTurnover = 0, bool isIndividual = false);
-        
+
         // Associate on-behalf methods
         Task<List<TaxFilingDto>> GetTaxFilingsForClientsAsync(List<int> clientIds, string? searchTerm = null, TaxType? taxType = null, FilingStatus? status = null);
         Task<TaxFilingDto> CreateTaxFilingOnBehalfAsync(CreateTaxFilingDto createDto, string associateId, int clientId);

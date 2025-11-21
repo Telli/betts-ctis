@@ -91,8 +91,8 @@ export function DocumentUpload({ clientId, onUploadComplete }: DocumentUploadPro
         <div className="space-y-2">
           <Label htmlFor="taxYear">Tax Year (Optional)</Label>
           <Select
-            value={taxYearId?.toString() || ""}
-            onValueChange={(value) => setTaxYearId(value ? Number(value) : null)}
+            value={taxYearId?.toString() || undefined}
+            onValueChange={(value) => setTaxYearId(value === "none" ? null : Number(value))}
             disabled={isUploading}
           >
             <SelectTrigger>
@@ -104,7 +104,7 @@ export function DocumentUpload({ clientId, onUploadComplete }: DocumentUploadPro
                   {year.year}
                 </SelectItem>
               ))}
-              <SelectItem value="">Not Applicable</SelectItem>
+              <SelectItem value="none">Not Applicable</SelectItem>
             </SelectContent>
           </Select>
         </div>

@@ -1,4 +1,5 @@
 'use client';
+import { DatePicker } from '@/components/ui/date-picker'
 
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -12,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Calendar } from '@/components/ui/calendar';
+// Calendar deprecated; using DatePicker
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { 
   Calculator, 
@@ -284,32 +285,10 @@ export default function PenaltyCalculatorForm({
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Due Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !form.watch('dueDate') && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {form.watch('dueDate') ? (
-                          format(form.watch('dueDate')!, "PPP")
-                        ) : (
-                          <span>Pick due date</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={form.watch('dueDate')}
-                        onSelect={(date) => form.setValue('dueDate', date!)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                    <DatePicker
+                      value={form.watch('dueDate') ?? null}
+                      onChange={(d) => form.setValue('dueDate', d!)}
+                    />
                   {form.formState.errors.dueDate && (
                     <p className="text-sm text-red-600">{form.formState.errors.dueDate.message}</p>
                   )}
@@ -317,32 +296,10 @@ export default function PenaltyCalculatorForm({
 
                 <div className="space-y-2">
                   <Label>Actual Filing/Payment Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !form.watch('actualDate') && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {form.watch('actualDate') ? (
-                          format(form.watch('actualDate')!, "PPP")
-                        ) : (
-                          <span>Pick actual date</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={form.watch('actualDate')}
-                        onSelect={(date) => form.setValue('actualDate', date!)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                    <DatePicker
+                      value={form.watch('actualDate') ?? null}
+                      onChange={(d) => form.setValue('actualDate', d!)}
+                    />
                   {form.formState.errors.actualDate && (
                     <p className="text-sm text-red-600">{form.formState.errors.actualDate.message}</p>
                   )}
@@ -371,9 +328,9 @@ export default function PenaltyCalculatorForm({
 
             {/* Penalty Preview */}
             {previewPenalty && (
-              <Card className="border-sierra-gold-200 bg-sierra-gold-50">
+              <Card className="border-sierra-blue-200 bg-sierra-blue-50">
                 <CardHeader>
-                  <CardTitle className="text-base text-sierra-gold-800">Penalty Preview</CardTitle>
+                  <CardTitle className="text-base text-sierra-blue-900">Penalty Preview</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
